@@ -1,0 +1,305 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SYNAPSE · Governança GBS</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Syne:wght@500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.19.0/tabler-icons.min.css">
+<style>
+:root{
+  --ink:#111110;--ink2:#3d3d3a;--ink3:#73726c;--ink4:#9c9a92;
+  --paper:#faf9f7;--surface:#ffffff;
+  --rule:rgba(0,0,0,0.08);--rule2:rgba(0,0,0,0.14);
+  --ok:#2d6a0f;--ok-bg:#edf5e1;--warn:#7a4500;--warn-bg:#fef0da;
+  --err:#8f1f1f;--err-bg:#fdeaea;--info:#13437a;--info-bg:#e5f0fb;
+  --neu:#4a4a47;--neu-bg:#f1f0ec;--r:6px;--r2:10px;
+}
+@media (prefers-color-scheme:dark){:root{
+  --ink:#e8e6df;--ink2:#b8b6ae;--ink3:#8a897f;--ink4:#5c5b54;
+  --paper:#111110;--surface:#1a1a18;--rule:rgba(255,255,255,0.07);--rule2:rgba(255,255,255,0.13);
+  --ok:#7dba45;--ok-bg:#162309;--warn:#e8931a;--warn-bg:#2a1800;
+  --err:#e06060;--err-bg:#280d0d;--info:#6aabea;--info-bg:#071a30;
+  --neu:#9c9a92;--neu-bg:#222220;
+}}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Inter',system-ui,sans-serif;font-size:13px;line-height:1.5;background:var(--paper);color:var(--ink);min-height:100vh}
+.topbar{background:var(--surface);border-bottom:1px solid var(--rule2);padding:0 28px;display:flex;align-items:center;justify-content:space-between;height:52px;position:sticky;top:0;z-index:50}
+.tb-left{display:flex;align-items:center;gap:16px}
+.wordmark{font-family:'Syne',sans-serif;font-size:15px;font-weight:700;letter-spacing:-.01em;color:var(--ink)}
+.wordmark span{color:var(--ink3);font-weight:500}
+.tb-sync{font-size:11px;color:var(--ink4);padding-left:16px;border-left:1px solid var(--rule2)}
+.tb-right{display:flex;align-items:center;gap:12px}
+.date-filter{display:flex;align-items:center;gap:8px;padding:5px 10px;background:var(--paper);border:1px solid var(--rule2);border-radius:var(--r)}
+.date-filter.active{border-color:var(--ink3);background:var(--surface)}
+.df-input{font-family:'Inter',sans-serif;font-size:11px;padding:3px 6px;border-radius:4px;border:1px solid var(--rule2);background:var(--surface);color:var(--ink2);width:130px}
+.df-input:hover{border-color:var(--ink4)}
+.df-clear{background:transparent;border:none;color:var(--ink4);cursor:pointer;padding:2px 4px;border-radius:3px;display:flex;align-items:center}
+.df-clear:hover{background:var(--rule2);color:var(--ink)}
+@media(max-width:900px){.df-input{width:110px}}
+.nav{background:var(--surface);border-bottom:1px solid var(--rule2);display:flex;padding:0 28px;overflow-x:auto}
+.nav-item{display:flex;align-items:center;gap:6px;padding:0 16px;height:42px;font-size:12px;color:var(--ink3);border-bottom:2px solid transparent;cursor:pointer;white-space:nowrap;transition:color .12s,border-color .12s}
+.nav-item:first-child{padding-left:0}
+.nav-item.active{color:var(--ink);border-bottom-color:var(--ink);font-weight:600}
+.nav-item:hover:not(.active){color:var(--ink2)}
+.nb{font-size:10px;padding:1px 6px;border-radius:3px;font-weight:500;background:var(--neu-bg);color:var(--neu)}
+.nb.ok{background:var(--ok-bg);color:var(--ok)}.nb.warn{background:var(--warn-bg);color:var(--warn)}.nb.err{background:var(--err-bg);color:var(--err)}
+.page{display:none;padding:28px;max-width:1140px;margin:0 auto}
+.page.active{display:block}
+.sh{font-family:'Syne',sans-serif;font-size:11px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--ink4);margin-bottom:14px}
+.sh.mt{margin-top:32px}
+.krow{display:grid;grid-template-columns:repeat(4,1fr);gap:1px;margin-bottom:24px;background:var(--rule2);border:1px solid var(--rule2);border-radius:var(--r2);overflow:hidden}
+.krow.k5{grid-template-columns:repeat(5,1fr)}
+@media(max-width:760px){.krow,.krow.k5{grid-template-columns:repeat(2,1fr)}}
+.kpi{background:var(--surface);padding:18px 20px;position:relative}
+.kpi::after{content:'';position:absolute;bottom:0;left:20px;right:20px;height:2px;background:transparent}
+.kpi.gl::after{background:var(--ok)}.kpi.dl::after{background:var(--err)}.kpi.wl::after{background:var(--warn)}.kpi.il::after{background:var(--info)}
+.knum{font-family:'Syne',sans-serif;font-size:30px;font-weight:600;line-height:1;letter-spacing:-.02em}
+.knum.sm{font-size:24px}
+.klbl{font-size:11px;color:var(--ink4);margin-top:8px;text-transform:uppercase;letter-spacing:.04em}
+.ksub{font-size:11px;color:var(--ink4);margin-top:3px}
+.ksub.na{color:var(--ink4);font-style:italic;opacity:.7}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px}
+.g3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;margin-bottom:16px}
+@media(max-width:800px){.two,.g3{grid-template-columns:1fr}}
+.card{background:var(--surface);border:1px solid var(--rule2);border-radius:var(--r2);padding:20px;margin-bottom:16px}
+.card.np{padding:0;overflow:hidden}
+.card-title{font-family:'Syne',sans-serif;font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--ink3);margin-bottom:16px;display:flex;align-items:center;gap:7px}
+.card-title .rt{margin-left:auto;font-family:'Inter';font-size:10px;color:var(--ink4);font-weight:400;letter-spacing:0;text-transform:none}
+.ilist{display:flex;flex-direction:column;gap:1px;background:var(--rule);border:1px solid var(--rule2);border-radius:var(--r2);overflow:hidden}
+.icard{background:var(--surface);padding:11px 16px;display:flex;align-items:center;gap:14px;transition:background .1s}
+.icard:hover{background:var(--paper)}
+.iico{width:28px;height:28px;border-radius:5px;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:14px}
+.imain{flex:1;min-width:0}
+.ititle{font-size:13px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--ink)}
+.isub{font-size:11px;color:var(--ink4);margin-top:1px;display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.iright{display:flex;align-items:center;gap:6px;flex-shrink:0}
+.apill{font-size:10px;padding:1px 6px;border-radius:3px;background:var(--neu-bg);color:var(--neu);flex-shrink:0}
+.badge{font-size:10px;padding:2px 8px;border-radius:3px;font-weight:500;white-space:nowrap}
+.badge.ok{background:var(--ok-bg);color:var(--ok)}.badge.warn{background:var(--warn-bg);color:var(--warn)}
+.badge.err{background:var(--err-bg);color:var(--err)}.badge.info{background:var(--info-bg);color:var(--info)}
+.badge.neu{background:var(--neu-bg);color:var(--neu)}
+.badge.green{background:var(--ok-bg);color:var(--ok)}.badge.amber{background:var(--warn-bg);color:var(--warn)}
+.badge.red{background:var(--err-bg);color:var(--err)}.badge.blue{background:var(--info-bg);color:var(--info)}.badge.gray{background:var(--neu-bg);color:var(--neu)}
+.hbar-row{display:flex;align-items:center;gap:10px;padding:5px 0;font-size:12px}
+.hbar-lbl{flex-shrink:0;color:var(--ink3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:90px}
+.hbar-track{flex:1;height:5px;background:var(--rule2);border-radius:3px;overflow:hidden}
+.hbar-fill{height:100%;border-radius:3px;background:var(--ink)}
+.hbar-val{min-width:28px;text-align:right;font-size:12px;font-weight:600;color:var(--ink2)}
+.hbar-pct{font-size:10px;color:var(--ink4);min-width:34px;text-align:right}
+.btn{font-size:12px;padding:7px 14px;border-radius:var(--r);border:1px solid var(--rule2);background:transparent;color:var(--ink2);display:flex;align-items:center;gap:6px;transition:all .12s;font-family:'Inter',sans-serif;cursor:pointer}
+.btn:hover{background:var(--paper);color:var(--ink)}
+.btn.primary{background:var(--ink);color:var(--paper);border-color:var(--ink)}
+.btn.primary:hover{opacity:.85}
+.btn:disabled{opacity:.3;cursor:not-allowed}
+select,input[type=text]{font-family:'Inter',sans-serif;font-size:12px;padding:5px 9px;border-radius:var(--r);border:1px solid var(--rule2);background:var(--surface);color:var(--ink)}
+.filters{display:flex;align-items:center;gap:8px;margin-bottom:14px;flex-wrap:wrap}
+.filters label{font-size:11px;color:var(--ink4);text-transform:uppercase;letter-spacing:.04em}
+.up-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:16px;margin-bottom:20px}
+@media(max-width:700px){.up-grid{grid-template-columns:1fr}}
+.uc{background:var(--surface);border:1px solid var(--rule2);border-radius:var(--r2);padding:20px;transition:border-color .15s}
+.uc.loaded{border-color:var(--ok)}
+.uc-head{display:flex;align-items:flex-start;gap:10px;margin-bottom:14px}
+.uc-ico{width:30px;height:30px;border-radius:5px;display:flex;align-items:center;justify-content:center;flex-shrink:0;background:var(--paper);font-size:15px;color:var(--ink3)}
+.uc-title{font-family:'Syne',sans-serif;font-size:13px;font-weight:600}
+.uc-sub{font-size:11px;color:var(--ink4);margin-top:2px;letter-spacing:.01em}
+.dz{border:1px dashed var(--rule2);border-radius:var(--r);padding:22px 14px;text-align:center;cursor:pointer;transition:background .12s,border-color .12s}
+.dz:hover,.dz.over{background:var(--paper);border-color:var(--ink4)}
+.dz input{display:none}
+.dz-ico{font-size:20px;color:var(--ink4);margin-bottom:6px}
+.dz-lbl{font-size:12px;color:var(--ink3)}
+.dz-sub{font-size:10px;color:var(--ink4);margin-top:3px}
+.fok{display:none;align-items:center;gap:7px;padding:8px 10px;background:var(--ok-bg);border-radius:var(--r);margin-top:10px}
+.fok.show{display:flex}
+.fok i{color:var(--ok);flex-shrink:0}
+.fok span{font-size:11px;color:var(--ok);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tags{display:none;margin-top:10px;font-size:10px;color:var(--ink4);line-height:1.7}
+.tags.show{display:block}
+.tags b{color:var(--ink3)}
+.abar{background:var(--surface);border:1px solid var(--rule2);border-radius:var(--r2);padding:14px 20px;display:flex;align-items:center;justify-content:space-between;margin-bottom:14px}
+.hint{padding:14px 18px;background:var(--paper);border:1px solid var(--rule);border-radius:var(--r2);font-size:11px;color:var(--ink4);line-height:1.8}
+.hint b{color:var(--ink3)}
+.empty{text-align:center;padding:60px 20px;color:var(--ink4);font-size:13px}
+.empty i{font-size:28px;display:block;margin-bottom:10px;opacity:.25}
+.pip-subnav{display:flex;border-bottom:1px solid var(--rule2);margin-bottom:20px;overflow-x:auto}
+.pip-nav-item{padding:0 14px;height:36px;display:flex;align-items:center;font-size:12px;color:var(--ink3);border-bottom:2px solid transparent;cursor:pointer;white-space:nowrap}
+.pip-nav-item:first-child{padding-left:0}
+.pip-nav-item.active{color:var(--ink);border-bottom-color:var(--ink);font-weight:600}
+.pip-sub-page{display:none}.pip-sub-page.active{display:block}
+.fbar{display:flex;align-items:center;gap:10px;margin-bottom:20px;flex-wrap:wrap;padding:12px 14px;background:var(--surface);border:1px solid var(--rule2);border-radius:var(--r2)}
+.fbar label{font-size:10px;color:var(--ink4);text-transform:uppercase;letter-spacing:.06em;margin-right:2px}
+.fbar .sep{width:1px;height:20px;background:var(--rule2);margin:0 4px}
+.fbar .meta{font-size:11px;color:var(--ink4);margin-left:auto}
+.tbl{width:100%;border-collapse:collapse;font-size:12px}
+.tbl th{text-align:left;font-weight:500;color:var(--ink4);font-size:10px;text-transform:uppercase;letter-spacing:.05em;padding:0 12px 10px 0;border-bottom:1px solid var(--rule2)}
+.tbl td{padding:8px 12px 8px 0;border-bottom:1px solid var(--rule);color:var(--ink2)}
+.tbl tr:last-child td{border-bottom:none}
+.tbl tr:hover td{color:var(--ink)}
+.insight{display:flex;gap:12px;padding:13px 15px;background:var(--warn-bg);border-radius:var(--r);margin-bottom:18px;font-size:12px;color:var(--warn);line-height:1.6}
+.insight.ok{background:var(--ok-bg);color:var(--ok)}
+.insight i{flex-shrink:0;font-size:15px;margin-top:1px}
+.note{display:flex;gap:10px;padding:11px 14px;background:var(--info-bg);border-radius:var(--r);margin-bottom:16px;font-size:11px;color:var(--info);line-height:1.6}
+.note i{flex-shrink:0;font-size:14px;margin-top:1px}
+/* donut */
+.donut-wrap{display:flex;align-items:center;gap:24px;flex-wrap:wrap}
+.donut-legend{display:flex;flex-direction:column;gap:8px;font-size:12px}
+.dleg{display:flex;align-items:center;gap:8px;color:var(--ink2)}
+.dleg-dot{width:10px;height:10px;border-radius:2px;flex-shrink:0}
+.dleg b{font-weight:600;margin-left:auto;padding-left:14px}
+.dleg .dpct{color:var(--ink4);font-size:11px;min-width:36px;text-align:right}
+/* line chart axis labels */
+.lc-x{display:flex;justify-content:space-between;font-size:9px;color:var(--ink4);margin-top:4px}
+/* heatmap */
+.hm{border-collapse:collapse;font-size:11px}
+.hm th{font-size:9px;color:var(--ink4);text-transform:uppercase;letter-spacing:.04em;padding:4px 8px;text-align:center;font-weight:500}
+.hm th.rh{text-align:left}
+.hm td{padding:0;text-align:center}
+.hm .cell{width:46px;height:34px;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:600;border-radius:4px;margin:2px}
+.hm .rl{text-align:left;color:var(--ink3);padding-right:10px;font-size:11px;white-space:nowrap}
+/* stacked mini */
+.stk{display:flex;height:8px;border-radius:4px;overflow:hidden;background:var(--rule2);margin:6px 0}
+.stk>div{height:100%}
+.vchart{display:flex;align-items:flex-end;gap:3px;height:100px;border-bottom:1px solid var(--rule2);margin-bottom:8px}
+.vcol{display:flex;flex-direction:column;align-items:center;flex:1;height:100%;justify-content:flex-end}
+.vcol-bars{position:relative;width:100%;flex:1;display:flex;align-items:flex-end}
+.vbar-total{position:absolute;bottom:0;width:100%;border-radius:2px 2px 0 0;background:var(--ink);opacity:.2}
+.vbar-inc{position:absolute;bottom:0;width:100%;border-radius:2px 2px 0 0;background:var(--err);opacity:.75}
+.vcol-lbl{font-size:9px;color:var(--ink4);margin-top:4px;white-space:nowrap}
+.vlegend{display:flex;gap:14px;margin-top:6px}
+.vleg{display:flex;align-items:center;gap:5px;font-size:11px;color:var(--ink4)}
+.vleg-dot{width:8px;height:8px;border-radius:2px}
+</style>
+</head>
+<body>
+
+<header class="topbar">
+  <div class="tb-left">
+    <div class="wordmark">SYNAPSE <span>Governança GBS</span></div>
+    <div class="tb-sync" id="sync-lbl">Nenhum arquivo carregado</div>
+  </div>
+  <div class="tb-right">
+    <div class="date-filter" id="date-filter" style="display:none">
+      <i class="ti ti-calendar" style="font-size:13px;color:var(--ink4)"></i>
+      <span style="font-size:10px;color:var(--ink4);text-transform:uppercase;letter-spacing:.04em">Período</span>
+      <input type="date" id="df-from" class="df-input" onchange="applyDateFilter()" title="Data inicial">
+      <span style="color:var(--ink4);font-size:12px">→</span>
+      <input type="date" id="df-to" class="df-input" onchange="applyDateFilter()" title="Data final">
+      <button class="df-clear" onclick="clearDateFilter()" title="Limpar período"><i class="ti ti-x" style="font-size:11px"></i></button>
+    </div>
+    <button class="btn" onclick="setNav('upload')"><i class="ti ti-upload" style="font-size:12px"></i> Atualizar bases</button>
+  </div>
+</header>
+
+<nav class="nav">
+  <div class="nav-item active" id="nav-upload" onclick="setNav('upload')">Upload</div>
+  <div class="nav-item" id="nav-gov" onclick="setNav('gov')">Governança <span class="nb" id="nb-gov">—</span></div>
+  <div class="nav-item" id="nav-proj" onclick="setNav('proj')">Projetos <span class="nb" id="nb-proj">—</span></div>
+  <div class="nav-item" id="nav-mel" onclick="setNav('mel')">Pipefy Melhorias <span class="nb" id="nb-mel">—</span></div>
+  <div class="nav-item" id="nav-rpa" onclick="setNav('rpa')">Chamados RPA <span class="nb" id="nb-rpa">—</span></div>
+  <div class="nav-item" id="nav-bots" onclick="setNav('bots')">Inventário Bots <span class="nb" id="nb-bots">—</span></div>
+  <div class="nav-item" id="nav-ana" onclick="setNav('ana')">Analytics <span class="nb" id="nb-ana">—</span></div>
+</nav>
+
+<main>
+
+<!-- UPLOAD -->
+<section class="page active" id="page-upload" style="max-width:900px">
+  <div class="sh">Carregar bases de dados</div>
+  <div class="up-grid">
+    <div class="uc" id="uc-gov">
+      <div class="uc-head">
+        <div class="uc-ico"><i class="ti ti-database"></i></div>
+        <div><div class="uc-title">Base Governança</div><div class="uc-sub">Pipefy Melhorias · Projetos · Analytics</div></div>
+      </div>
+      <div class="dz" id="dz-gov" onclick="document.getElementById('fi-gov').click()" ondragover="dzO(event,'dz-gov')" ondragleave="dzL('dz-gov')" ondrop="dzD(event,'gov')">
+        <input type="file" id="fi-gov" accept=".xlsx,.xls" onchange="hf(this,'gov')">
+        <div class="dz-ico"><i class="ti ti-file-spreadsheet"></i></div>
+        <div class="dz-lbl">Clique ou arraste</div>
+        <div class="dz-sub">Base_Governanca_GBS · .xlsx</div>
+      </div>
+      <div class="fok" id="ok-gov"><i class="ti ti-check"></i><span id="fn-gov">—</span></div>
+      <div class="tags" id="tg-gov"></div>
+    </div>
+    <div class="uc" id="uc-rpa">
+      <div class="uc-head">
+        <div class="uc-ico"><i class="ti ti-robot"></i></div>
+        <div><div class="uc-title">Chamados RPA</div><div class="uc-sub">relatório_completo · export Pipefy</div></div>
+      </div>
+      <div class="dz" id="dz-rpa" onclick="document.getElementById('fi-rpa').click()" ondragover="dzO(event,'dz-rpa')" ondragleave="dzL('dz-rpa')" ondrop="dzD(event,'rpa')">
+        <input type="file" id="fi-rpa" accept=".xlsx,.xls" onchange="hf(this,'rpa')">
+        <div class="dz-ico"><i class="ti ti-file-spreadsheet"></i></div>
+        <div class="dz-lbl">Clique ou arraste</div>
+        <div class="dz-sub">relatório_completo · .xlsx</div>
+      </div>
+      <div class="fok" id="ok-rpa"><i class="ti ti-check"></i><span id="fn-rpa">—</span></div>
+      <div class="tags" id="tg-rpa"></div>
+    </div>
+  </div>
+  <div class="abar">
+    <div style="font-size:13px;color:var(--ink3)" id="abar-status"><strong style="color:var(--ink)">0 de 2</strong> bases carregadas</div>
+    <button class="btn primary" id="btn-gen" onclick="generate()" disabled><i class="ti ti-arrow-right" style="font-size:12px"></i> Gerar dashboard</button>
+  </div>
+  <div class="hint">
+    <b>Como funciona:</b> suba as duas planilhas que você já usa hoje — a app lê as abas automaticamente, sem você precisar formatar nada.<br>
+    <b>Base Governança</b> — lê as abas <i>Pipefy_Melhorias</i>, <i>Projetos</i>, <i>Analytics</i> e <i>Inventario_RPA</i>. O status é reconhecido pelo dicionário de dados.<br>
+    <b>Chamados RPA</b> — lê a aba <i>Report</i> (export do Pipefy do fluxo de manutenção de RPA): fase atual, tipo de problema, processo (bot) e tempos por fase.
+  </div>
+</section>
+
+<!-- GOVERNANCA (visão executiva) -->
+<section class="page" id="page-gov">
+  <div id="gov-empty" class="empty"><i class="ti ti-upload"></i>Carregue ao menos uma base e clique em Gerar dashboard</div>
+  <div id="gov-content" style="display:none"></div>
+</section>
+
+<!-- PROJETOS -->
+<section class="page" id="page-proj">
+  <div id="proj-empty" class="empty"><i class="ti ti-folders"></i>Carregue a Base Governança (aba Projetos)</div>
+  <div id="proj-content" style="display:none"></div>
+</section>
+
+<!-- PIPEFY MELHORIAS -->
+<section class="page" id="page-mel">
+  <div id="mel-empty" class="empty"><i class="ti ti-message-dots"></i>Carregue a Base Governança (aba Pipefy_Melhorias)</div>
+  <div id="mel-content" style="display:none"></div>
+</section>
+
+<!-- CHAMADOS RPA -->
+<section class="page" id="page-rpa">
+  <div id="rpa-empty" class="empty"><i class="ti ti-robot"></i>Carregue o relatório de Chamados RPA</div>
+  <div id="rpa-content" style="display:none">
+    <nav class="pip-subnav">
+      <div class="pip-nav-item active" id="rnav-visao" onclick="rpaPage('visao')">Visão geral</div>
+      <div class="pip-nav-item" id="rnav-bots" onclick="rpaPage('bots')">Top bots</div>
+      <div class="pip-nav-item" id="rnav-prob" onclick="rpaPage('prob')">Tipos de problema</div>
+      <div class="pip-nav-item" id="rnav-tempo" onclick="rpaPage('tempo')">Tempo de resolução</div>
+      <div class="pip-nav-item" id="rnav-lista" onclick="rpaPage('lista')">Chamados</div>
+    </nav>
+    <div id="rpage-visao" class="pip-sub-page active"></div>
+    <div id="rpage-bots" class="pip-sub-page"></div>
+    <div id="rpage-prob" class="pip-sub-page"></div>
+    <div id="rpage-tempo" class="pip-sub-page"></div>
+    <div id="rpage-lista" class="pip-sub-page"></div>
+  </div>
+</section>
+
+<!-- INVENTARIO BOTS -->
+<section class="page" id="page-bots">
+  <div id="bots-empty" class="empty"><i class="ti ti-list-check"></i>Carregue o Inventário RPA (2026_RPA)</div>
+  <div id="bots-content" style="display:none"></div>
+</section>
+
+<!-- ANALYTICS -->
+<section class="page" id="page-ana">
+  <div id="ana-empty" class="empty"><i class="ti ti-chart-dots"></i>Carregue a Base Governança (aba Analytics)</div>
+  <div id="ana-content" style="display:none"></div>
+</section>
+
+</main>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
