@@ -645,11 +645,12 @@ function buildMel(){
   }
 
   let h=dn+`<div class="sh">Pipefy — Melhorias & Ajustes</div>
-  <div class="krow">
-    <div class="kpi"><div class="knum">${M.length}</div><div class="klbl">Total</div></div>
+  <div class="krow k5">
+    <div class="kpi"><div class="knum">${M.length}</div><div class="klbl">Total melhorias</div></div>
     <div class="kpi gl"><div class="knum">${done}</div><div class="klbl">Concluídas</div><div class="ksub">${pct(done,M.length)}% do total</div></div>
     <div class="kpi"><div class="knum">${backlog}</div><div class="klbl">Backlog</div></div>
     <div class="kpi wl"><div class="knum">${blocked}</div><div class="klbl">Bloqueadas</div></div>
+    <div class="kpi il"><div class="knum">${new Set(M.map(m=>m.fluxo).filter(Boolean)).size}</div><div class="klbl">Fluxos (processos)</div><div class="ksub">distintos no recorte</div></div>
   </div>`;
 
   h+=`<div class="two">
@@ -740,8 +741,9 @@ function buildRPAChamados(){
       Período aplicado: <b>${total} chamados</b> abertos no recorte.`+
       (noDate>0?` ${noDate} sem data de criação não entram no filtro.`:'')+`</div></div>`;
   }
+  const procUnicos=new Set(R.map(r=>r.processo).filter(p=>p&&p!=='(sem processo)')).size;
   let v=dn+`<div class="krow k5">
-    <div class="kpi"><div class="knum">${total}</div><div class="klbl">Total chamados</div></div>
+    <div class="kpi"><div class="knum">${total}</div><div class="klbl">Total chamados</div><div class="ksub">${procUnicos} processos distintos</div></div>
     <div class="kpi gl"><div class="knum">${concl}</div><div class="klbl">Concluídos</div><div class="ksub">${pct(concl,total)}%</div></div>
     <div class="kpi il"><div class="knum">${abertos}</div><div class="klbl">Abertos</div></div>
     <div class="kpi dl"><div class="knum">${venc}</div><div class="klbl">Vencidos</div><div class="ksub">${pct(venc,total)}% do total</div></div>
