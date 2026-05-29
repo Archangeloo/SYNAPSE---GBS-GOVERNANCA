@@ -48,16 +48,18 @@ const HOJE = new Date();
 function statusClass(s){
   const t = (s||'').toString().trim().toLowerCase();
   if(['suporte pipefy','encaminhado ao fornecedor','pipefy'].includes(t)) return 'vendor';
-  if(['concluído','concluido','finalizados','finalizado','encerramento','tema concluído.','tema concluído'].includes(t)) return 'done';
+  if(['concluído','concluido','finalizados','finalizado','tema concluído.','tema concluído'].includes(t)) return 'done';
   if(['em andamento','em execução','execução','execucao','desenvolvimento','em validação','em validacao','aguardando validação','aguardando validacao'].includes(t)) return 'doing';
+  if(['encerramento'].includes(t)) return 'closing'; // em processo de fechamento, ainda não fechou
+  if(['monitoramento'].includes(t)) return 'monitor'; // entregue, em acompanhamento
   if(['planejamento','diagnóstico','diagnostico','não iniciado','nao iniciado','backlog'].includes(t)) return 'todo';
   if(['bloqueado','pausado'].includes(t)) return 'blocked';
   if(['cancelado'].includes(t)) return 'cancel';
   return 'other';
 }
-const STATUS_PT = { done:'Concluído', doing:'Em andamento', todo:'Não iniciado', blocked:'Bloqueado', cancel:'Cancelado', vendor:'Suporte Pipefy', other:'Outro' };
-const STATUS_BADGE = { done:'ok', doing:'info', todo:'neu', blocked:'warn', cancel:'red', vendor:'blue', other:'neu' };
-const STATUS_COLOR = { done:'var(--ok)', doing:'var(--info)', todo:'var(--neu)', blocked:'var(--warn)', cancel:'var(--err)', vendor:'#7c5cbf', other:'var(--ink4)' };
+const STATUS_PT = { done:'Concluído', doing:'Em andamento', closing:'Em encerramento', monitor:'Monitoramento', todo:'Não iniciado', blocked:'Bloqueado', cancel:'Cancelado', vendor:'Suporte Pipefy', other:'Outro' };
+const STATUS_BADGE = { done:'ok', doing:'info', closing:'warn', monitor:'info', todo:'neu', blocked:'warn', cancel:'red', vendor:'blue', other:'neu' };
+const STATUS_COLOR = { done:'var(--ok)', doing:'var(--info)', closing:'#c08438', monitor:'#5a8fd9', todo:'var(--neu)', blocked:'var(--warn)', cancel:'var(--err)', vendor:'#7c5cbf', other:'var(--ink4)' };
 
 /* ---- Navegação ---- */
 function setNav(id){
@@ -160,24 +162,32 @@ function parseGov(){
     horas:get(r,['QtdHorasEstimadas'])
   })).filter(r=>r.num!=='' || r.atividade) : [];
 
-  // Projetos — detecta automaticamente se base está CORRIGIDA (header limpo) ou ANTIGA (embaralhada)
+  // Projetos — novo modelo: PrazoConclusão, AreaCliente, EquipesEnvolvidas, DescricaoProjeto, etc.
   const sProj=findSheet(wb,'projetos');
   App.P.proj=[];
   if(sProj){
     const rows=XLSX.utils.sheet_to_json(wb.Sheets[sProj],{defval:''});
-    // testa se está corrigida: Status contém valores de status, não nomes de pessoa
+    // detecta layout antigo embaralhado (Status com nome de pessoa)
     const sample=rows.slice(0,5);
-    const statusLooksRight=sample.some(r=>statusClass(get(r,['Status']))!=='other');
-    if(statusLooksRight){
-      // BASE CORRIGIDA
+    const headerLooksRight=sample.some(r=>statusClass(get(r,['Status']))!=='other');
+    if(headerLooksRight){
       App.P.proj=rows.map(r=>({
-        num:get(r,['Numero']), titulo:String(get(r,['Titulo'])).trim(),
+        num:get(r,['Numero']),
+        titulo:String(get(r,['Titulo'])).trim(),
         resp:String(get(r,['Responsavel'])).trim(),
-        frente:String(get(r,['Frente'])).trim(),
+        // aceita nomes novos OU antigos (compat)
+        frente:String(get(r,['AreaCliente','Frente'])).trim(),
         focal:String(get(r,['PontoFocal'])).trim(),
-        statusRaw:String(get(r,['Status'])).trim(), sc:statusClass(get(r,['Status'])),
-        dtFim:toDate(get(r,['DataFechamento'])),
+        statusRaw:String(get(r,['Status'])).trim(),
+        sc:statusClass(get(r,['Status'])),
+        dtFim:toDate(get(r,['PrazoConclusão','PrazoConclusao','DataFechamento'])),
         proximos:String(get(r,['ProximosPassos'])).trim(),
+        // campos ricos novos (pra modal/expand)
+        equipes:String(get(r,['EquipesEnvolvidas'])).trim(),
+        descricao:String(get(r,['DescricaoProjeto'])).trim(),
+        atvConcl:String(get(r,['AtividadesConcluidas'])).trim(),
+        atvAndam:String(get(r,['AtividadesAndamento'])).trim(),
+        comentarios:String(get(r,['Comentarios'])).trim(),
         prog:(()=>{const v=get(r,['ProgressoPct','Progresso']);return typeof v==='number'?v:(parseFloat(v)||null);})()
       })).filter(p=>p.titulo);
     } else {
@@ -191,6 +201,7 @@ function parseGov(){
           frente:String(c[3]||'').trim(),focal:String(c[4]||'').trim(),
           statusRaw:String(c[5]||'').trim(),sc:statusClass(c[5]),
           dtFim:toDate(c[6]),proximos:String(c[7]||'').trim(),
+          equipes:'',descricao:'',atvConcl:'',atvAndam:'',comentarios:'',
           prog:typeof c[8]==='number'?c[8]:(parseFloat(c[8])||null)
         });
       }
@@ -362,7 +373,8 @@ function allActionsFiltered(){
 // atraso só onde há prazo real: Projetos (dtFim<hoje e não concluído) e Chamados RPA (vencido)
 function isLate(a){
   if(a.fonte==='Chamados RPA') return a.vencido && a.sc!=='done';
-  if(a.fonte==='Projetos' && a.dtFim) return a.dtFim<HOJE && a.sc!=='done' && a.sc!=='cancel';
+  // Projetos: prazo vencido + não concluído + não cancelado + não em monitoramento (= já entregue)
+  if(a.fonte==='Projetos' && a.dtFim) return a.dtFim<HOJE && a.sc!=='done' && a.sc!=='cancel' && a.sc!=='monitor';
   return null; // sem base p/ calcular
 }
 
@@ -551,27 +563,31 @@ function buildProj(){
   document.getElementById('proj-empty').style.display=(P.length||noDate)?'none':'block';
   document.getElementById('proj-content').style.display=(P.length||noDate)?'block':'none';
   if(!P.length && !noDate) return;
+  // contagens precisas conforme fluxo do GBS
   const done=P.filter(p=>p.sc==='done').length;
   const doing=P.filter(p=>p.sc==='doing').length;
-  const todo=P.filter(p=>p.sc==='todo').length;
-  const late=P.filter(p=>p.dtFim&&p.dtFim<HOJE&&p.sc!=='done'&&p.sc!=='cancel').length;
-  const avgProg=Math.round(P.filter(p=>p.prog!=null).reduce((s,p)=>s+p.prog,0)/Math.max(1,P.filter(p=>p.prog!=null).length)*100);
+  const closing=P.filter(p=>p.sc==='closing').length;
+  const monitor=P.filter(p=>p.sc==='monitor').length;
+  const planning=P.filter(p=>p.sc==='todo').length;
+  const late=P.filter(p=>p.dtFim&&p.dtFim<HOJE&&p.sc!=='done'&&p.sc!=='cancel'&&p.sc!=='monitor').length;
 
   let h=`<div class="sh">Projetos</div>
-  <div class="krow">
+  <div class="krow k5">
     <div class="kpi"><div class="knum">${P.length}</div><div class="klbl">Total</div></div>
-    <div class="kpi gl"><div class="knum">${done}</div><div class="klbl">Concluídos</div></div>
     <div class="kpi il"><div class="knum">${doing}</div><div class="klbl">Em execução</div></div>
+    <div class="kpi wl"><div class="knum">${closing}</div><div class="klbl">Em encerramento</div></div>
+    <div class="kpi gl"><div class="knum">${monitor+done}</div><div class="klbl">Entregues</div>
+      <div class="ksub">${done} concl. · ${monitor} em monitor.</div></div>
     <div class="kpi dl"><div class="knum">${late}</div><div class="klbl">Atrasados</div>
-      <div class="ksub">prazo vencido + não concl.</div></div>
+      <div class="ksub">prazo vencido</div></div>
   </div>`;
 
-  const frCount=count(P,p=>p.frente);
+  const frCount=count(P.filter(p=>p.frente),p=>p.frente);
   h+=`<div class="two">
     <div class="card"><div class="card-title"><i class="ti ti-chart-pie"></i> Por status</div>
-      ${donut(['done','doing','todo','vendor','blocked','cancel'].map(k=>({label:STATUS_PT[k],value:P.filter(p=>p.sc===k).length,color:STATUS_COLOR[k]})).filter(d=>d.value))}</div>
-    <div class="card"><div class="card-title"><i class="ti ti-building"></i> Por frente</div>
-      ${hbars(Object.entries(frCount).sort((a,b)=>b[1]-a[1]),{max:8,lw:60,tot:P.length})}</div>
+      ${donut(['done','doing','closing','monitor','todo','blocked','cancel'].map(k=>({label:STATUS_PT[k],value:P.filter(p=>p.sc===k).length,color:STATUS_COLOR[k]})).filter(d=>d.value))}</div>
+    <div class="card"><div class="card-title"><i class="ti ti-building"></i> Por frente / área cliente</div>
+      ${Object.keys(frCount).length?hbars(Object.entries(frCount).sort((a,b)=>b[1]-a[1]),{max:8,lw:80,tot:P.length}):'<div style="font-size:12px;color:var(--ink4)">Sem dados de área</div>'}</div>
   </div>`;
 
   // filtros: pessoa (responsável), status, busca
@@ -602,27 +618,57 @@ function renderProjList(){
   const fs=document.getElementById('proj-fs')?.value||'';
   const ff=document.getElementById('proj-ff')?.value||'';
   const vis=P.filter(p=>
-    (!q||(p.titulo+' '+p.resp+' '+p.frente+' '+(p.proximos||'')).toLowerCase().includes(q)) &&
+    (!q||(p.titulo+' '+p.resp+' '+p.frente+' '+(p.descricao||'')+' '+(p.proximos||'')).toLowerCase().includes(q)) &&
     (!fp||p.resp===fp) && (!fs||p.statusRaw===fs) && (!ff||p.frente===ff)
   ).sort((a,b)=>(b.prog||0)-(a.prog||0));
   const cnt=document.getElementById('proj-count'); if(cnt) cnt.textContent=`${vis.length} de ${P.length}`;
+  if(!App.projOpen) App.projOpen=new Set();
   let h=vis.map(p=>{
     const bd=STATUS_BADGE[p.sc];
-    const lateTag=p.dtFim&&p.dtFim<HOJE&&p.sc!=='done'&&p.sc!=='cancel';
-    return `<div class="icard">
-      <div class="iico" style="background:var(--neu-bg)"><i class="ti ti-folder" style="color:var(--ink3);font-size:14px"></i></div>
-      <div class="imain"><div class="ititle">${p.titulo}</div>
-        <div class="isub">${p.frente?`<span class="apill">${p.frente}</span>`:''}
-          ${p.resp?`<span>${p.resp}</span>`:''}
-          ${p.dtFim?`<span style="color:${lateTag?'var(--err)':'var(--ink4)'}">· ${p.dtFim.toLocaleDateString('pt-BR')}${lateTag?' ⚠':''}</span>`:''}</div>
-        ${p.prog!=null?`<div class="stk" style="max-width:280px"><div style="width:${Math.round(p.prog*100)}%;background:var(--info)"></div></div>`:''}
+    const lateTag=p.dtFim&&p.dtFim<HOJE&&p.sc!=='done'&&p.sc!=='cancel'&&p.sc!=='monitor';
+    const key=String(p.num||p.titulo);
+    const open=App.projOpen.has(key);
+    return `<div class="proj-row ${open?'open':''}" data-k="${key.replace(/"/g,'')}">
+      <div class="icard" onclick="toggleProj('${key.replace(/'/g,"\\'").replace(/"/g,'&quot;')}')" style="cursor:pointer">
+        <div class="iico" style="background:var(--neu-bg)"><i class="ti ti-${open?'chevron-down':'chevron-right'}" style="color:var(--ink3);font-size:14px"></i></div>
+        <div class="imain"><div class="ititle">${p.titulo}</div>
+          <div class="isub">${p.frente?`<span class="apill">${p.frente}</span>`:''}
+            ${p.resp?`<span>${p.resp}</span>`:''}
+            ${p.dtFim?`<span style="color:${lateTag?'var(--err)':'var(--ink4)'}">· ${p.dtFim.toLocaleDateString('pt-BR')}${lateTag?' ⚠ atrasado':''}</span>`:''}</div>
+          ${p.prog!=null?`<div class="stk" style="max-width:280px"><div style="width:${Math.round(p.prog*100)}%;background:var(--info)"></div></div>`:''}
+        </div>
+        <div class="iright">${p.prog!=null?`<span style="font-size:11px;color:var(--ink3);font-weight:600">${Math.round(p.prog*100)}%</span>`:''}
+          <span class="badge ${bd}">${p.statusRaw}</span></div>
       </div>
-      <div class="iright">${p.prog!=null?`<span style="font-size:11px;color:var(--ink3);font-weight:600">${Math.round(p.prog*100)}%</span>`:''}
-        <span class="badge ${bd}">${p.statusRaw}</span></div>
+      ${open?projDetails(p):''}
     </div>`;
   }).join('');
   const el=document.getElementById('proj-list');
   if(el) el.innerHTML=h||'<div class="empty" style="padding:24px">Nenhum projeto neste filtro</div>';
+}
+
+function toggleProj(key){
+  if(!App.projOpen) App.projOpen=new Set();
+  if(App.projOpen.has(key)) App.projOpen.delete(key);
+  else App.projOpen.add(key);
+  renderProjList();
+}
+
+function projDetails(p){
+  // monta painel de detalhes — só mostra campos preenchidos
+  const fmt = txt => String(txt||'').trim().replace(/\n/g,'<br>');
+  const blocks=[];
+  if(p.descricao) blocks.push({lbl:'Descrição',val:fmt(p.descricao)});
+  if(p.equipes) blocks.push({lbl:'Equipes envolvidas',val:fmt(p.equipes)});
+  if(p.focal) blocks.push({lbl:'Ponto focal',val:p.focal});
+  if(p.atvConcl) blocks.push({lbl:'Atividades concluídas',val:fmt(p.atvConcl)});
+  if(p.atvAndam) blocks.push({lbl:'Atividades em andamento',val:fmt(p.atvAndam)});
+  if(p.proximos) blocks.push({lbl:'Próximos passos',val:fmt(p.proximos)});
+  if(p.comentarios) blocks.push({lbl:'Comentários',val:fmt(p.comentarios)});
+  if(!blocks.length) return `<div class="proj-detail"><div style="font-size:12px;color:var(--ink4);font-style:italic">Sem detalhes preenchidos na planilha.</div></div>`;
+  return `<div class="proj-detail">`+blocks.map(b=>
+    `<div class="pd-block"><div class="pd-lbl">${b.lbl}</div><div class="pd-val">${b.val}</div></div>`
+  ).join('')+`</div>`;
 }
 
 /* ============================================================
