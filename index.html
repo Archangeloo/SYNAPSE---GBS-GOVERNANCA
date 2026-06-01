@@ -4,7 +4,6 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>SYNAPSE · Governança GBS</title>
-<link rel="shortcut icon" href="synapse_logo.png" type="image/x-icon">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Syne:wght@500;600;700&display=swap" rel="stylesheet">
@@ -37,6 +36,10 @@ body{font-family:'Inter',system-ui,sans-serif;font-size:13px;line-height:1.5;bac
 .date-filter.active{border-color:var(--ink3);background:var(--surface)}
 .df-input{font-family:'Inter',sans-serif;font-size:11px;padding:3px 6px;border-radius:4px;border:1px solid var(--rule2);background:var(--surface);color:var(--ink2);width:130px}
 .df-input:hover{border-color:var(--ink4)}
+.df-chip{font-family:'Inter',sans-serif;font-size:11px;padding:4px 10px;border-radius:5px;border:1px solid var(--rule2);background:var(--surface);color:var(--ink3);cursor:pointer;transition:all .12s}
+.df-chip:hover{border-color:var(--ink4);color:var(--ink)}
+.df-chip.active{background:var(--ink);color:var(--paper);border-color:var(--ink);font-weight:500}
+.df-divider{width:1px;height:18px;background:var(--rule2);margin:0 2px}
 .df-clear{background:transparent;border:none;color:var(--ink4);cursor:pointer;padding:2px 4px;border-radius:3px;display:flex;align-items:center}
 .df-clear:hover{background:var(--rule2);color:var(--ink)}
 @media(max-width:900px){.df-input{width:110px}}
@@ -189,7 +192,10 @@ select,input[type=text]{font-family:'Inter',sans-serif;font-size:12px;padding:5p
   <div class="tb-right">
     <div class="date-filter" id="date-filter" style="display:none">
       <i class="ti ti-calendar" style="font-size:13px;color:var(--ink4)"></i>
-      <span style="font-size:10px;color:var(--ink4);text-transform:uppercase;letter-spacing:.04em">Período</span>
+      <button class="df-chip" id="dfc-month" onclick="setQuickRange('month')">Este mês</button>
+      <button class="df-chip" id="dfc-quarter" onclick="setQuickRange('quarter')">Trimestre</button>
+      <button class="df-chip" id="dfc-year" onclick="setQuickRange('year')">Este ano</button>
+      <span class="df-divider"></span>
       <input type="date" id="df-from" class="df-input" onchange="applyDateFilter()" title="Data inicial">
       <span style="color:var(--ink4);font-size:12px">→</span>
       <input type="date" id="df-to" class="df-input" onchange="applyDateFilter()" title="Data final">
