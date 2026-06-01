@@ -3,8 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>SYNAPSE · Governança GBS</title>
-<link rel="shortcut icon" href="synapse_logo.png" type="image/x-icon">
+<title>SYNAPSE · Governança COE</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Syne:wght@500;600;700&display=swap" rel="stylesheet">
@@ -172,12 +171,14 @@ select,input[type=text]{font-family:'Inter',sans-serif;font-size:12px;padding:5p
 /* stacked mini */
 .stk{display:flex;height:8px;border-radius:4px;overflow:hidden;background:var(--rule2);margin:6px 0}
 .stk>div{height:100%}
-.vchart{display:flex;align-items:flex-end;gap:3px;height:100px;border-bottom:1px solid var(--rule2);margin-bottom:8px}
+.vchart{display:flex;align-items:flex-end;gap:3px;height:120px;border-bottom:1px solid var(--rule2);margin-bottom:8px}
 .vcol{display:flex;flex-direction:column;align-items:center;flex:1;height:100%;justify-content:flex-end}
 .vcol-bars{position:relative;width:100%;flex:1;display:flex;align-items:flex-end}
 .vbar-total{position:absolute;bottom:0;width:100%;border-radius:2px 2px 0 0;background:var(--ink);opacity:.2}
 .vbar-inc{position:absolute;bottom:0;width:100%;border-radius:2px 2px 0 0;background:var(--err);opacity:.75}
 .vcol-lbl{font-size:9px;color:var(--ink4);margin-top:4px;white-space:nowrap}
+.vcol-num{position:absolute;left:0;right:0;text-align:center;font-size:10px;font-weight:600;color:var(--ink2);line-height:1}
+.vcol-venc{font-size:8px;color:var(--err);white-space:nowrap;margin-top:1px}
 .vlegend{display:flex;gap:14px;margin-top:6px}
 .vleg{display:flex;align-items:center;gap:5px;font-size:11px;color:var(--ink4)}
 .vleg-dot{width:8px;height:8px;border-radius:2px}
@@ -187,7 +188,7 @@ select,input[type=text]{font-family:'Inter',sans-serif;font-size:12px;padding:5p
 
 <header class="topbar">
   <div class="tb-left">
-    <div class="wordmark">SYNAPSE <span>Governança GBS</span></div>
+    <div class="wordmark">SYNAPSE <span>Governança COE</span></div>
     <div class="tb-sync" id="sync-lbl">Nenhum arquivo carregado</div>
   </div>
   <div class="tb-right">

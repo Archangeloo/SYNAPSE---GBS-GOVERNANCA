@@ -883,8 +883,10 @@ function buildGov(){
   h += `</div>`;
 
   // Pizza de status: agrupa todos os itens pelos status codes internos
+  // Pizza de status: inclui TODOS os códigos de status para o total do donut
+  // bater com o "Total de ações" (closing e monitor estavam faltando antes).
   const scAll = count(A, a => a.sc);
-  const donutData = ['done','doing','todo','vendor','blocked','cancel','other'].map(k => (
+  const donutData = ['done','doing','closing','monitor','todo','vendor','blocked','cancel','other'].map(k => (
     {label:STATUS_PT[k], value:scAll[k]||0, color:STATUS_COLOR[k]}
   )).filter(d => d.value > 0);
 
@@ -1409,10 +1411,13 @@ function renderRPAStatus(){
   let vol = '<div class="vchart">';
   meses.slice(-12).forEach(m => {
     const t=porMes[m]||0, vv=porMesV[m]||0;
+    const hTot = Math.round(t/mx*100);
+    // número do total posicionado logo acima do topo da barra cinza
     vol += `<div class="vcol"><div class="vcol-bars">
-      <div class="vbar-total" style="height:${Math.round(t/mx*100)}%"></div>
+      <div class="vcol-num" style="bottom:calc(${hTot}% + 2px)">${t}</div>
+      <div class="vbar-total" style="height:${hTot}%"></div>
       <div class="vbar-inc" style="height:${Math.round(vv/mx*100)}%"></div>
-    </div><div class="vcol-lbl">${ymLabel(m)}</div></div>`;
+    </div><div class="vcol-lbl">${ymLabel(m)}</div>${vv>0?`<div class="vcol-venc">${vv} venc.</div>`:''}</div>`;
   });
   vol += '</div><div class="vlegend"><div class="vleg"><div class="vleg-dot" style="background:var(--ink);opacity:.3"></div>Total</div><div class="vleg"><div class="vleg-dot" style="background:var(--err)"></div>Vencidos</div></div>';
 
@@ -1422,9 +1427,23 @@ function renderRPAStatus(){
       ${hbars(DOW.slice(0,5).map((d,i)=>[d,R.filter(r=>r.dow===i).length]),{max:5,lw:40})}</div>
   </div>`;
 
-  // Tickets por área (área herdada do inventário de bots via match de nome)
+  // Tickets por área (área herdada do inventário de bots via match de nome).
+  // As frentes principais ficam visíveis; as demais (PAM, CI, IT, ARG, etc.)
+  // são somadas em "Outros" para não poluir o gráfico com fatias minúsculas.
+  const AREAS_PRINCIPAIS = ['P2P','TAX','H2R','O2C','R2R'];
   const porArea = count(R, r => r.area || '(não mapeada)');
-  const areaEntries = Object.entries(porArea).sort((a,b)=>b[1]-a[1]);
+  let outrosArea = 0;
+  const areaEntries = [];
+  Object.entries(porArea).forEach(([area, n]) => {
+    const up = area.toUpperCase();
+    if(AREAS_PRINCIPAIS.includes(up) || area === '(não mapeada)'){
+      areaEntries.push([area, n]);
+    } else {
+      outrosArea += n; // PAM, CI, IT, ARG e quaisquer outras pequenas
+    }
+  });
+  areaEntries.sort((a,b)=>b[1]-a[1]);
+  if(outrosArea > 0) areaEntries.push(['Outros', outrosArea]); // "Outros" sempre por último
   v += `<div class="two">
     <div class="card"><div class="card-title"><i class="ti ti-building"></i> Tickets por área</div>
       ${hbars(areaEntries,{max:12,lw:120,tot:total,fixedLabel:true})}</div>
