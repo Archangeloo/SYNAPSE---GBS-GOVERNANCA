@@ -134,7 +134,9 @@ const HOJE  = new Date(); // data atual no momento do carregamento da página
  *   other   = qualquer valor não reconhecido
  */
 function statusClass(s){
-  const t = (s||'').toString().trim().toLowerCase();
+  // remove prefixo numérico de ordenação, se houver (ex: "6. Encerramento" → "encerramento",
+  // "3 - Planejamento" → "planejamento"). Algumas versões da planilha numeram as fases.
+  const t = (s||'').toString().trim().toLowerCase().replace(/^\s*\d+\s*[.\-)]\s*/, '');
   if(['suporte pipefy','encaminhado ao fornecedor','pipefy'].includes(t)) return 'vendor';
   if(['concluído','concluido','finalizados','finalizado','tema concluído.','tema concluído'].includes(t)) return 'done';
   if(['em andamento','em execução','execução','execucao','desenvolvimento','em validação','em validacao','aguardando validação','aguardando validacao'].includes(t)) return 'doing';
