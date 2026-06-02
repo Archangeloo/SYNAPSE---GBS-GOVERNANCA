@@ -546,23 +546,49 @@ function parseRPA(){
 }
 
 /*
- * enrichRPAComArea() — associa a cada chamado RPA a área (P2P, O2C, etc.) do bot.
- * Os chamados não têm campo de área, só o nome do Processo. O inventário de bots tem
- * o nome do bot + a área. Fazemos match aproximado de nomes (um contém o outro, após
- * normalização) para herdar a área. Chamados sem match ficam com área '(não mapeada)'.
- * Deve ser chamada DEPOIS de parseRPA() e parseInv().
+ * enrichRPAComArea() — associa a cada chamado RPA a área (P2P, O2C, etc.).
+ * Os chamados não têm campo de área, só o nome do Processo. Usa duas camadas:
+ *   1ª) Cruzamento com o Inventário de Bots: match aproximado de nomes
+ *       (um contém o outro, após normalização) para herdar a área do bot.
+ *   2ª) Se o cruzamento falhar, regras por palavra-chave (areaPorPalavra):
+ *       ex. "Bank Statements"/"Payment Run" → P2P, "Tax ..." → TAX, etc.
+ *       Isso recupera processos cujo nome no Pipefy difere do inventário.
+ * O que não casar em nenhuma das duas fica '(não mapeada)' — tipicamente
+ * chamados com o campo Processo vazio. Chamar DEPOIS de parseRPA() e parseInv().
  */
+function areaPorPalavra(proc){
+  const t = (proc||'').toLowerCase();
+  // P2P — pagamentos, extratos bancários, câmbio
+  if(t.includes('bank statement')) return 'P2P';
+  if(t.includes('payment run')) return 'P2P';
+  if(t.includes('payment order')) return 'P2P';
+  if(t.includes('payments receipt') || t.includes('payment receipt')) return 'P2P';
+  if(t.includes('exchange rate') || t.includes('exchange contract')) return 'P2P';
+  if(t.includes('reserve of values')) return 'P2P';
+  if(t.includes('freight')) return 'P2P';
+  // TAX — impostos
+  if(t.includes('tax conciliation') || t.includes('tax checking') || t.includes('tax payment') || t.includes('indirect tax') || t.includes('direct tax')) return 'TAX';
+  // H2R — RH / folha / benefícios
+  if(t.includes('vacation') || t.includes('payroll') || t.includes('employee') || t.includes('benefit')) return 'H2R';
+  // O2C — crédito / faturamento
+  if(t.includes('credit limit') || t.includes('settlement statement')) return 'O2C';
+  return '';
+}
+
 function enrichRPAComArea(){
-  if(!App.R.length || !App.B.length) return;
+  if(!App.R.length) return;
   const norm = s => s.toLowerCase().replace(/^\[.*?\]/,'').replace(/[^a-z0-9]/g,'');
   const botAreas = App.B.filter(b=>b.nome && b.area).map(b => ({n:norm(b.nome), area:b.area}));
   App.R.forEach(r => {
     const pn = norm(r.processo);
     let area = '';
-    if(pn){
+    // 1ª camada: cruzamento com o inventário de bots
+    if(pn && botAreas.length){
       const hit = botAreas.find(b => b.n && (b.n.includes(pn) || pn.includes(b.n)));
       if(hit) area = hit.area;
     }
+    // 2ª camada: regras por palavra-chave (recupera nomes que diferem do inventário)
+    if(!area) area = areaPorPalavra(r.processo);
     r.area = area || '(não mapeada)';
   });
 }
@@ -665,6 +691,44 @@ function hbars(entries, opts={}){
       <span class="hbar-val">${v}</span>${p}</div>`;
   }).join('');
   return h || '<div style="font-size:12px;color:var(--ink4)">Sem dados</div>';
+}
+
+/*
+ * stackedBars(rows, segDefs) — barras horizontais empilhadas FINAS (estilo do site).
+ * A barra mostra só a proporção em cores; os números de cada fase ficam AO LADO,
+ * cada um com sua bolinha colorida, seguidos do total. Fases com zero ficam esmaecidas.
+ * rows: array de { label, valores: {chaveSeg: n, ...} }
+ * segDefs: array ordenado de { key, label, color }.
+ */
+function stackedBars(rows, segDefs){
+  if(!rows.length) return '<div style="font-size:12px;color:var(--ink4)">Sem dados</div>';
+  const totais = rows.map(r => segDefs.reduce((s,d)=>s+(r.valores[d.key]||0),0));
+  const maxTot = Math.max(...totais, 1);
+  const corpo = rows.map((r,idx) => {
+    const tot = totais[idx];
+    const larguraBarra = Math.round(tot/maxTot*100); // barra proporcional ao maior total
+    const segs = segDefs.map(d => {
+      const n = r.valores[d.key]||0;
+      if(!n) return '';
+      const pctNoTot = (n/tot*100).toFixed(2);
+      return `<div class="sbar-seg" style="flex:0 0 ${pctNoTot}%;background:${d.color}" title="${d.label}: ${n}"></div>`;
+    }).join('');
+    // números por fase ao lado (cada um com bolinha); fase zerada fica esmaecida
+    const nums = segDefs.map(d => {
+      const n = r.valores[d.key]||0;
+      return `<span class="sn${n?'':' sn-z'}" title="${d.label}"><span class="sn-dot" style="background:${d.color}"></span>${n}</span>`;
+    }).join('');
+    return `<div class="sbar-row">
+      <span class="sbar-lbl" title="${String(r.label).replace(/"/g,'')}">${r.label}</span>
+      <div class="sbar-track" style="max-width:${larguraBarra}%">${segs}</div>
+      <span class="sbar-nums">${nums}</span>
+      <span class="sbar-tot">${tot}</span>
+    </div>`;
+  }).join('');
+  const legenda = segDefs.map(d =>
+    `<div class="sbar-leg"><span class="sbar-leg-dot" style="background:${d.color}"></span>${d.label}</div>`
+  ).join('');
+  return corpo + `<div class="sbar-legend">${legenda}</div>`;
 }
 
 /*
@@ -862,6 +926,7 @@ function buildGov(){
   // KPIs de composição (Concluídas + Em andamento + Backlog + Outros = 100%).
   let h = `<div class="sh">Visão executiva — todas as frentes</div>
   ${dateNote}
+  ${aiBar('gov')}
   <div class="krow k5">
     <div class="kpi il"><div class="knum">${total}</div><div class="klbl">Total de ações</div>
       <div class="ksub">${fontes.filter(f=>A.some(a=>a.fonte===f)).length} fontes integradas</div></div>
@@ -1005,6 +1070,7 @@ function buildProj(){
   const finalizando = P.filter(p => p.sc==='closing' || p.sc==='monitor').length;
 
   let h = `<div class="sh">Projetos</div>
+  ${aiBar('proj')}
   <div class="krow">
     <div class="kpi"><div class="knum">${P.length}</div><div class="klbl">Total</div></div>
     <div class="kpi il"><div class="knum">${doing}</div><div class="klbl">Em execução</div></div>
@@ -1183,6 +1249,7 @@ function buildMel(){
   const fluxosUnicos = new Set(M.map(m => m.fluxo).filter(Boolean)).size;
 
   let h = dn + `<div class="sh">Pipefy — Melhorias & Ajustes</div>
+  ${aiBar('mel')}
   <div class="krow k5">
     <div class="kpi"><div class="knum">${M.length}</div><div class="klbl">Total melhorias</div></div>
     <div class="kpi gl"><div class="knum">${done}</div><div class="klbl">Concluídas</div><div class="ksub">${pct(done,M.length)}% do total</div></div>
@@ -1239,6 +1306,7 @@ function buildAna(){
 
   const prioCount = count(A.filter(a => a.prio), a => 'Prioridade '+a.prio);
   let h = dn + `<div class="sh">Analytics</div>
+  ${aiBar('ana')}
   <div class="krow">
     <div class="kpi"><div class="knum">${A.length}</div><div class="klbl">Total</div></div>
     <div class="kpi gl"><div class="knum">${done}</div><div class="klbl">Concluídas</div><div class="ksub">${pct(done,A.length)}%</div></div>
@@ -1316,7 +1384,7 @@ function buildRPAChamados(){
     <span style="font-size:11px;color:var(--ink4);margin-left:auto" id="rpa-fs-count"></span>
   </div>`;
 
-  let v = dn + filtroStatus + `<div id="rpa-visao-kpis"></div>`;
+  let v = dn + aiBar('rpa') + filtroStatus + `<div id="rpa-visao-kpis"></div>`;
   document.getElementById('rpage-visao').innerHTML = v;
   // os KPIs e gráficos são renderizados por renderRPAStatus (respeita o filtro de status)
   renderRPAStatus();
@@ -1328,22 +1396,29 @@ function buildRPAChamados(){
     ${hbars(procList,{max:15,lw:240,color:'var(--err)',fixedLabel:true})}</div>`;
   document.getElementById('rpage-bots').innerHTML = b;
 
-  // Sub-aba: Tipos de problema + tabela problema × fase
+  // Sub-aba: Tipos de problema (barras empilhadas por fase do chamado)
   const porProb = count(R, r => r.problema);
   const porReexec = count(R.filter(r=>r.reexec), r => r.reexec);
-  let p = `<div class="card"><div class="card-title"><i class="ti ti-alert-circle"></i> Tipos de problema</div>
-      ${hbars(Object.entries(porProb).sort((a,b)=>b[1]-a[1]),{max:8,lw:320,tot:total,fixedLabel:true})}</div>
+  // segmentos = fases, na ordem do fluxo: Backlog → Identificação → Desenvolvimento → Reexecução → Concluído
+  const segDefs = [
+    {key:'Backlog',                       label:'Backlog',                  color:'#9a9a92'},
+    {key:'Identificação do problema',     label:'Identificação',            color:'#d4a93c'},
+    {key:'Desenvolvimento da solução',    label:'Desenvolvimento',          color:'#4a90d9'},
+    {key:'Reexecução',                    label:'Reexecução',               color:'#8f6fd0'},
+    {key:'Concluído',                     label:'Concluído',                color:'#3fa46a'}
+  ];
+  // monta as linhas: cada tipo de problema com a contagem por fase
+  const probsOrd = Object.entries(porProb).sort((a,b)=>b[1]-a[1]).map(e=>e[0]);
+  const linhasStack = probsOrd.map(pr => {
+    const sub = R.filter(r=>r.problema===pr);
+    const valores = {};
+    segDefs.forEach(d => { valores[d.key] = sub.filter(r=>r.fase===d.key).length; });
+    return {label:pr, valores};
+  });
+  let p = `<div class="card"><div class="card-title"><i class="ti ti-alert-circle"></i> Tipos de problema <span class="rt">por fase do chamado</span></div>
+      ${stackedBars(linhasStack, segDefs)}</div>
     <div class="card"><div class="card-title"><i class="ti ti-refresh"></i> Admite reexecução?</div>
       ${donut(Object.entries(porReexec).map(([k,vv],i)=>({label:k,value:vv,color:i===0?'var(--ok)':'var(--warn)'})))}</div>`;
-  const fases = [...new Set(R.map(r=>r.fase))];
-  const probs = Object.entries(porProb).sort((a,b)=>b[1]-a[1]).slice(0,5).map(e=>e[0]);
-  let tbl = '<table class="tbl"><thead><tr><th>Problema</th>'+fases.map(f=>`<th>${f}</th>`).join('')+'<th>Total</th></tr></thead><tbody>';
-  probs.forEach(pr => {
-    const sub = R.filter(r=>r.problema===pr);
-    tbl += `<tr><td style="color:var(--ink)">${pr}</td>`+fases.map(f=>`<td>${sub.filter(r=>r.fase===f).length||'—'}</td>`).join('')+`<td style="font-weight:600">${sub.length}</td></tr>`;
-  });
-  tbl += '</tbody></table>';
-  p += `<div class="card"><div class="card-title"><i class="ti ti-table"></i> Problema × fase atual</div><div style="overflow-x:auto">${tbl}</div></div>`;
   document.getElementById('rpage-prob').innerHTML = p;
 
   // Sub-aba: Tempo de resolução por fase e por bot
@@ -1518,6 +1593,7 @@ function buildBots(){
   const cancel    = B.filter(b=>b.status==='CANCELADO'||b.status==='DESATIVADO').length;
 
   let h = dn + `<div class="sh">Inventário de Bots — RPA</div>
+  ${aiBar('bots')}
   <div class="krow">
     <div class="kpi"><div class="knum">${B.length}</div><div class="klbl">Total de bots</div></div>
     <div class="kpi gl"><div class="knum">${prd}</div><div class="klbl">Em produção</div><div class="ksub">${pct(prd,B.length)}% do total</div></div>
@@ -1526,14 +1602,21 @@ function buildBots(){
   </div>`;
 
   const prdBots = B.filter(b=>b.status==='PRD');
-  // Áreas exibidas no gráfico — apenas as 5 frentes principais do GBS
+  // As 5 frentes principais ficam visíveis; as demais (MEX, PAM, IT, etc.)
+  // são somadas em "Outros" para que a soma das barras feche com o total de bots em PRD.
   const AREAS_PRINCIPAIS = ['P2P','TAX','H2R','O2C','R2R'];
-  const areaBots = Object.entries(count(prdBots, b => b.area))
-    .filter(([area]) => AREAS_PRINCIPAIS.includes(area.toUpperCase()))
-    .sort((a,b) => b[1]-a[1]);
+  const porAreaPrd = count(prdBots, b => b.area);
+  let outrosPrd = 0;
+  const areaBots = [];
+  Object.entries(porAreaPrd).forEach(([area, n]) => {
+    if(AREAS_PRINCIPAIS.includes(area.toUpperCase())) areaBots.push([area, n]);
+    else outrosPrd += n;
+  });
+  areaBots.sort((a,b) => b[1]-a[1]);
+  if(outrosPrd > 0) areaBots.push(['Outros', outrosPrd]); // "Outros" por último
   h += `<div class="two">
     <div class="card"><div class="card-title"><i class="ti ti-building"></i> Bots em PRD por área</div>
-      ${hbars(areaBots,{max:5,lw:60,tot:prd})}</div>
+      ${hbars(areaBots,{max:6,lw:60,tot:prd})}</div>
     <div class="card"><div class="card-title"><i class="ti ti-world"></i> Por perímetro</div>
       ${donut(Object.entries(count(prdBots,b=>b.perimetro)).map(([k,v],i)=>({label:k,value:v,color:['var(--info)','var(--ok)','var(--warn)','var(--err)'][i%4]})))}</div>
   </div>`;
@@ -1751,6 +1834,335 @@ function updateDateBadge(){
     periodo = ` · período: ${fmt(dr.from)} → ${fmt(dr.to)}`;
   }
   document.getElementById('sync-lbl').textContent = base + periodo;
+}
+
+
+/* ============================================================
+   ANÁLISE AUTOMÁTICA ("IA" de insights calculados)
+   ============================================================
+   Gera leituras analíticas a partir dos dados, 100% no navegador —
+   nada é enviado para servidor algum. Não é um modelo de linguagem:
+   são análises programadas (concentração, tendência, gargalos, outliers)
+   que produzem frases dinâmicas, sempre recalculadas conforme a planilha
+   e o filtro de período ativos.
+
+   Cada aba tem uma função analise<Aba>() que retorna uma lista de
+   insights no formato { tipo, texto }, onde tipo ∈ {pos, neg, warn, neu}
+   controla a cor/ícone. renderAnalise() monta o painel e aiBar() o botão.
+   ============================================================ */
+
+// Ícone (SVG inline) de "faísca/análise" — não depende de fonte externa
+const AI_SPARK = '<svg class="ai-spark" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.9 5.8L20 11l-6.1 2.2L12 19l-1.9-5.8L4 11l6.1-2.2z"/></svg>';
+
+/*
+ * aiBar(aba) — gera o HTML do botão "Gerar análise" de uma aba.
+ * O id do container do painel é ai-panel-<aba>, preenchido por gerarAnalise().
+ */
+function aiBar(aba){
+  return `<div class="ai-bar">
+    <button class="ai-btn" id="ai-btn-${aba}" onclick="gerarAnalise('${aba}')">${AI_SPARK} Gerar análise</button>
+    <span class="ai-hint">leitura automática dos números deste recorte · 100% local</span>
+  </div><div id="ai-panel-${aba}"></div>`;
+}
+
+/*
+ * gerarAnalise(aba) — calcula os insights da aba e renderiza o painel.
+ * Mostra um estado de "analisando" breve (puramente visual) e então o resultado.
+ * Se clicar de novo, recolhe o painel (toggle).
+ */
+function gerarAnalise(aba){
+  const panel = document.getElementById('ai-panel-'+aba);
+  const btn = document.getElementById('ai-btn-'+aba);
+  if(!panel) return;
+  // toggle: se já está aberto, recolhe
+  if(panel.dataset.open === '1'){
+    panel.innerHTML = ''; panel.dataset.open = '0';
+    return;
+  }
+  if(btn) btn.classList.add('loading');
+  // pequeno atraso só para dar sensação de processamento (sem travar nada)
+  setTimeout(() => {
+    const fn = {
+      gov: analiseGov, proj: analiseProj, mel: analiseMel,
+      ana: analiseAna, rpa: analiseRPA, bots: analiseBots
+    }[aba];
+    const insights = (fn ? fn() : []).filter(Boolean);
+    const corpo = insights.length
+      ? insights.map(i => `<div class="ai-item ${i.tipo}"><div class="ai-ico">${i.ico||'•'}</div><div>${i.texto}</div></div>`).join('')
+      : `<div class="ai-item neu"><div class="ai-ico">•</div><div>Não há dados suficientes neste recorte para gerar uma análise. Tente limpar o filtro de período.</div></div>`;
+    panel.innerHTML = `<div class="ai-panel">
+      <div class="ai-panel-head">${AI_SPARK}<span class="ai-panel-title">Análise automática</span>
+        <span class="ai-panel-sub">${insights.length} ${insights.length===1?'observação':'observações'} · recalculado dos dados atuais</span></div>
+      ${corpo}</div>`;
+    panel.dataset.open = '1';
+    if(btn) btn.classList.remove('loading');
+  }, 280);
+}
+
+// helper: maior entrada {chave,valor} de um objeto de contagem
+function topEntry(obj, excluir=[]){
+  const e = Object.entries(obj).filter(([k]) => !excluir.includes(k)).sort((a,b)=>b[1]-a[1]);
+  return e[0] || null;
+}
+
+/* --- Análise: GOVERNANÇA --- */
+function analiseGov(){
+  const {kept:A} = allActionsFiltered();
+  const tot = A.length;
+  if(!tot) return [];
+  const ins = [];
+  const done = A.filter(a=>a.sc==='done').length;
+  const doing = A.filter(a=>a.sc==='doing'||a.sc==='closing').length;
+  const backlog = A.filter(a=>a.sc==='todo').length;
+  const taxa = pct(done,tot);
+
+  // 1. Leitura geral da conclusão
+  ins.push({tipo: taxa>=60?'pos':(taxa>=35?'neu':'warn'), ico:'%',
+    texto:`<b>${taxa}% das ${tot} ações estão concluídas</b> (${done}). Em andamento: ${doing}. Backlog/não iniciadas: ${backlog} (${pct(backlog,tot)}%).`});
+
+  // 2. Qual fonte concentra o backlog em aberto
+  const fontes = ['Projetos','Pipefy','Analytics','Chamados RPA'];
+  const backlogPorFonte = {};
+  fontes.forEach(f => { backlogPorFonte[f] = A.filter(a=>a.fonte===f && (a.sc==='todo'||a.sc==='doing'||a.sc==='closing')).length; });
+  const topBacklog = topEntry(backlogPorFonte);
+  if(topBacklog && topBacklog[1]>0){
+    ins.push({tipo:'neu', ico:'≡',
+      texto:`A fonte com mais ações em aberto é <b>${topBacklog[0]}</b>, com ${topBacklog[1]} ${topBacklog[1]===1?'ação':'ações'} (em andamento ou backlog).`});
+  }
+
+  // 3. Concentração de ações abertas por responsável
+  const abertasPorResp = count(A.filter(a=>a.resp && a.sc!=='done' && a.sc!=='cancel'), a=>a.resp);
+  const totalAbertas = Object.values(abertasPorResp).reduce((s,v)=>s+v,0);
+  const topResp = topEntry(abertasPorResp);
+  if(topResp && totalAbertas>0){
+    ins.push({tipo: topResp[1]/totalAbertas>0.3?'warn':'neu', ico:'@',
+      texto:`<b>${topResp[0]}</b> concentra ${topResp[1]} ações abertas (${pct(topResp[1],totalAbertas)}% do total em aberto) — ${topResp[1]/totalAbertas>0.3?'possível gargalo de capacidade':'maior carga individual'}.`});
+  }
+
+  // 4. Canceladas (sinaliza se for relevante)
+  const cancel = A.filter(a=>a.sc==='cancel').length;
+  if(cancel>0 && pct(cancel,tot)>=5){
+    ins.push({tipo:'warn', ico:'×',
+      texto:`<b>${cancel} ações canceladas</b> (${pct(cancel,tot)}% do total) — vale revisar o motivo para reduzir retrabalho de planejamento.`});
+  }
+  return ins;
+}
+
+/* --- Análise: PROJETOS --- */
+function analiseProj(){
+  const {kept:P} = applyDate(App.P.proj);
+  const tot = P.length;
+  if(!tot) return [];
+  const ins = [];
+  const exec = P.filter(p=>p.sc==='doing').length;
+  const fin = P.filter(p=>p.sc==='closing'||p.sc==='monitor').length;
+  const atrasados = P.filter(p=>p.dtFim && p.dtFim<HOJE && p.sc!=='done' && p.sc!=='cancel' && p.sc!=='monitor');
+
+  // 1. Situação geral
+  ins.push({tipo:'neu', ico:'≡',
+    texto:`<b>${tot} projetos</b> no recorte: ${exec} em execução, ${fin} em fase final (encerramento/monitoramento).`});
+
+  // 2. Atrasados e em qual fase
+  if(atrasados.length>0){
+    const porFase = {};
+    atrasados.forEach(p=>{ const f=projFase(p.statusRaw); const lbl=f?`fase ${f} (${p.statusRaw})`:p.statusRaw; porFase[lbl]=(porFase[lbl]||0)+1; });
+    const detalhe = Object.entries(porFase).sort((a,b)=>b[1]-a[1]).map(([f,n])=>`${n} em ${f}`).join(', ');
+    ins.push({tipo:'neg', ico:'!',
+      texto:`<b>${atrasados.length} ${atrasados.length===1?'projeto atrasado':'projetos atrasados'}</b> (prazo vencido): ${detalhe}.`});
+  } else {
+    ins.push({tipo:'pos', ico:'✓', texto:`Nenhum projeto com prazo vencido neste recorte.`});
+  }
+
+  // 3. Frente com mais projetos
+  const porFrente = count(P.filter(p=>p.frente), p=>p.frente);
+  const topFr = topEntry(porFrente);
+  if(topFr){
+    ins.push({tipo:'neu', ico:'#',
+      texto:`A frente com mais projetos é <b>${topFr[0]}</b> (${topFr[1]}).`});
+  }
+
+  // 4. Projetos não iniciados
+  const naoIni = P.filter(p=>p.sc==='todo').length;
+  if(naoIni>0){
+    ins.push({tipo: pct(naoIni,tot)>30?'warn':'neu', ico:'○',
+      texto:`<b>${naoIni} ${naoIni===1?'projeto não iniciado':'projetos não iniciados'}</b> (${pct(naoIni,tot)}% da carteira) aguardando início.`});
+  }
+  return ins;
+}
+
+/* --- Análise: PIPEFY MELHORIAS --- */
+function analiseMel(){
+  const {kept:M} = applyDate(App.P.mel);
+  const tot = M.length;
+  if(!tot) return [];
+  const ins = [];
+  const done = M.filter(m=>m.sc==='done').length;
+  const backlog = M.filter(m=>m.sc==='todo').length;
+  const blocked = M.filter(m=>m.sc==='blocked').length;
+
+  ins.push({tipo: pct(done,tot)>=60?'pos':'neu', ico:'%',
+    texto:`<b>${pct(done,tot)}% das ${tot} melhorias concluídas</b> (${done}). Backlog: ${backlog}.`});
+
+  // complexidade dominante
+  const porCplx = count(M.filter(m=>m.complex), m=>m.complex);
+  const topC = topEntry(porCplx);
+  if(topC){
+    ins.push({tipo:'neu', ico:'≡',
+      texto:`Complexidade predominante: <b>${topC[0]}</b> (${topC[1]} melhorias, ${pct(topC[1],tot)}%).`});
+  }
+
+  // frente com mais melhorias
+  const porFr = count(M.filter(m=>m.frente), m=>m.frente);
+  const topFr = topEntry(porFr);
+  if(topFr){
+    ins.push({tipo:'neu', ico:'#',
+      texto:`A frente que mais demanda melhorias é <b>${topFr[0]}</b> (${topFr[1]}).`});
+  }
+
+  if(blocked>0){
+    ins.push({tipo:'warn', ico:'!',
+      texto:`<b>${blocked} ${blocked===1?'melhoria bloqueada':'melhorias bloqueadas'}</b> — vale destravar para liberar o fluxo.`});
+  }
+  return ins;
+}
+
+/* --- Análise: ANALYTICS --- */
+function analiseAna(){
+  const {kept:A} = applyDate(App.P.ana);
+  const tot = A.length;
+  if(!tot) return [];
+  const ins = [];
+  const done = A.filter(a=>a.sc==='done').length;
+
+  ins.push({tipo: pct(done,tot)>=50?'pos':'neu', ico:'%',
+    texto:`<b>${pct(done,tot)}% das ${tot} atividades concluídas</b> (${done}).`});
+
+  // prioridade 1 ainda aberta — alerta
+  const p1aberta = A.filter(a=>a.prio===1 && a.sc!=='done' && a.sc!=='cancel').length;
+  if(p1aberta>0){
+    ins.push({tipo:'neg', ico:'!',
+      texto:`<b>${p1aberta} ${p1aberta===1?'atividade de Prioridade 1 em aberto':'atividades de Prioridade 1 em aberto'}</b> — foco máximo de atenção.`});
+  }
+
+  // frente mais demandada
+  const porFr = count(A.filter(a=>a.frente), a=>a.frente);
+  const topFr = topEntry(porFr);
+  if(topFr){
+    ins.push({tipo:'neu', ico:'#',
+      texto:`A frente com mais atividades de Analytics é <b>${topFr[0]}</b> (${topFr[1]}).`});
+  }
+
+  // sem data (transparência)
+  const semData = A.filter(a=>!a.dtFim && !a.dtAbre).length;
+  if(semData>0){
+    ins.push({tipo:'neu', ico:'○',
+      texto:`${semData} de ${tot} atividades não têm data registrada, então não entram nos cálculos por período.`});
+  }
+  return ins;
+}
+
+/* --- Análise: CHAMADOS RPA --- */
+function analiseRPA(){
+  const {kept:R} = applyDate(App.R);
+  const tot = R.length;
+  if(!tot) return [];
+  const ins = [];
+  const venc = R.filter(r=>r.vencido).length;
+  const concl = R.filter(r=>r.fase.toLowerCase().includes('conclu')).length;
+
+  // 1. Concentração nos top bots
+  const porProc = count(R.filter(r=>r.processo!=='(sem processo)'), r=>r.processo);
+  const ordenado = Object.entries(porProc).sort((a,b)=>b[1]-a[1]);
+  const totalProc = ordenado.reduce((s,e)=>s+e[1],0);
+  if(ordenado.length>=3){
+    const top3 = ordenado.slice(0,3);
+    const soma3 = top3.reduce((s,e)=>s+e[1],0);
+    ins.push({tipo: soma3/totalProc>0.4?'warn':'neu', ico:'≡',
+      texto:`Os 3 processos com mais manutenções (<b>${top3.map(e=>e[0]).join(', ')}</b>) concentram <b>${pct(soma3,totalProc)}%</b> dos chamados. Estabilizá-los reduz bastante o volume de suporte.`});
+  }
+
+  // 2. Taxa de vencidos
+  ins.push({tipo: pct(venc,tot)>25?'neg':(pct(venc,tot)>0?'warn':'pos'), ico: pct(venc,tot)>25?'!':'%',
+    texto:`<b>${pct(venc,tot)}% dos ${tot} chamados venceram o prazo</b> (${venc}). Concluídos: ${pct(concl,tot)}%.`});
+
+  // 3. Problema mais comum
+  const porProb = count(R, r=>r.problema);
+  const topProb = topEntry(porProb, ['']);
+  if(topProb && topProb[0]){
+    ins.push({tipo:'neu', ico:'?',
+      texto:`Problema mais frequente: <b>"${topProb[0]}"</b> (${topProb[1]} chamados, ${pct(topProb[1],tot)}%).`});
+  }
+
+  // 4. Tendência mês a mês (compara últimos 3 meses com 3 anteriores)
+  const porMes = {};
+  R.forEach(r=>{ if(r.mes) porMes[r.mes]=(porMes[r.mes]||0)+1; });
+  const meses = Object.keys(porMes).sort();
+  if(meses.length>=4){
+    const metade = Math.floor(meses.length/2);
+    const recentes = meses.slice(-metade).reduce((s,m)=>s+porMes[m],0)/metade;
+    const antigos = meses.slice(0,metade).reduce((s,m)=>s+porMes[m],0)/metade;
+    const variacao = antigos>0 ? Math.round((recentes-antigos)/antigos*100) : 0;
+    if(Math.abs(variacao)>=15){
+      ins.push({tipo: variacao>0?'warn':'pos', ico: variacao>0?'↑':'↓',
+        texto:`O volume de chamados está <b>${variacao>0?'subindo':'caindo'}</b>: média recente ${recentes.toFixed(0)}/mês vs ${antigos.toFixed(0)}/mês no início do período (${variacao>0?'+':''}${variacao}%).`});
+    }
+  }
+
+  // 5. Área que mais abre chamados (se mapeada)
+  const porArea = count(R.filter(r=>r.area && r.area!=='(não mapeada)'), r=>r.area);
+  const topArea = topEntry(porArea);
+  if(topArea){
+    ins.push({tipo:'neu', ico:'#',
+      texto:`A área que mais abre chamados é <b>${topArea[0]}</b> (${topArea[1]}).`});
+  }
+  return ins;
+}
+
+/* --- Análise: INVENTÁRIO DE BOTS --- */
+function analiseBots(){
+  // bots usam filtro por AnoPRD; aqui analisamos o conjunto total carregado
+  const B = App.B;
+  if(!B.length) return [];
+  const ins = [];
+  const prd = B.filter(b=>b.status==='PRD').length;
+  const dev = B.filter(b=>b.status==='DEV').length;
+  const backlog = B.filter(b=>b.status==='BACKLOG').length;
+
+  ins.push({tipo:'neu', ico:'≡',
+    texto:`<b>${B.length} bots no inventário</b>: ${prd} em produção (${pct(prd,B.length)}%), ${dev} em desenvolvimento, ${backlog} em backlog.`});
+
+  // cobertura por área (entre as frentes principais)
+  const prdBots = B.filter(b=>b.status==='PRD');
+  const porArea = count(prdBots, b=>b.area);
+  const topArea = topEntry(porArea);
+  if(topArea){
+    ins.push({tipo:'neu', ico:'#',
+      texto:`A área com mais automações em produção é <b>${topArea[0]}</b> (${topArea[1]} bots, ${pct(topArea[1],prd)}%).`});
+  }
+
+  // bots críticos
+  const criticos = prdBots.filter(b=>b.criticidade && b.criticidade<=2).length;
+  if(criticos>0){
+    ins.push({tipo:'warn', ico:'!',
+      texto:`<b>${criticos} bots em produção são de criticidade alta</b> (nível 1-2) — priorize monitoramento e plano de contingência.`});
+  }
+
+  // cruzamento com chamados, se disponível
+  if(App.R.length){
+    const norm = s => s.toLowerCase().replace(/^\[.*?\]/,'').replace(/[^a-z0-9]/g,'');
+    const chamPorProc = count(App.R, r=>r.processo);
+    let maxCh=0, botMaisCh='';
+    prdBots.forEach(b=>{
+      const bn=norm(b.nome); let ch=0;
+      Object.entries(chamPorProc).forEach(([proc,n])=>{ const pn=norm(proc); if(pn&&bn&&(bn.includes(pn)||pn.includes(bn))) ch+=n; });
+      if(ch>maxCh){ maxCh=ch; botMaisCh=b.nome; }
+    });
+    if(maxCh>0){
+      ins.push({tipo:'warn', ico:'⚙',
+        texto:`O bot em produção com mais manutenções é <b>${botMaisCh}</b> (${maxCh} chamados) — forte candidato a refatoração.`});
+    }
+  }
+  return ins;
 }
 
 

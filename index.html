@@ -172,6 +172,21 @@ select,input[type=text]{font-family:'Inter',sans-serif;font-size:12px;padding:5p
 /* stacked mini */
 .stk{display:flex;height:8px;border-radius:4px;overflow:hidden;background:var(--rule2);margin:6px 0}
 .stk>div{height:100%}
+
+/* Barras empilhadas finas (estilo do site): tipos de problema por fase */
+.sbar-row{display:flex;align-items:center;gap:12px;padding:7px 0;font-size:12px}
+.sbar-lbl{flex-shrink:0;color:var(--ink3);width:280px;min-width:280px;max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sbar-track{flex:1;display:flex;height:6px;border-radius:3px;overflow:hidden;background:var(--rule2)}
+.sbar-seg{height:100%}
+.sbar-nums{flex-shrink:0;display:flex;align-items:center;gap:9px;font-size:11px}
+.sbar-nums .sn{display:inline-flex;align-items:center;gap:4px;color:var(--ink3)}
+.sbar-nums .sn-dot{width:7px;height:7px;border-radius:2px;flex-shrink:0}
+.sbar-nums .sn-z{opacity:.35}
+.sbar-tot{flex-shrink:0;min-width:30px;text-align:right;font-size:12px;font-weight:600;color:var(--ink)}
+.sbar-legend{display:flex;flex-wrap:wrap;gap:14px;margin-top:14px;padding-top:12px;border-top:1px solid var(--rule)}
+.sbar-leg{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--ink3)}
+.sbar-leg-dot{width:9px;height:9px;border-radius:2px;flex-shrink:0}
+@media(max-width:860px){.sbar-lbl{width:150px;min-width:150px;max-width:150px}.sbar-nums{display:none}}
 .vchart{display:flex;align-items:flex-end;gap:3px;height:120px;border-bottom:1px solid var(--rule2);margin-bottom:8px}
 .vcol{display:flex;flex-direction:column;align-items:center;flex:1;height:100%;justify-content:flex-end}
 .vcol-bars{position:relative;width:100%;flex:1;display:flex;align-items:flex-end}
@@ -183,6 +198,28 @@ select,input[type=text]{font-family:'Inter',sans-serif;font-size:12px;padding:5p
 .vlegend{display:flex;gap:14px;margin-top:6px}
 .vleg{display:flex;align-items:center;gap:5px;font-size:11px;color:var(--ink4)}
 .vleg-dot{width:8px;height:8px;border-radius:2px}
+
+/* Botão e painel de análise automática ("IA" de insights calculados) */
+.ai-bar{display:flex;align-items:center;gap:10px;margin-bottom:16px}
+.ai-btn{display:inline-flex;align-items:center;gap:7px;font-family:'Inter',sans-serif;font-size:12px;font-weight:500;padding:8px 14px;border-radius:8px;border:1px solid var(--rule2);background:var(--surface);color:var(--ink2);cursor:pointer;transition:all .14s}
+.ai-btn:hover{border-color:var(--accent,#4a90d9);color:var(--ink);box-shadow:0 1px 6px rgba(0,0,0,.06)}
+.ai-btn .ai-spark{width:15px;height:15px;flex-shrink:0}
+.ai-btn.loading{opacity:.6;pointer-events:none}
+.ai-hint{font-size:10px;color:var(--ink4)}
+.ai-panel{border:1px solid var(--rule2);border-radius:10px;background:linear-gradient(180deg,var(--neu-bg),var(--surface));padding:4px 0;margin-bottom:20px;overflow:hidden;animation:aiFade .3s ease}
+@keyframes aiFade{from{opacity:0;transform:translateY(-4px)}to{opacity:1;transform:none}}
+.ai-panel-head{display:flex;align-items:center;gap:8px;padding:11px 16px 8px;border-bottom:1px solid var(--rule)}
+.ai-panel-head .ai-spark{width:15px;height:15px;color:var(--accent,#4a90d9)}
+.ai-panel-title{font-size:11px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--ink2)}
+.ai-panel-sub{font-size:10px;color:var(--ink4);margin-left:auto}
+.ai-item{display:flex;gap:11px;padding:11px 16px;border-bottom:1px solid var(--rule);font-size:12.5px;color:var(--ink2);line-height:1.55}
+.ai-item:last-child{border-bottom:none}
+.ai-item .ai-ico{width:22px;height:22px;border-radius:6px;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:13px;margin-top:1px}
+.ai-item b{color:var(--ink);font-weight:600}
+.ai-item.pos .ai-ico{background:rgba(63,164,106,.14);color:#3fa46a}
+.ai-item.neg .ai-ico{background:rgba(212,106,106,.14);color:#d46a6a}
+.ai-item.neu .ai-ico{background:rgba(120,128,136,.14);color:#8a909a}
+.ai-item.warn .ai-ico{background:rgba(212,169,60,.16);color:#c79a3c}
 </style>
 </head>
 <body>
@@ -288,7 +325,7 @@ select,input[type=text]{font-family:'Inter',sans-serif;font-size:12px;padding:5p
   <div id="rpa-content" style="display:none">
     <nav class="pip-subnav">
       <div class="pip-nav-item active" id="rnav-visao" onclick="rpaPage('visao')">Visão geral</div>
-      <div class="pip-nav-item" id="rnav-bots" onclick="rpaPage('bots')">Top bots</div>
+      <div class="pip-nav-item" id="rnav-bots" onclick="rpaPage('bots')">Bota com maior número de manutenções</div>
       <div class="pip-nav-item" id="rnav-prob" onclick="rpaPage('prob')">Tipos de problema</div>
       <div class="pip-nav-item" id="rnav-tempo" onclick="rpaPage('tempo')">Tempo de resolução</div>
       <div class="pip-nav-item" id="rnav-lista" onclick="rpaPage('lista')">Chamados</div>
