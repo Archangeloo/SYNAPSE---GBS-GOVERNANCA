@@ -45,7 +45,9 @@ const App = {
   dateRange: { mode: 'all', from: null, to: null },
 
   // Set de projetos expandidos na lista (chave = num ou titulo)
-  projOpen: new Set()
+  projOpen: new Set(),
+  // filtros rápidos da aba Projetos (chips): mostrar só atrasados / só risco alto
+  projChips: { atraso:false, risco:false }
 };
 
 
@@ -88,18 +90,53 @@ function inDateRange(d){
 }
 
 /*
+ * Verifica se um item esteve ATIVO durante o período do filtro, considerando
+ * um intervalo [início, fim] em vez de uma data única. Usado para o Pipefy,
+ * onde uma melhoria tem início e conclusão do desenvolvimento.
+ * Regras (modo custom):
+ *   - tem início e fim → passa se o intervalo do item cruza o intervalo do filtro
+ *   - só tem início (em andamento) → passa se começou até o fim do filtro
+ *     (considera-se ativa do início até hoje)
+ *   - só tem fim → cai no comportamento de data única (inDateRange no fim)
+ *   - sem nenhuma data → fora (contabilizado como "sem data")
+ * Retorna 'in' | 'out' | 'nodate'.
+ */
+function activeInRange(ini, fim){
+  const dr = App.dateRange;
+  if(dr.mode === 'all') return 'in';
+  if(!ini && !fim) return 'nodate';
+  // limites do filtro (qualquer um pode ser nulo = aberto daquele lado)
+  const fFrom = dr.from || new Date(-8640000000000000);
+  const fTo   = dr.to   || new Date( 8640000000000000);
+  // limites do item: se falta início, usa o fim; se falta fim, considera "até hoje" (em curso)
+  const iIni = ini || fim;
+  const iFim = fim || HOJE;
+  // sobreposição de intervalos: começa antes do fim do filtro E termina depois do início
+  return (iIni <= fTo && iFim >= fFrom) ? 'in' : 'out';
+}
+
+/*
  * Aplica o filtro de data a um array inteiro.
  * Retorna: { kept: [...itens que passaram], noDate: N (quantidade sem data) }
- * Os itens sem data (noDate) não são perdidos — ficam de fora do recorte
- * e o número é exibido na nota de transparência da interface.
+ * Para itens que têm dtInicio (ex: Pipefy), usa a lógica de "ativo no período"
+ * (intervalo início→fim). Para os demais, usa a data única de refDate.
+ * Os itens sem data não são perdidos — ficam fora do recorte e o número é
+ * exibido na nota de transparência da interface.
  */
 function applyDate(arr){
   if(App.dateRange.mode === 'all') return { kept: arr, noDate: 0 };
   const kept = [], noDate = [];
   arr.forEach(x => {
-    const d = refDate(x);
-    if(!d) noDate.push(x);
-    else if(inDateRange(d)) kept.push(x);
+    // se o item tem conceito de intervalo (dtInicio definido), usa activeInRange
+    if(x.dtInicio !== undefined){
+      const r = activeInRange(x.dtInicio, x.dtFim);
+      if(r === 'nodate') noDate.push(x);
+      else if(r === 'in') kept.push(x);
+    } else {
+      const d = refDate(x);
+      if(!d) noDate.push(x);
+      else if(inDateRange(d)) kept.push(x);
+    }
   });
   return { kept, noDate: noDate.length };
 }
@@ -169,6 +206,58 @@ const STATUS_COLOR = {
 };
 
 /*
+ * EQUIPE_COE — membros da equipe do CoE, organizados pela frente em que atuam.
+ * Usado APENAS na aba Governança para filtrar "Ações abertas por responsável"
+ * (mostra só a equipe interna; quem não é CoE não aparece nesse gráfico).
+ *
+ * Cada item tem um 'match' = lista de termos distintivos para reconhecer a
+ * pessoa nos dados, tolerando variações de escrita. Usamos sobrenomes/termos
+ * únicos de propósito, para NÃO confundir homônimos de primeiro nome
+ * (ex: "Gustavo" pegaria "Matheus Gustavo Germano", que não é CoE; por isso
+ * usamos "archangelo"). O 'nome' é o rótulo exibido no gráfico.
+ */
+const EQUIPE_COE = [
+  // --- Projetos ---
+  { nome:'Gabriel Hirata',    match:['gabriel hirata','hirata'] },
+  { nome:'Maiara',            match:['maiara'] },
+  { nome:'Vinícius Milagres', match:['milagres','vinícius marchi','vinicius marchi'] },
+  { nome:'Isabelly Vidal',    match:['isabelly'] },
+  { nome:'Daniel Torres',     match:['daniel torres'] },
+  { nome:'Adely Canizal',     match:['adely'] },
+  // --- RPA ---
+  { nome:'Lucas Oliveira',    match:['lucas oliveira','lucas alvarenga','alvarenga'] },
+  { nome:'Caio Pucci',        match:['caio pucci','pucci'] },
+  { nome:'Francisco Prestes', match:['francisco prestes','prestes'] },
+  { nome:'Fernando Sanches',  match:['fernando sanches','sanches'] },
+  { nome:'Igor Henrique',     match:['igor henrique'] },
+  { nome:'Esteban Menendez',  match:['esteban'] },
+  { nome:'Jesus Axel',        match:['axel'] },
+  // --- Pipefy ---
+  { nome:'Gustavo Archangelo',match:['archangelo'] },
+  { nome:'Vinícius Domingues',match:['vinícius domingues','vinicius domingues'] },
+  { nome:'Felipe Cordeiro',   match:['felipe cordeiro','cordeiro'] },
+  { nome:'William Maciel',    match:['william maciel','willian maciel','souza maciel'] }
+];
+
+/*
+ * coeNomePadrao(resp) — recebe o nome do responsável como está nos dados e,
+ * se for da equipe CoE, retorna o nome padronizado (rótulo). Senão, retorna null.
+ * Usa os termos 'match' de cada membro (case-insensitive, sem acento).
+ */
+function coeNomePadrao(resp){
+  if(!resp) return null;
+  const t = resp.toString().toLowerCase()
+    .normalize('NFD').replace(/[\u0300-\u036f]/g,''); // remove acentos para comparar
+  for(const m of EQUIPE_COE){
+    for(const termo of m.match){
+      const termoNorm = termo.normalize('NFD').replace(/[\u0300-\u036f]/g,'');
+      if(t.includes(termoNorm)) return m.nome;
+    }
+  }
+  return null;
+}
+
+/*
  * Número da fase no ciclo de vida de um Projeto GBS.
  * Quanto maior o número, mais perto do término.
  * Fluxo: Diagnóstico(1) → Planejamento(2) → Execução(3) → Encerramento(4) → Monitoramento(5)
@@ -183,6 +272,62 @@ function projFase(statusRaw){
   if(t.includes('monitor')) return 5;
   if(t.includes('conclu')) return 5;
   return null;
+}
+
+/*
+ * projAtrasado(p) — true se o projeto está com prazo vencido e ainda não foi
+ * entregue/cancelado. Considera-se "não atrasável" quem está concluído,
+ * em monitoramento (pós go-live) ou cancelado.
+ */
+function projAtrasado(p){
+  return !!(p.dtFim && p.dtFim < HOJE && p.sc!=='done' && p.sc!=='cancel' && p.sc!=='monitor');
+}
+
+/*
+ * projRisco(p) — score de risco automático (0 a 100) de um projeto.
+ * Combina três fatores objetivos, sem precisar de campo manual na planilha:
+ *   1) ATRASO (peso maior): dias de prazo vencido. Quanto mais atrasado, maior.
+ *   2) FASE: projetos em fases iniciais (Diagnóstico/Planejamento) com prazo
+ *      apertado são mais arriscados que os já em Encerramento.
+ *   3) PROXIMIDADE DO PRAZO: prazo chegando (mesmo sem atraso) eleva o risco.
+ * Projetos concluídos/cancelados/monitoramento têm risco 0 (não estão "em jogo").
+ * Retorna { score, nivel, motivos[] } — nivel ∈ {alto, medio, baixo}.
+ */
+function projRisco(p){
+  if(p.sc==='done' || p.sc==='cancel' || p.sc==='monitor'){
+    return { score:0, nivel:'baixo', motivos:[] };
+  }
+  let score = 0;
+  const motivos = [];
+  const fase = projFase(p.statusRaw) || 2;
+
+  // 1) Atraso — o fator mais forte. Atraso relevante já leva a projeto a risco alto.
+  if(p.dtFim){
+    const dias = Math.round((HOJE - p.dtFim)/86400000);
+    if(dias > 0){
+      // 15 pontos de base + ~1/dia, saturando em 70; ~40 dias já cruza o limite de "alto"
+      score += Math.min(70, 15 + dias*1.2);
+      motivos.push(`${dias} ${dias===1?'dia':'dias'} de atraso`);
+    } else {
+      // 2) Proximidade do prazo (ainda não venceu)
+      const faltam = -dias;
+      if(faltam <= 15){ score += 18; motivos.push(`prazo em ${faltam} ${faltam===1?'dia':'dias'}`); }
+      else if(faltam <= 30){ score += 10; motivos.push('prazo próximo'); }
+    }
+  } else {
+    // sem prazo definido em projeto ativo = risco de falta de controle
+    score += 14; motivos.push('sem prazo definido');
+  }
+
+  // 3) Fase — peso por estágio (fases iniciais = mais caminho pela frente = mais risco)
+  if(p.sc==='blocked'){ score += 30; motivos.push('bloqueado'); }
+  const pesoFase = {1:18, 2:14, 3:9, 4:4, 5:0}[fase] || 9;
+  score += pesoFase;
+  if(fase<=2 && p.sc!=='blocked') motivos.push(`fase inicial (${p.statusRaw})`);
+
+  score = Math.min(100, Math.round(score));
+  const nivel = score>=55 ? 'alto' : (score>=30 ? 'medio' : 'baixo');
+  return { score, nivel, motivos };
 }
 
 
@@ -400,9 +545,12 @@ function parseGov(){
     champion: String(get(r, ['Champion'])).trim(),
     complex:  String(get(r, ['Complexidade'])).trim(),
     tipo:     String(get(r, ['TipoMelhoriaAjuste'])).trim(),
-    // DATA USADA NO FILTRO DE PERÍODO: data real/estimada de conclusão do desenvolvimento
-    // IMPORTANTE: a maioria das melhorias em backlog/planejamento NÃO tem essa data.
-    // Por isso, ao filtrar por período, muitas melhorias ficam fora (é o comportamento correto).
+    // DATAS USADAS NO FILTRO DE PERÍODO:
+    //   dtInicio = início do desenvolvimento; dtFim = conclusão real do desenvolvimento.
+    // Uma melhoria entra no recorte se esteve ATIVA no período (ver applyDate):
+    // começou, terminou, ou estava em curso atravessando o intervalo. Assim melhorias
+    // em andamento (com início mas sem fim) também aparecem no recorte.
+    dtInicio: toDate(get(r, ['DataInicioDesenvolvimento'])),
     dtFim:    toDate(get(r, ['DataConclusaoRealDesenvolvimento'])),
     horas:    get(r, ['QtdHorasEstimadas'])
   })).filter(r => r.num !== '' || r.atividade) : []; // descarta linhas totalmente vazias
@@ -534,6 +682,11 @@ function parseRPA(){
       problema:   String(get(r, ['Qual é o problema?'])).trim(),
       reexec:     String(get(r, ['Este robô admite reexecução?'])).trim(),
       solicitante:String(get(r, ['Nome do solicitante'])).trim(),
+      // "Responsáveis" = quem trabalha no chamado (equipe CoE de RPA), não quem abriu.
+      // Pode ter vários nomes separados por vírgula; guardamos como lista para contar
+      // cada responsável individualmente.
+      responsaveis: String(get(r, ['Responsáveis','Responsável']))
+        .split(',').map(s=>s.trim()).filter(Boolean),
       criado, mes: ym(criado),
       dow: criado ? (criado.getDay() + 6) % 7 : -1,
       finalizado: toDate(get(r, ['Finalizado em'])),
@@ -734,6 +887,43 @@ function stackedBars(rows, segDefs){
 }
 
 /*
+ * clusteredBars(groups, series) — gráfico de barras clusterizado (agrupado).
+ * Cada GRUPO (ex: uma fase) vira um bloco com um título; dentro dele há uma
+ * BARRA fina para cada série (ex: tipo de problema), com a cor da série.
+ * Todas as barras compartilham a mesma escala (maxVal global) para comparação.
+ * groups: array de { label, color, valores: {serieKey: n} }
+ * series: array ordenado de { key, label, color }
+ * Barras com valor 0 são omitidas dentro do grupo, para não poluir.
+ */
+function clusteredBars(groups, series){
+  if(!groups.length) return '<div style="font-size:12px;color:var(--ink4)">Sem dados</div>';
+  // escala global: maior valor entre todas as barras de todos os grupos
+  let maxVal = 1;
+  groups.forEach(g => series.forEach(s => { maxVal = Math.max(maxVal, g.valores[s.key]||0); }));
+  const corpo = groups.map(g => {
+    const totGrupo = series.reduce((acc,s)=>acc+(g.valores[s.key]||0),0);
+    const barras = series.map(s => {
+      const n = g.valores[s.key]||0;
+      if(!n) return ''; // omite séries zeradas dentro do grupo
+      const w = Math.round(n/maxVal*100);
+      return `<div class="clu-bar-row">
+        <span class="clu-bar-lbl" title="${String(s.label).replace(/"/g,'')}">${s.label}</span>
+        <div class="clu-bar-track"><div class="clu-bar-fill" style="width:${w}%;background:${s.color}"></div></div>
+        <span class="clu-bar-val">${n}</span>
+      </div>`;
+    }).join('');
+    return `<div class="clu-group">
+      <div class="clu-group-title"><span class="clu-gt-dot" style="background:${g.color||'var(--ink3)'}"></span>${g.label}<span class="clu-gt-tot">${totGrupo} no total</span></div>
+      ${barras || '<div class="clu-bar-row"><span style="font-size:11px;color:var(--ink4);padding-left:17px">nenhum chamado nesta fase</span></div>'}
+    </div>`;
+  }).join('');
+  const legenda = series.map(s =>
+    `<div class="clu-leg"><span class="clu-leg-dot" style="background:${s.color}"></span>${s.label}</div>`
+  ).join('');
+  return corpo + `<div class="clu-legend">${legenda}</div>`;
+}
+
+/*
  * lineChart(points, opts) — gráfico de linha SVG responsivo
  * points: array de { label, value }
  *
@@ -841,7 +1031,7 @@ function heatmap(matrix, rowLabels, colLabels, opts={}){
 function allActions(){
   const out = [];
   App.P.proj.forEach(p => out.push({fonte:'Projetos', sc:p.sc, frente:p.frente, resp:p.resp, dtFim:p.dtFim, prog:p.prog, prio:null}));
-  App.P.mel.forEach(m => out.push({fonte:'Pipefy', sc:m.sc, frente:m.frente, resp:m.resp, dtFim:m.dtFim, prog:null, prio:null}));
+  App.P.mel.forEach(m => out.push({fonte:'Pipefy', sc:m.sc, frente:m.frente, resp:m.resp, dtInicio:m.dtInicio, dtFim:m.dtFim, prog:null, prio:null}));
   App.P.ana.forEach(a => out.push({fonte:'Analytics', sc:a.sc, frente:a.frente, resp:a.resp, dtFim:a.dtFim, prog:null, prio:a.prio}));
   App.R.forEach(r => out.push({
     fonte:'Chamados RPA',
@@ -957,14 +1147,28 @@ function buildGov(){
     {label:STATUS_PT[k], value:scAll[k]||0, color:STATUS_COLOR[k]}
   )).filter(d => d.value > 0);
 
-  // Barra de ações abertas por responsável (para cobrança — exclui concluídas e canceladas)
-  const respCount = count(A.filter(a => a.resp && a.sc!=='done' && a.sc!=='cancel'), a => a.resp);
-  const respTop = Object.entries(respCount).sort((a,b) => b[1]-a[1]);
+  // Total de ações por responsável da equipe CoE (TODAS — abertas, concluídas, canceladas).
+  // Mostra SÓ a equipe CoE (ver EQUIPE_COE), somando pelo nome padronizado.
+  // IMPORTANTE: cada fonte tem seu campo de responsável:
+  //   - Projetos/Pipefy/Analytics: campo 'resp' (1 responsável por item)
+  //   - Chamados RPA: campo 'responsaveis' (lista — quem trabalha no chamado, não o
+  //     solicitante; um chamado pode ter vários responsáveis, conta para cada um).
+  // Respeita o filtro de período de cada fonte (applyDate).
+  const respCoE = {};
+  const addResp = nomeRaw => {
+    const nome = coeNomePadrao(nomeRaw);
+    if(nome) respCoE[nome] = (respCoE[nome]||0) + 1;
+  };
+  applyDate(App.P.proj).kept.forEach(p => addResp(p.resp));
+  applyDate(App.P.mel).kept.forEach(m => addResp(m.resp));
+  applyDate(App.P.ana).kept.forEach(a => addResp(a.resp));
+  applyDate(App.R).kept.forEach(r => (r.responsaveis||[]).forEach(addResp));
+  const respTop = Object.entries(respCoE).sort((a,b) => b[1]-a[1]);
 
   h += `<div class="two">
     <div class="card"><div class="card-title"><i class="ti ti-chart-pie"></i> Status das ações</div>${donut(donutData)}</div>
-    <div class="card"><div class="card-title"><i class="ti ti-user-bolt"></i> Ações abertas por responsável<span class="rt">para cobrança</span></div>
-      ${hbars(respTop, {max:8, lw:130})}</div>
+    <div class="card"><div class="card-title"><i class="ti ti-user-bolt"></i> Ações por responsável<span class="rt">equipe CoE · total</span></div>
+      ${respTop.length ? hbars(respTop, {max:18, lw:150}) : '<div style="font-size:12px;color:var(--ink4)">Nenhuma ação da equipe CoE neste recorte.</div>'}</div>
   </div>`;
 
   const frCount = count(A.filter(a => a.frente), a => a.frente);
@@ -1070,16 +1274,20 @@ function buildProj(){
   const doing   = P.filter(p => p.sc==='doing').length;    // em execução
   // Encerramento + Monitoramento agrupados (ambos = projeto entregue / em fase final)
   const finalizando = P.filter(p => p.sc==='closing' || p.sc==='monitor').length;
+  const atrasados = P.filter(projAtrasado);                // prazo vencido e não entregue
+  const criticos = P.filter(p => projRisco(p).nivel==='alto').length; // risco alto
 
   let h = `<div class="sh">Projetos</div>
   ${aiBar('proj')}
-  <div class="krow">
+  <div class="krow k5">
     <div class="kpi"><div class="knum">${P.length}</div><div class="klbl">Total</div></div>
     <div class="kpi il"><div class="knum">${doing}</div><div class="klbl">Em execução</div></div>
-    <div class="kpi gl"><div class="knum">${finalizando}</div><div class="klbl">Em fase de encerramento</div>
-      <div class="ksub">encerramento / monitoramento</div></div>
-    <div class="kpi"><div class="knum">${pct(done+finalizando,P.length)}%</div><div class="klbl">Entregues ou em fase final</div>
-      <div class="ksub">${done+finalizando} de ${P.length}</div></div>
+    <div class="kpi gl"><div class="knum">${finalizando}</div><div class="klbl">Em fase final</div>
+      <div class="ksub">encerramento / monit.</div></div>
+    <div class="kpi dl"><div class="knum">${atrasados.length}</div><div class="klbl">Atrasados</div>
+      <div class="ksub">prazo vencido</div></div>
+    <div class="kpi wl"><div class="knum">${criticos}</div><div class="klbl">Risco alto</div>
+      <div class="ksub">score de risco</div></div>
   </div>`;
 
   // Frente vem do campo AreaCliente (novo) ou Frente (legado)
@@ -1105,7 +1313,9 @@ function buildProj(){
   // Monta os selects de filtro dinamicamente a partir dos valores presentes nos dados
   const pessoas = [...new Set(P.map(p => p.resp).filter(Boolean))].sort();
   h += `<div class="filters" style="margin-top:4px">
-    <input type="text" id="proj-q" placeholder="Buscar projeto, responsável, frente..." oninput="renderProjList()" style="flex:1;max-width:300px">
+    <input type="text" id="proj-q" placeholder="Buscar projeto, responsável, frente..." oninput="renderProjList()" style="flex:1;max-width:280px">
+    <button class="df-chip" id="proj-chip-atraso" onclick="toggleProjChip('atraso')">⚠ Só atrasados</button>
+    <button class="df-chip" id="proj-chip-risco" onclick="toggleProjChip('risco')">Risco alto</button>
     <label>Responsável</label>
     <select id="proj-fp" onchange="renderProjList()"><option value="">Todos</option>
       ${pessoas.map(p=>`<option>${p}</option>`).join('')}</select>
@@ -1135,30 +1345,42 @@ function renderProjList(){
   const fp = document.getElementById('proj-fp')?.value||'';
   const fs = document.getElementById('proj-fs')?.value||'';
   const ff = document.getElementById('proj-ff')?.value||'';
+  const chips = App.projChips || {atraso:false, risco:false};
   // busca em título, responsável, frente, descrição e próximos passos
-  const vis = P.filter(p =>
+  let vis = P.filter(p =>
     (!q || (p.titulo+' '+p.resp+' '+p.frente+' '+(p.descricao||'')+' '+(p.proximos||'')).toLowerCase().includes(q)) &&
-    (!fp || p.resp===fp) && (!fs || p.statusRaw===fs) && (!ff || p.frente===ff)
-  ).sort((a,b) => (b.prog||0) - (a.prog||0)); // ordena do mais avançado para o menos
+    (!fp || p.resp===fp) && (!fs || p.statusRaw===fs) && (!ff || p.frente===ff) &&
+    (!chips.atraso || projAtrasado(p)) &&
+    (!chips.risco  || projRisco(p).nivel==='alto')
+  );
+  // ordena por score de risco (mais crítico primeiro); empate vai pelo mais avançado
+  vis.sort((a,b) => {
+    const ra = projRisco(a).score, rb = projRisco(b).score;
+    if(rb !== ra) return rb - ra;
+    return (b.prog||0) - (a.prog||0);
+  });
   const cnt = document.getElementById('proj-count');
   if(cnt) cnt.textContent = `${vis.length} de ${P.length}`;
   if(!App.projOpen) App.projOpen = new Set();
   let h = vis.map(p => {
     const bd = STATUS_BADGE[p.sc];
-    const lateTag = p.dtFim && p.dtFim<HOJE && p.sc!=='done' && p.sc!=='cancel' && p.sc!=='monitor';
+    const lateTag = projAtrasado(p);
+    const risco = projRisco(p); // { score, nivel, motivos }
     const key = String(p.num||p.titulo); // chave única para o estado aberto/fechado
     const open = App.projOpen.has(key);
-    const fase = projFase(p.statusRaw); // número da fase (1 a 5)
-    // badge no formato "3 · Execução" quando há fase mapeada
-    const badgeTxt = fase ? `${fase} · ${p.statusRaw}` : p.statusRaw;
+    const fase = projFase(p.statusRaw); // número da fase (1 a 5) — usado no aviso de atraso
+    // badge exibe o status exatamente como está na base (que já traz a numeração da fase)
+    const badgeTxt = p.statusRaw;
     // indicador de status: bolinha colorida em CSS puro (não depende de fonte de ícone)
-    // a bolinha tem cor fixa por status; o fundo do quadrado usa variável de tema
-    // (--neu-bg) para se adaptar a claro/escuro sem virar mancha branca no dark mode
     const dotColor = {
       done:'#3fa46a', doing:'#4a90d9', closing:'#d49a4a', monitor:'#6fa0e0',
       todo:'#9a9a92', blocked:'#d4a93c', cancel:'#d46a6a', vendor:'#8f6fd0', other:'#9a9a92'
     };
     const dc = dotColor[p.sc] || dotColor.other;
+    // badge de risco (só para nível médio/alto, para não poluir os de baixo risco)
+    const riscoBadge = risco.nivel==='alto'
+      ? `<span class="badge red" title="${risco.motivos.join(' · ')}">risco alto</span>`
+      : (risco.nivel==='medio' ? `<span class="badge warn" title="${risco.motivos.join(' · ')}">risco médio</span>` : '');
     return `<div class="proj-row ${open?'open':''}" data-k="${key.replace(/"/g,'')}">
       <div class="icard" onclick="toggleProj('${key.replace(/'/g,"\\'").replace(/"/g,'&quot;')}')" style="cursor:pointer">
         <div class="iico" style="background:var(--neu-bg)">
@@ -1168,11 +1390,12 @@ function renderProjList(){
           <div class="isub">
             ${p.frente?`<span class="apill">${p.frente}</span>`:''}
             ${p.resp?`<span>${p.resp}</span>`:''}
-            ${p.dtFim?`<span style="color:${lateTag?'var(--err)':'var(--ink4)'}">· ${p.dtFim.toLocaleDateString('pt-BR')}${lateTag?` ⚠ atrasado na fase ${fase} (${p.statusRaw})`:''}</span>`:''}
+            ${p.dtFim?`<span style="color:${lateTag?'var(--err)':'var(--ink4)'}">· ${p.dtFim.toLocaleDateString('pt-BR')}${lateTag?` ⚠ atrasado em ${p.statusRaw}`:''}</span>`:''}
           </div>
           ${p.prog!=null?`<div class="stk" style="max-width:280px"><div style="width:${Math.round(p.prog*100)}%;background:var(--info)"></div></div>`:''}
         </div>
         <div class="iright">
+          ${riscoBadge}
           ${p.prog!=null?`<span style="font-size:11px;color:var(--ink3);font-weight:600">${Math.round(p.prog*100)}%</span>`:''}
           <span class="badge ${bd}">${badgeTxt}</span>
           <span style="color:var(--ink4);font-size:11px;margin-left:6px;display:inline-block;transition:transform .15s;transform:rotate(${open?'90deg':'0deg'})">▶</span>
@@ -1183,6 +1406,19 @@ function renderProjList(){
   }).join('');
   const el = document.getElementById('proj-list');
   if(el) el.innerHTML = h || '<div class="empty" style="padding:24px">Nenhum projeto neste filtro</div>';
+}
+
+/*
+ * toggleProjChip(qual) — liga/desliga um filtro rápido (atraso / risco alto)
+ * da aba Projetos e re-renderiza a lista, atualizando o destaque visual do chip.
+ */
+function toggleProjChip(qual){
+  if(!App.projChips) App.projChips = {atraso:false, risco:false};
+  App.projChips[qual] = !App.projChips[qual];
+  const map = {atraso:'proj-chip-atraso', risco:'proj-chip-risco'};
+  const btn = document.getElementById(map[qual]);
+  if(btn) btn.classList.toggle('active', App.projChips[qual]);
+  renderProjList();
 }
 
 /*
@@ -1238,12 +1474,17 @@ function buildMel(){
   const backlog = M.filter(m => m.sc==='todo').length;
   const blocked = M.filter(m => m.sc==='blocked').length;
 
-  // Nota de período: explica quantas melhorias ficaram de fora por não ter data de conclusão
+  // Nota de período: agora o filtro considera melhorias ATIVAS no recorte
+  // (que começaram ou terminaram no período). Mostra também quantas não têm
+  // cada data preenchida no Pipefy, já que isso limita a análise temporal.
   let dn = '';
   if(App.dateRange.mode !== 'all'){
+    const semInicio = App.P.mel.filter(m => !m.dtInicio).length;
+    const semFim    = App.P.mel.filter(m => !m.dtFim).length;
     dn = `<div class="note" style="background:var(--neu-bg);color:var(--ink3)"><i class="ti ti-calendar-stats"></i><div>
-      Período aplicado: <b>${M.length} melhorias</b> com conclusão no recorte.` +
-      (noDate>0 ? ` ${noDate} sem data de conclusão não entram no filtro.` : '') + `</div></div>`;
+      Período aplicado: <b>${M.length} melhorias</b> ativas no recorte (começaram ou concluíram no intervalo).` +
+      (noDate>0 ? ` ${noDate} sem nenhuma data não entram no filtro.` : '') +
+      `<br><span style="opacity:.85">No Pipefy, ${semInicio} de ${App.P.mel.length} melhorias estão sem data de início e ${semFim} sem data de conclusão — preencher essas datas amplia a análise por período.</span></div></div>`;
   }
 
   // "Fluxos (processos)" = número de NomeFluxo únicos no recorte atual
@@ -1270,7 +1511,14 @@ function buildMel(){
     <div class="card"><div class="card-title"><i class="ti ti-stack-2"></i> Por complexidade</div>
       ${hbars(Object.entries(count(M.filter(m=>m.complex),m=>m.complex)).sort((a,b)=>b[1]-a[1]),{max:6,lw:90})}</div>
     <div class="card"><div class="card-title"><i class="ti ti-user-code"></i> Por responsável</div>
-      ${hbars(Object.entries(count(M.filter(m=>m.resp),m=>m.resp)).sort((a,b)=>b[1]-a[1]),{max:8,lw:130})}</div>
+      ${(() => {
+        // mostra apenas a equipe de desenvolvimento de melhorias (5 pessoas),
+        // removendo entradas pontuais como "Isaac" e "Time / Área"
+        const EQUIPE_MEL = ['willian','vinícius','vinicius','felipe','gustavo','caio'];
+        const ehEquipe = nome => EQUIPE_MEL.some(p => nome.toLowerCase().includes(p));
+        const dados = Object.entries(count(M.filter(m=>m.resp && ehEquipe(m.resp)), m=>m.resp)).sort((a,b)=>b[1]-a[1]);
+        return hbars(dados,{max:8,lw:130});
+      })()}</div>
   </div>`;
   document.getElementById('mel-content').innerHTML = h;
   setBadge('nb-mel', M.length, '');
@@ -1391,34 +1639,48 @@ function buildRPAChamados(){
   // os KPIs e gráficos são renderizados por renderRPAStatus (respeita o filtro de status)
   renderRPAStatus();
 
+  // Mapa processo → área (a área já foi atribuída a cada chamado em enrichRPAComArea).
+  // Usado para exibir a área ao lado do nome do bot nos gráficos de Top Bots e Tempo médio.
+  const areaPorProc = {};
+  R.forEach(r => { if(r.processo && !areaPorProc[r.processo]) areaPorProc[r.processo] = r.area; });
+  // formata "Nome do bot  ·  [ÁREA]" para usar como rótulo
+  const labelComArea = proc => {
+    const a = areaPorProc[proc];
+    return a && a !== '(não mapeada)' ? `${proc}  ·  ${a}` : proc;
+  };
+
   // Sub-aba: Top Bots (processos com mais chamados de manutenção)
   const porProcV = count(R, r => r.processo);
-  const procList = Object.entries(porProcV).filter(e=>e[0]!=='(sem processo)').sort((a,b)=>b[1]-a[1]);
+  const procList = Object.entries(porProcV).filter(e=>e[0]!=='(sem processo)').sort((a,b)=>b[1]-a[1])
+    .map(([proc,n]) => [labelComArea(proc), n]); // adiciona a área ao rótulo
   let b = `<div class="card"><div class="card-title"><i class="ti ti-trophy"></i> Top bots por nº de manutenções<span class="rt">${procList.length} processos</span></div>
-    ${hbars(procList,{max:15,lw:240,color:'var(--err)',fixedLabel:true})}</div>`;
+    ${hbars(procList,{max:15,lw:300,color:'var(--err)',fixedLabel:true})}</div>`;
   document.getElementById('rpage-bots').innerHTML = b;
 
-  // Sub-aba: Tipos de problema (barras empilhadas por fase do chamado)
+  // Sub-aba: Tipos de problema — barras clusterizadas (grupos = fase, barra = problema)
   const porProb = count(R, r => r.problema);
   const porReexec = count(R.filter(r=>r.reexec), r => r.reexec);
-  // segmentos = fases, na ordem do fluxo: Backlog → Identificação → Desenvolvimento → Reexecução → Concluído
-  const segDefs = [
-    {key:'Backlog',                       label:'Backlog',                  color:'#9a9a92'},
-    {key:'Identificação do problema',     label:'Identificação',            color:'#d4a93c'},
-    {key:'Desenvolvimento da solução',    label:'Desenvolvimento',          color:'#4a90d9'},
-    {key:'Reexecução',                    label:'Reexecução',               color:'#8f6fd0'},
-    {key:'Concluído',                     label:'Concluído',                color:'#3fa46a'}
+  // fases (grupos), na ordem do fluxo do chamado
+  const fasesDef = [
+    {key:'Backlog',                    label:'Backlog',          color:'#9a9a92'},
+    {key:'Identificação do problema',  label:'Identificação',    color:'#d4a93c'},
+    {key:'Desenvolvimento da solução', label:'Desenvolvimento',  color:'#4a90d9'},
+    {key:'Reexecução',                 label:'Reexecução',       color:'#8f6fd0'},
+    {key:'Concluído',                  label:'Concluído',        color:'#3fa46a'}
   ];
-  // monta as linhas: cada tipo de problema com a contagem por fase
+  // tipos de problema (séries / barras dentro de cada grupo), ordenados por volume
   const probsOrd = Object.entries(porProb).sort((a,b)=>b[1]-a[1]).map(e=>e[0]);
-  const linhasStack = probsOrd.map(pr => {
-    const sub = R.filter(r=>r.problema===pr);
+  const paletaProb = ['#4a90d9','#d49a4a','#3fa46a','#8f6fd0','#d46a6a','#5aa0a0','#9a7ad4'];
+  const serieProb = probsOrd.map((pr,i) => ({key:pr, label:pr, color:paletaProb[i%paletaProb.length]}));
+  // monta os grupos: para cada fase, a contagem de cada tipo de problema
+  const grupos = fasesDef.map(f => {
+    const sub = R.filter(r => r.fase===f.key);
     const valores = {};
-    segDefs.forEach(d => { valores[d.key] = sub.filter(r=>r.fase===d.key).length; });
-    return {label:pr, valores};
+    probsOrd.forEach(pr => { valores[pr] = sub.filter(r=>r.problema===pr).length; });
+    return {label:f.label, color:f.color, valores};
   });
   let p = `<div class="card"><div class="card-title"><i class="ti ti-alert-circle"></i> Tipos de problema <span class="rt">por fase do chamado</span></div>
-      ${stackedBars(linhasStack, segDefs)}</div>
+      ${clusteredBars(grupos, serieProb)}</div>
     <div class="card"><div class="card-title"><i class="ti ti-refresh"></i> Admite reexecução?</div>
       ${donut(Object.entries(porReexec).map(([k,vv],i)=>({label:k,value:vv,color:i===0?'var(--ok)':'var(--warn)'})))}</div>`;
   document.getElementById('rpage-prob').innerHTML = p;
@@ -1434,9 +1696,12 @@ function buildRPAChamados(){
   // tempo médio por bot (só bots com 3+ chamados para ter significância estatística)
   const procTempo={};
   R.forEach(r=>{ const tt=(r.tIdent||0)+(r.tDesenv||0); if(tt>0){if(!procTempo[r.processo])procTempo[r.processo]={s:0,n:0};procTempo[r.processo].s+=tt;procTempo[r.processo].n++;} });
-  const procAvg = Object.entries(procTempo).filter(e=>e[0]!=='(sem processo)'&&e[1].n>=3).map(([k,v])=>[k,+(v.s/v.n).toFixed(1)]).sort((a,b)=>b[1]-a[1]);
-  t += `<div class="card"><div class="card-title"><i class="ti ti-clock"></i> Tempo médio de resolução por bot (dias, mín. 3 chamados)</div>
-    ${hbars(procAvg,{max:12,lw:240,color:'var(--warn)',fixedLabel:true})}</div>`;
+  const procAvg = Object.entries(procTempo).filter(e=>e[0]!=='(sem processo)'&&e[1].n>=3).map(([k,v])=>[labelComArea(k),+(v.s/v.n).toFixed(1)]).sort((a,b)=>b[1]-a[1]);
+  t += `<div class="card"><div class="card-title"><i class="ti ti-clock"></i> Tempo médio de resolução por bot<span class="rt">dias · bots com 3+ chamados</span></div>
+    ${hbars(procAvg,{max:12,lw:300,color:'var(--warn)',fixedLabel:true})}
+    <div class="note" style="margin-top:14px;margin-bottom:0;background:var(--neu-bg);color:var(--ink3)"><i class="ti ti-info-circle"></i><div>
+      <b>Como o tempo é calculado:</b> para cada chamado, somamos os dias que ele passou na fase de <b>Identificação do problema</b> e na de <b>Desenvolvimento da solução</b> (as fases de trabalho ativo). A barra mostra a <b>média desses dias</b> entre os chamados de cada bot.
+      Só entram bots com <b>3 chamados ou mais</b>, para a média ser estatisticamente confiável — um único chamado muito longo distorceria o número. Quanto maior a barra, mais tempo aquele bot leva, em média, para ter a manutenção resolvida.</div></div></div>`;
   document.getElementById('rpage-tempo').innerHTML = t;
 
   // Sub-aba: Lista paginada de chamados com busca
@@ -1932,13 +2197,17 @@ function analiseGov(){
       texto:`A fonte com mais ações em aberto é <b>${topBacklog[0]}</b>, com ${topBacklog[1]} ${topBacklog[1]===1?'ação':'ações'} (em andamento ou backlog).`});
   }
 
-  // 3. Concentração de ações abertas por responsável
-  const abertasPorResp = count(A.filter(a=>a.resp && a.sc!=='done' && a.sc!=='cancel'), a=>a.resp);
+  // 3. Concentração de ações abertas por responsável (só equipe CoE, igual ao gráfico)
+  const abertasPorResp = {};
+  A.filter(a=>a.resp && a.sc!=='done' && a.sc!=='cancel').forEach(a=>{
+    const nome = coeNomePadrao(a.resp);
+    if(nome) abertasPorResp[nome] = (abertasPorResp[nome]||0)+1;
+  });
   const totalAbertas = Object.values(abertasPorResp).reduce((s,v)=>s+v,0);
   const topResp = topEntry(abertasPorResp);
   if(topResp && totalAbertas>0){
     ins.push({tipo: topResp[1]/totalAbertas>0.3?'warn':'neu', ico:'@',
-      texto:`<b>${topResp[0]}</b> concentra ${topResp[1]} ações abertas (${pct(topResp[1],totalAbertas)}% do total em aberto) — ${topResp[1]/totalAbertas>0.3?'possível gargalo de capacidade':'maior carga individual'}.`});
+      texto:`Na equipe CoE, <b>${topResp[0]}</b> concentra ${topResp[1]} ações abertas (${pct(topResp[1],totalAbertas)}% do total da equipe) — ${topResp[1]/totalAbertas>0.3?'possível gargalo de capacidade':'maior carga individual'}.`});
   }
 
   // 4. Canceladas (sinaliza se for relevante)
@@ -1958,24 +2227,40 @@ function analiseProj(){
   const ins = [];
   const exec = P.filter(p=>p.sc==='doing').length;
   const fin = P.filter(p=>p.sc==='closing'||p.sc==='monitor').length;
-  const atrasados = P.filter(p=>p.dtFim && p.dtFim<HOJE && p.sc!=='done' && p.sc!=='cancel' && p.sc!=='monitor');
+  const atrasados = P.filter(projAtrasado);
 
   // 1. Situação geral
   ins.push({tipo:'neu', ico:'≡',
     texto:`<b>${tot} projetos</b> no recorte: ${exec} em execução, ${fin} em fase final (encerramento/monitoramento).`});
 
-  // 2. Atrasados e em qual fase
+  // 2. Atrasados — lista NOMINAL de quais são (ordenados por dias de atraso)
   if(atrasados.length>0){
-    const porFase = {};
-    atrasados.forEach(p=>{ const f=projFase(p.statusRaw); const lbl=f?`fase ${f} (${p.statusRaw})`:p.statusRaw; porFase[lbl]=(porFase[lbl]||0)+1; });
-    const detalhe = Object.entries(porFase).sort((a,b)=>b[1]-a[1]).map(([f,n])=>`${n} em ${f}`).join(', ');
+    const comDias = atrasados.map(p => ({
+      titulo: p.titulo,
+      dias: Math.round((HOJE - p.dtFim)/86400000),
+      fase: projFase(p.statusRaw), statusRaw: p.statusRaw
+    })).sort((a,b)=>b.dias-a.dias);
+    const lista = comDias.map(p => `<b>${p.titulo}</b> (${p.dias}d, ${p.statusRaw})`).join('; ');
     ins.push({tipo:'neg', ico:'!',
-      texto:`<b>${atrasados.length} ${atrasados.length===1?'projeto atrasado':'projetos atrasados'}</b> (prazo vencido): ${detalhe}.`});
+      texto:`<b>${atrasados.length} ${atrasados.length===1?'projeto atrasado':'projetos atrasados'}</b>: ${lista}.`});
   } else {
     ins.push({tipo:'pos', ico:'✓', texto:`Nenhum projeto com prazo vencido neste recorte.`});
   }
 
-  // 3. Frente com mais projetos
+  // 3. Projeto mais crítico pelo score de risco automático
+  const comRisco = P.map(p => ({p, r:projRisco(p)})).filter(x=>x.r.score>0).sort((a,b)=>b.r.score-a.r.score);
+  if(comRisco.length){
+    const top = comRisco[0];
+    ins.push({tipo: top.r.nivel==='alto'?'neg':'warn', ico:'▲',
+      texto:`Projeto mais crítico: <b>${top.p.titulo}</b> (risco ${top.r.nivel}, score ${top.r.score}) — ${top.r.motivos.join(', ')}.`});
+    const altos = comRisco.filter(x=>x.r.nivel==='alto').length;
+    if(altos>1){
+      ins.push({tipo:'warn', ico:'▲',
+        texto:`<b>${altos} projetos</b> estão em risco alto e merecem atenção prioritária.`});
+    }
+  }
+
+  // 4. Frente com mais projetos
   const porFrente = count(P.filter(p=>p.frente), p=>p.frente);
   const topFr = topEntry(porFrente);
   if(topFr){
@@ -1983,7 +2268,7 @@ function analiseProj(){
       texto:`A frente com mais projetos é <b>${topFr[0]}</b> (${topFr[1]}).`});
   }
 
-  // 4. Projetos não iniciados
+  // 5. Projetos não iniciados
   const naoIni = P.filter(p=>p.sc==='todo').length;
   if(naoIni>0){
     ins.push({tipo: pct(naoIni,tot)>30?'warn':'neu', ico:'○',

@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>SYNAPSE · Governança COE</title>
+<title>SYNAPSE · CoE Projetos e Automações</title>
 <link rel="shortcut icon" href="synapse_logo.png" type="image/x-icon">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -187,6 +187,21 @@ select,input[type=text]{font-family:'Inter',sans-serif;font-size:12px;padding:5p
 .sbar-leg{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--ink3)}
 .sbar-leg-dot{width:9px;height:9px;border-radius:2px;flex-shrink:0}
 @media(max-width:860px){.sbar-lbl{width:150px;min-width:150px;max-width:150px}.sbar-nums{display:none}}
+
+/* Barras clusterizadas: grupos (ex: fases) com várias barras finas (ex: problemas) */
+.clu-group{margin-bottom:16px}
+.clu-group-title{font-size:11px;font-weight:600;color:var(--ink2);margin-bottom:8px;display:flex;align-items:center;gap:7px}
+.clu-group-title .clu-gt-dot{width:9px;height:9px;border-radius:2px;flex-shrink:0}
+.clu-group-title .clu-gt-tot{margin-left:auto;font-size:10px;color:var(--ink4);font-weight:500}
+.clu-bar-row{display:flex;align-items:center;gap:10px;padding:3px 0 3px 17px;font-size:11.5px}
+.clu-bar-lbl{flex-shrink:0;color:var(--ink3);width:250px;min-width:250px;max-width:250px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.clu-bar-track{flex:1;height:6px;background:var(--rule2);border-radius:3px;overflow:hidden}
+.clu-bar-fill{height:100%;border-radius:3px}
+.clu-bar-val{flex-shrink:0;min-width:28px;text-align:right;font-size:11.5px;font-weight:600;color:var(--ink2)}
+.clu-legend{display:flex;flex-wrap:wrap;gap:14px;margin-top:6px;padding-top:12px;border-top:1px solid var(--rule)}
+.clu-leg{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--ink3)}
+.clu-leg-dot{width:9px;height:9px;border-radius:2px;flex-shrink:0}
+@media(max-width:860px){.clu-bar-lbl{width:130px;min-width:130px;max-width:130px}}
 .vchart{display:flex;align-items:flex-end;gap:3px;height:120px;border-bottom:1px solid var(--rule2);margin-bottom:8px}
 .vcol{display:flex;flex-direction:column;align-items:center;flex:1;height:100%;justify-content:flex-end}
 .vcol-bars{position:relative;width:100%;flex:1;display:flex;align-items:flex-end}
@@ -226,7 +241,7 @@ select,input[type=text]{font-family:'Inter',sans-serif;font-size:12px;padding:5p
 
 <header class="topbar">
   <div class="tb-left">
-    <div class="wordmark">SYNAPSE <span>Governança COE</span></div>
+    <div class="wordmark">SYNAPSE <span>CoE Projetos e Automações</span></div>
     <div class="tb-sync" id="sync-lbl">Nenhum arquivo carregado</div>
   </div>
   <div class="tb-right">
