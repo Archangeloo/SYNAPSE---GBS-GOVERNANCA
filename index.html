@@ -37,7 +37,7 @@
 
     <!-- Filtro de período (aparece após o primeiro "Gerar dashboard") -->
     <div class="date-filter" id="date-filter" style="display: none">
-      <i class="ti ti-calendar" style="font-size: 13px; color: rgba(255,255,255,0.6)"></i>
+      <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.6)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
       <button class="df-chip" id="dfc-month"   onclick="setQuickRange('month')">Este mês</button>
       <button class="df-chip" id="dfc-quarter" onclick="setQuickRange('quarter')">Trimestre</button>
       <button class="df-chip" id="dfc-year"    onclick="setQuickRange('year')">Este ano</button>
@@ -46,12 +46,12 @@
       <span style="color: rgba(255,255,255,0.5); font-size: 12px">→</span>
       <input type="date" id="df-to"   class="df-input" onchange="applyDateFilter()" title="Data final">
       <button class="df-clear" onclick="clearDateFilter()" title="Limpar período">
-        <i class="ti ti-x" style="font-size: 11px"></i>
+        <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
       </button>
     </div>
 
     <button class="btn" onclick="setNav('upload')">
-      <i class="ti ti-upload" style="font-size: 12px"></i>
+      <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
       Atualizar bases
     </button>
 
@@ -80,7 +80,11 @@
       <!-- Card: Base Governança -->
       <div class="uc" id="uc-gov">
         <div class="uc-head">
-          <div class="uc-ico"><i class="ti ti-database"></i></div>
+          <div class="uc-ico">
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/>
+            </svg>
+          </div>
           <div>
             <div class="uc-title">Base Governança</div>
             <div class="uc-sub">Pipefy Melhorias · Projetos · Analytics</div>
@@ -92,12 +96,16 @@
           ondragleave="dzL('dz-gov')"
           ondrop="dzD(event, 'gov')">
           <input type="file" id="fi-gov" accept=".xlsx,.xls" onchange="hf(this, 'gov')">
-          <div class="dz-ico"><i class="ti ti-file-spreadsheet"></i></div>
+          <div class="dz-ico">
+            <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="16" y2="17"/><line x1="10" y1="9" x2="8" y2="9"/>
+            </svg>
+          </div>
           <div class="dz-lbl">Clique ou arraste</div>
           <div class="dz-sub">Base_Governanca_GBS · .xlsx</div>
         </div>
         <div class="fok" id="ok-gov">
-          <i class="ti ti-check"></i>
+          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
           <span id="fn-gov">—</span>
         </div>
         <div class="tags" id="tg-gov"></div>
@@ -106,7 +114,11 @@
       <!-- Card: Chamados RPA -->
       <div class="uc" id="uc-rpa">
         <div class="uc-head">
-          <div class="uc-ico"><i class="ti ti-robot"></i></div>
+          <div class="uc-ico">
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="3" y="11" width="18" height="10" rx="2"/><circle cx="12" cy="5" r="2"/><line x1="12" y1="7" x2="12" y2="11"/><circle cx="8" cy="16" r="1" fill="currentColor"/><circle cx="16" cy="16" r="1" fill="currentColor"/>
+            </svg>
+          </div>
           <div>
             <div class="uc-title">Chamados RPA</div>
             <div class="uc-sub">relatório_completo · export Pipefy</div>
@@ -118,12 +130,16 @@
           ondragleave="dzL('dz-rpa')"
           ondrop="dzD(event, 'rpa')">
           <input type="file" id="fi-rpa" accept=".xlsx,.xls" onchange="hf(this, 'rpa')">
-          <div class="dz-ico"><i class="ti ti-file-spreadsheet"></i></div>
+          <div class="dz-ico">
+            <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="16" y2="17"/><line x1="10" y1="9" x2="8" y2="9"/>
+            </svg>
+          </div>
           <div class="dz-lbl">Clique ou arraste</div>
           <div class="dz-sub">relatório_completo · .xlsx</div>
         </div>
         <div class="fok" id="ok-rpa">
-          <i class="ti ti-check"></i>
+          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
           <span id="fn-rpa">—</span>
         </div>
         <div class="tags" id="tg-rpa"></div>
@@ -137,7 +153,7 @@
         <strong style="color: var(--ink)">0 de 2</strong> bases carregadas
       </div>
       <button class="btn primary" id="btn-gen" onclick="generate()" disabled>
-        <i class="ti ti-arrow-right" style="font-size: 12px"></i>
+        <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
         Gerar dashboard
       </button>
     </div>
