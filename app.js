@@ -147,6 +147,35 @@ function applyDate(arr){
    ============================================================ */
 
 const MESES = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
+
+/* SVG inline — não depende de font loading, funciona em HTML dinâmico */
+const _SVG = {
+  list:    '<line x1="9" y1="6" x2="20" y2="6"/><line x1="9" y1="12" x2="20" y2="12"/><line x1="9" y1="18" x2="20" y2="18"/><circle cx="5" cy="6" r="1" fill="currentColor"/><circle cx="5" cy="12" r="1" fill="currentColor"/><circle cx="5" cy="18" r="1" fill="currentColor"/>',
+  check:   '<polyline points="20 6 9 17 4 12"/>',
+  clock:   '<circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 15"/>',
+  stack:   '<polyline points="12 4 4 8 12 12 20 8 12 4"/><polyline points="4 12 12 16 20 12"/><polyline points="4 16 12 20 20 16"/>',
+  dots:    '<circle cx="5" cy="12" r="1.5" fill="currentColor"/><circle cx="12" cy="12" r="1.5" fill="currentColor"/><circle cx="19" cy="12" r="1.5" fill="currentColor"/>',
+  folders: '<path d="M10 4H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-4l-2-3z"/>',
+  play:    '<polygon points="5 3 19 12 5 21 5 3" fill="currentColor" opacity=".35"/><polygon points="5 3 19 12 5 21 5 3"/>',
+  flag:    '<path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/>',
+  flame:   '<path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z"/>',
+  message: '<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><circle cx="9" cy="11" r=".8" fill="currentColor"/><circle cx="13" cy="11" r=".8" fill="currentColor"/>',
+  lock:    '<rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>',
+  branch:  '<line x1="6" y1="3" x2="6" y2="15"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/>',
+  chartbar:'<line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/><line x1="2" y1="20" x2="22" y2="20"/>',
+  minus:   '<line x1="5" y1="12" x2="19" y2="12"/>',
+  ticket:  '<path d="M2 9a3 3 0 0 1 0 6v2a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-2a3 3 0 0 1 0-6V7a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2z"/>',
+  alert:   '<circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><circle cx="12" cy="16" r=".8" fill="currentColor"/>',
+  refresh: '<polyline points="1 4 1 10 7 10"/><polyline points="23 20 23 14 17 14"/><path d="M20.49 9A9 9 0 0 0 5.64 5.64L1 10m22 4-4.64 4.36A9 9 0 0 1 3.51 15"/>',
+  robot:   '<rect x="3" y="11" width="18" height="10" rx="2"/><circle cx="12" cy="5" r="2"/><line x1="12" y1="7" x2="12" y2="11"/><circle cx="8" cy="16" r="1" fill="currentColor"/><circle cx="16" cy="16" r="1" fill="currentColor"/>',
+  rocket:  '<path d="M4.5 16.5c-1.5 1.26-2 5-2 5s3.74-.5 5-2c.71-.84.7-2.13-.09-2.91a2.18 2.18 0 0 0-2.91-.09z"/><path d="m12 15-3-3a22 22 0 0 1 2-3.95A12.88 12.88 0 0 1 22 2c0 2.72-.78 7.5-6 11a22.35 22.35 0 0 1-4 2z"/><path d="M9 12H4s.55-3.03 2-4c1.62-1.08 5 0 5 0"/><path d="M12 15v5s3.03-.55 4-2c1.08-1.62 0-5 0-5"/>',
+  code:    '<polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/>',
+};
+function kpiIcon(name){
+  const p = _SVG[name] || '';
+  if(!p) return '';
+  return `<svg class="kico" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${p}</svg>`;
+}
 const DOW   = ['Seg','Ter','Qua','Qui','Sex','Sáb','Dom'];
 const HOJE  = new Date(); // data atual no momento do carregamento da página
 
@@ -171,38 +200,69 @@ const HOJE  = new Date(); // data atual no momento do carregamento da página
  *   other   = qualquer valor não reconhecido
  */
 function statusClass(s){
-  // remove prefixo numérico de ordenação, se houver (ex: "6. Encerramento" → "encerramento",
-  // "3 - Planejamento" → "planejamento"). Algumas versões da planilha numeram as fases.
-  const t = (s||'').toString().trim().toLowerCase().replace(/^\s*\d+\s*[.\-)]\s*/, '');
-  if(['suporte pipefy','encaminhado ao fornecedor','pipefy'].includes(t)) return 'vendor';
-  if(['concluído','concluido','finalizados','finalizado','tema concluído.','tema concluído'].includes(t)) return 'done';
-  if(['em andamento','em execução','execução','execucao','desenvolvimento','em validação','em validacao','aguardando validação','aguardando validacao'].includes(t)) return 'doing';
-  if(['encerramento'].includes(t)) return 'closing';
-  if(['monitoramento'].includes(t)) return 'monitor';
-  if(['planejamento','diagnóstico','diagnostico','não iniciado','nao iniciado','backlog'].includes(t)) return 'todo';
-  if(['bloqueado','pausado'].includes(t)) return 'blocked';
-  if(['cancelado'].includes(t)) return 'cancel';
+  // Remove prefixo numérico de ordenação, se houver.
+  // Ex: "6. Encerramento" → "encerramento", "3 - Planejamento" → "planejamento"
+  const t = (s || '').toString().trim().toLowerCase().replace(/^\s*\d+\s*[.\-)]\s*/, '');
+
+  if (['suporte pipefy', 'encaminhado ao fornecedor', 'pipefy'].includes(t))
+    return 'vendor';
+
+  if (['concluído', 'concluido', 'finalizados', 'finalizado', 'tema concluído.', 'tema concluído'].includes(t))
+    return 'done';
+
+  if (['em andamento', 'em execução', 'execução', 'execucao', 'desenvolvimento',
+       'em validação', 'em validacao', 'aguardando validação', 'aguardando validacao'].includes(t))
+    return 'doing';
+
+  if (['encerramento'].includes(t))  return 'closing';
+  if (['monitoramento'].includes(t)) return 'monitor';
+
+  if (['planejamento', 'diagnóstico', 'diagnostico', 'não iniciado', 'nao iniciado', 'backlog'].includes(t))
+    return 'todo';
+
+  if (['bloqueado', 'pausado'].includes(t))  return 'blocked';
+  if (['cancelado'].includes(t))             return 'cancel';
+
   return 'other';
 }
 
 // Rótulos em português para exibição na interface
 const STATUS_PT = {
-  done:'Concluído', doing:'Em andamento', closing:'Em encerramento',
-  monitor:'Monitoramento', todo:'Não iniciado', blocked:'Bloqueado',
-  cancel:'Cancelado', vendor:'Suporte Pipefy', other:'Outro'
+  done:    'Concluído',
+  doing:   'Em andamento',
+  closing: 'Em encerramento',
+  monitor: 'Monitoramento',
+  todo:    'Não iniciado',
+  blocked: 'Bloqueado',
+  cancel:  'Cancelado',
+  vendor:  'Suporte Pipefy',
+  other:   'Outro'
 };
 
 // Classe CSS do badge de cada status (ver CSS: .badge.ok, .badge.info, etc.)
 const STATUS_BADGE = {
-  done:'ok', doing:'info', closing:'warn', monitor:'info',
-  todo:'neu', blocked:'warn', cancel:'red', vendor:'blue', other:'neu'
+  done:    'ok',
+  doing:   'info',
+  closing: 'warn',
+  monitor: 'info',
+  todo:    'neu',
+  blocked: 'warn',
+  cancel:  'red',
+  vendor:  'blue',
+  other:   'neu'
 };
 
-// Cor pura (para gráficos SVG que não usam classe CSS)
+// Cor pura para gráficos — paleta Saint-Gobain
 const STATUS_COLOR = {
-  done:'var(--ok)', doing:'var(--info)', closing:'#c08438',
-  monitor:'#5a8fd9', todo:'var(--neu)', blocked:'var(--warn)',
-  cancel:'var(--err)', vendor:'#7c5cbf', other:'var(--ink4)'
+  done:    '#4DB1B3',  // teal        — concluído
+  doing:   '#0195D6',  // azul vivo   — em andamento
+  closing: '#E66407',  // laranja     — em encerramento
+  monitor: '#0F5299',  // azul marca  — monitoramento
+  todo:    '#9CA3AF',  // cinza       — não iniciado
+  blocked: '#E83430',  // vermelho    — bloqueado
+  cancel:  '#C5284C',  // rosa-verm.  — cancelado
+  vendor:  '#8B6FD4',  // roxo        — suporte Pipefy
+  other:   '#9CA3AF'   // cinza
 };
 
 /*
@@ -340,7 +400,7 @@ function projRisco(p){
  * Funciona togglando a classe 'active' no item de nav e na section correspondente.
  */
 function setNav(id){
-  ['upload','gov','proj','mel','rpa','bots','ana'].forEach(n => {
+  ['upload','gov','proj','mel','rpa','ana'].forEach(n => {
     const ni = document.getElementById('nav-'+n);
     const pg = document.getElementById('page-'+n);
     if(ni) ni.classList.toggle('active', n === id);
@@ -349,8 +409,8 @@ function setNav(id){
 }
 
 /*
- * Alterna entre as sub-abas da aba Chamados RPA
- * (Visão geral, Top bots, Tipos de problema, Tempo de resolução, Chamados)
+ * Alterna entre as sub-abas da aba RPA & Bots
+ * (Visão geral, Top bots, Tipos de problema, Tempo de resolução, Chamados, Inventário de bots)
  */
 function rpaPage(id){
   document.querySelectorAll('#page-rpa .pip-sub-page').forEach(p => p.classList.remove('active'));
@@ -412,11 +472,25 @@ function showOk(type, name, wb){
   if(type === 'gov'){
     const found = wb.SheetNames;
     const want = ['Pipefy_Melhorias','Projetos','Analytics','Inventario_RPA'];
-    tg.innerHTML = '<b>Abas lidas:</b> ' + want.map(w => {
-      // busca insensível a maiúsculas, underlines e espaços
+    // mostra abas encontradas
+    let html = '<b>Abas lidas:</b> ' + want.map(w => {
       const ok = found.some(f => f.toLowerCase().replace(/[_ ]/g,'').includes(w.toLowerCase().replace(/[_ ]/g,'')));
       return `<span class="badge ${ok?'ok':'warn'}" style="margin:2px">${w}${ok?'':' (?)'}</span>`;
     }).join('');
+    // diagnóstico de colunas da aba Pipefy_Melhorias — ajuda a identificar o nome correto da coluna de data
+    const sMel = found.find(f => f.toLowerCase().replace(/[_ ]/g,'').includes('pipefymelhorias') || f.toLowerCase().replace(/[_ ]/g,'').includes('melhorias'));
+    if(sMel){
+      const rows = XLSX.utils.sheet_to_json(wb.Sheets[sMel], {defval:''});
+      if(rows.length){
+        const cols = Object.keys(rows[0]);
+        const dateCols = cols.filter(c => /data|criado|created|inicio|abertura|planejamento|conclus/i.test(c));
+        html += `<br><details style="margin-top:6px"><summary style="font-size:10px;color:var(--ink3);cursor:pointer">🔍 Colunas de data encontradas em Pipefy_Melhorias (clique)</summary>
+          <div style="font-size:10px;color:var(--ink2);margin-top:4px;line-height:2">
+            ${dateCols.length ? dateCols.map(c => `<code style="background:var(--paper);padding:1px 4px;border-radius:3px">${c}</code>`).join('  ') : '<i>Nenhuma coluna com "data", "criado", "início" ou "conclusão" encontrada.</i>'}
+          </div></details>`;
+      }
+    }
+    tg.innerHTML = html;
   } else {
     // para o relatório de RPA, mostra nome da aba e total de chamados
     const ws = wb.Sheets[wb.SheetNames[0]];
@@ -545,13 +619,12 @@ function parseGov(){
     champion: String(get(r, ['Champion'])).trim(),
     complex:  String(get(r, ['Complexidade'])).trim(),
     tipo:     String(get(r, ['TipoMelhoriaAjuste'])).trim(),
-    // DATAS USADAS NO FILTRO DE PERÍODO:
-    //   dtInicio = início do desenvolvimento; dtFim = conclusão real do desenvolvimento.
-    // Uma melhoria entra no recorte se esteve ATIVA no período (ver applyDate):
-    // começou, terminou, ou estava em curso atravessando o intervalo. Assim melhorias
-    // em andamento (com início mas sem fim) também aparecem no recorte.
+    // FILTRO DE PERÍODO — uma coluna por campo, sem fallback:
+    //   dtInicio → DataInicioDesenvolvimento
+    //   dtFim    → DataRealEstimadaConclusaoValidacaoChampion
+    // Sem nenhuma das duas = backlog não iniciado → incluído sempre (ver buildMel).
     dtInicio: toDate(get(r, ['DataInicioDesenvolvimento'])),
-    dtFim:    toDate(get(r, ['DataConclusaoRealDesenvolvimento'])),
+    dtFim:    toDate(get(r, ['DataRealEstimadaConclusaoValidacaoChampion'])),
     horas:    get(r, ['QtdHorasEstimadas'])
   })).filter(r => r.num !== '' || r.atividade) : []; // descarta linhas totalmente vazias
 
@@ -578,7 +651,7 @@ function parseGov(){
         focal:      String(get(r, ['PontoFocal'])).trim(),
         statusRaw:  String(get(r, ['Status'])).trim(),
         sc:         statusClass(get(r, ['Status'])),
-        // PrazoConclusão é o nome novo; fallbacks para versões anteriores da planilha
+        // FILTRO DE PERÍODO — referência: PrazoConclusão (não há data de início na planilha)
         dtFim:      toDate(get(r, ['PrazoConclusão','PrazoConclusao','DataFechamento'])),
         proximos:   String(get(r, ['ProximosPassos'])).trim(),
         // Campos ricos — preenchidos na planilha Universal, aparecem ao expandir o projeto na lista
@@ -627,10 +700,9 @@ function parseGov(){
     prio:     (()=>{ const m = String(get(r,['Prioridade'])).match(/\d+/); return m ? +m[0] : null; })(),
     frente:   String(get(r, ['Frente'])).trim(),
     resp:     String(get(r, ['Responsavel'])).trim(),
-    // DATA USADA NO FILTRO DE PERÍODO: DataAbertura (início do desenvolvimento)
-    // Se não tiver abertura, usa DataFechamento (término da validação)
-    // ~49 de 161 atividades têm DataAbertura preenchida; 36 têm DataFechamento
-    dtAbre:   toDate(get(r, ['DataAbertura'])),
+    // dtInicio = DataAbertura (início); dtFim = DataFechamento (conclusão da validação)
+    // Com dtInicio definido, applyDate usa activeInRange — inclui atividades em curso no período.
+    dtInicio: toDate(get(r, ['DataAbertura'])),
     dtFim:    toDate(get(r, ['DataFechamento']))
   })).filter(r => r.titulo) : []; // descarta linhas sem título (ex: linhas fantasma da origem)
 }
@@ -687,9 +759,12 @@ function parseRPA(){
       // cada responsável individualmente.
       responsaveis: String(get(r, ['Responsáveis','Responsável']))
         .split(',').map(s=>s.trim()).filter(Boolean),
-      criado, mes: ym(criado),
+      criado,
+      dtInicio: criado,                            // Criado em → início do intervalo
+      dtFim:    toDate(get(r, ['Finalizado em'])), // Finalizado em → fim do intervalo
+      mes: ym(criado),
       dow: criado ? (criado.getDay() + 6) % 7 : -1,
-      finalizado: toDate(get(r, ['Finalizado em'])),
+      finalizado: toDate(get(r, ['Finalizado em'])), // alias para display
       vencido:    venc,
       tIdent:  parseFloat(get(r, ['Tempo total na fase Identificação do problema (dias)']))||null,
       tDesenv: parseFloat(get(r, ['Tempo total na fase Desenvolvimento da solução (dias)']))||null,
@@ -781,71 +856,227 @@ function parseInv(){
 
 
 /* ============================================================
-   COMPONENTES DE GRÁFICO (SVG puro, sem bibliotecas externas)
+   GRÁFICOS — Chart.js
    ============================================================
-   Todos os gráficos são gerados como strings HTML/SVG e injetados
-   diretamente via innerHTML. Isso mantém zero dependências externas
-   (além do SheetJS para leitura de Excel).
+   Padrão de uso:
+     1. Funções de gráfico retornam um <canvas id="..."> como
+        parte da string HTML e registram o config em _pendingCharts.
+     2. Após cada injeção via innerHTML, flushCharts() instancia
+        todos os gráficos pendentes.
+     3. Instâncias anteriores são destruídas antes de recriar
+        (evita o erro "Canvas already in use").
    ============================================================ */
 
+// Fila de configurações aguardando inicialização após injeção de HTML
+let _pendingCharts = [];
+
+// Instâncias Chart.js ativas, indexadas pelo id do canvas
+const _chartInstances = {};
+
+// Contador para IDs únicos de canvas por ciclo de render
+let _chartSeq = 0;
+function _cid(prefix) { return `ch-${prefix}-${++_chartSeq}`; }
+
 /*
- * donut(data, opts) — gráfico de rosca (donut chart)
- * data: array de { label, value, color }
- *
- * Como funciona o SVG:
- *   - Usa <circle> com stroke-dasharray para desenhar cada segmento
- *   - stroke-dasharray="X Y" onde X = comprimento do arco, Y = espaço restante
- *   - stroke-dashoffset desloca o início de cada segmento para continuar onde o anterior terminou
- *   - O círculo começa no ponto direito (3h); rotate(-90) no transform move para 12h
+ * flushCharts() — instancia todos os gráficos pendentes.
+ * Chamar logo após cada atribuição de innerHTML.
  */
-function donut(data, opts={}){
-  const total = data.reduce((s,d) => s+d.value, 0);
-  if(!total) return '<div style="font-size:12px;color:var(--ink4)">Sem dados</div>';
-  const R=54, C=2*Math.PI*R, sw=22; // R=raio, C=circunferência, sw=espessura do anel
-  let off = 0; // offset acumulado para posicionar cada segmento
-  const segs = data.filter(d => d.value > 0).map(d => {
-    const frac = d.value/total, len = frac*C; // comprimento do arco desse segmento
-    const s = `<circle r="${R}" cx="64" cy="64" fill="none" stroke="${d.color}" stroke-width="${sw}"
-      stroke-dasharray="${len} ${C-len}" stroke-dashoffset="${-off}" transform="rotate(-90 64 64)"/>`;
-    off += len;
-    return s;
-  }).join('');
-  const legend = data.filter(d => d.value > 0).map(d =>
-    `<div class="dleg"><span class="dleg-dot" style="background:${d.color}"></span>${d.label}
-     <b>${d.value}</b><span class="dpct">${pct(d.value,total)}%</span></div>`).join('');
-  return `<div class="donut-wrap">
-    <svg width="128" height="128" viewBox="0 0 128 128" style="flex-shrink:0">${segs}
-      <text x="64" y="60" text-anchor="middle" font-family="Syne" font-size="26" font-weight="600" fill="var(--ink)">${total}</text>
-      <text x="64" y="78" text-anchor="middle" font-size="9" fill="var(--ink4)" letter-spacing="1">TOTAL</text>
-    </svg>
-    <div class="donut-legend">${legend}</div></div>`;
+function flushCharts() {
+  _pendingCharts.forEach(({ id, config }) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    if (_chartInstances[id]) _chartInstances[id].destroy();
+    _chartInstances[id] = new Chart(el, config);
+  });
+  _pendingCharts = [];
+}
+
+// Defaults globais do Chart.js
+Chart.defaults.font.family = "'Inter', system-ui, sans-serif";
+Chart.defaults.font.size   = 11;
+Chart.defaults.color       = '#6B7280';
+
+
+// Paleta Saint-Gobain em hex (CSS vars não funcionam dentro do Chart.js)
+const C = {
+  brand:  '#0F5299',  // azul escuro
+  accent: '#0195D6',  // azul vivo
+  teal:   '#4DB1B3',  // teal
+  orange: '#E66407',  // laranja
+  red:    '#E83430',  // vermelho
+  ok:     '#0d8f91',  // teal escuro (texto ok)
+  warn:   '#C55800',  // laranja escuro (texto warn)
+  err:    '#C5284C',  // rosa-vermelho
+  ink:    '#111827',
+  ink2:   '#374151',
+  ink3:   '#6B7280',
+  ink4:   '#9CA3AF',
+  rule:   'rgba(15,82,153,0.07)',
+};
+
+// Resolve variáveis CSS do tema para hex — necessário para passar cores ao Chart.js
+function resolveColor(c) {
+  const map = {
+    'var(--brand)':  C.brand,
+    'var(--accent)': C.accent,
+    'var(--ok)':     C.ok,
+    'var(--warn)':   C.warn,
+    'var(--err)':    C.err,
+    'var(--info)':   C.brand,
+    'var(--neu)':    '#9CA3AF',
+    'var(--ink)':    C.ink,
+    'var(--ink2)':   C.ink2,
+    'var(--ink3)':   C.ink3,
+    'var(--ink4)':   C.ink4,
+  };
+  return map[c] || c;
 }
 
 /*
- * hbars(entries, opts) — barras horizontais simples
- * entries: array de [label, value]
- * opts: { max (máx de itens), lw (largura mínima do label), tot (total para % lateral), color }
- * A largura de cada barra é proporcional ao maior valor (sempre 100% para o topo).
+ * donut(data, opts) — gráfico de rosca via Chart.js
+ * data: array de { label, value, color }
  */
-function hbars(entries, opts={}){
-  const items = entries.slice(0, opts.max||10);
-  const mx = items.length ? Math.max(...items.map(e => e[1])) : 1;
-  const lw = opts.lw || 90;
-  // fixedLabel: quando true, o label tem largura FIXA (não só mínima),
-  // garantindo que todas as barras comecem exatamente no mesmo ponto.
-  // O texto longo é truncado com reticências.
-  const labelStyle = opts.fixedLabel
-    ? `width:${lw}px;min-width:${lw}px;max-width:${lw}px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap`
-    : `min-width:${lw}px`;
-  const h = items.map(([l,v]) => {
-    const w = Math.round(v/mx*100);
-    const p = opts.tot ? `<span class="hbar-pct">${pct(v,opts.tot)}%</span>` : '';
-    const col = opts.color || 'var(--ink)';
-    return `<div class="hbar-row"><span class="hbar-lbl" style="${labelStyle}" title="${String(l).replace(/"/g,'')}">${l}</span>
-      <div class="hbar-track"><div class="hbar-fill" style="width:${w}%;background:${col}"></div></div>
-      <span class="hbar-val">${v}</span>${p}</div>`;
-  }).join('');
-  return h || '<div style="font-size:12px;color:var(--ink4)">Sem dados</div>';
+function donut(data, opts = {}) {
+  const filtered = data.filter(d => d.value > 0);
+  const total    = filtered.reduce((s, d) => s + d.value, 0);
+  if (!total) return '<div style="font-size:12px;color:var(--ink4)">Sem dados</div>';
+
+  const id = _cid('donut');
+
+  _pendingCharts.push({
+    id,
+    config: {
+      type: 'doughnut',
+      data: {
+        labels: filtered.map(d => d.label),
+        datasets: [{
+          data:            filtered.map(d => d.value),
+          backgroundColor: filtered.map(d => resolveColor(d.color)),
+          borderWidth:     0,
+          hoverOffset:     4,
+        }]
+      },
+      options: {
+        cutout:     '68%',
+        responsive: false,
+        animation:  { duration: 400 },
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            callbacks: {
+              label: ctx => ` ${ctx.label}: ${ctx.parsed}  (${pct(ctx.parsed, total)}%)`
+            }
+          }
+        }
+      }
+    }
+  });
+
+  const legend = filtered.map(d =>
+    `<div class="dleg">
+      <span class="dleg-dot" style="background:${d.color}"></span>
+      ${d.label}
+      <b>${d.value}</b>
+      <span class="dpct">${pct(d.value, total)}%</span>
+    </div>`
+  ).join('');
+
+  return `<div class="donut-wrap">
+    <div style="position:relative;width:130px;height:130px;flex-shrink:0">
+      <canvas id="${id}" width="130" height="130"></canvas>
+      <div style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;pointer-events:none">
+        <div style="font-family:'Syne',sans-serif;font-size:26px;font-weight:600;color:var(--ink);line-height:1">${total}</div>
+        <div style="font-size:9px;color:var(--ink4);letter-spacing:1px;margin-top:2px">TOTAL</div>
+      </div>
+    </div>
+    <div class="donut-legend">${legend}</div>
+  </div>`;
+}
+
+/*
+ * hbars(entries, opts) — barras horizontais via Chart.js
+ * entries: array de [label, value]
+ * opts: { max, tot, color, showTotal, totLabel }
+ * lw e fixedLabel são ignorados — o Chart.js gerencia o tamanho dos labels.
+ */
+function hbars(entries, opts = {}) {
+  const items = entries.slice(0, opts.max || 10);
+  if (!items.length) return '<div style="font-size:12px;color:var(--ink4)">Sem dados</div>';
+
+  const id  = _cid('hbar');
+  const col = resolveColor(opts.color || 'var(--accent)');
+  const tot = opts.tot || null;
+
+  _pendingCharts.push({
+    id,
+    config: {
+      type: 'bar',
+      data: {
+        labels: items.map(([l]) => l),
+        datasets: [{
+          data:            items.map(([, v]) => v),
+          backgroundColor: col,
+          borderRadius:    3,
+          borderSkipped:   false,
+        }]
+      },
+      options: {
+        indexAxis: 'y',
+        responsive: true,
+        maintainAspectRatio: false,
+        animation: { duration: 300 },
+        plugins: {
+          legend:  { display: false },
+          tooltip: { display: false },
+        },
+        layout: {
+          padding: { right: tot ? 76 : 40 }
+        },
+        scales: {
+          x: {
+            grid:   { color: C.rule },
+            border: { display: false },
+            ticks:  { display: false }
+          },
+          y: {
+            grid:   { display: false },
+            border: { display: false },
+            ticks:  { color: C.ink2, font: { size: 11 } }
+          }
+        }
+      },
+      plugins: [{
+        id: 'hbarLabels',
+        afterDatasetsDraw(chart) {
+          const { ctx, data } = chart;
+          const meta = chart.getDatasetMeta(0);
+          ctx.save();
+          ctx.fillStyle    = C.ink2;
+          ctx.font         = `500 11px 'Inter', system-ui, sans-serif`;
+          ctx.textAlign    = 'left';
+          ctx.textBaseline = 'middle';
+          data.datasets[0].data.forEach((value, i) => {
+            const bar   = meta.data[i];
+            const label = tot
+              ? `${value}  (${pct(value, tot)}%)`
+              : String(value);
+            ctx.fillText(label, bar.x + 6, bar.y);
+          });
+          ctx.restore();
+        }
+      }]
+    }
+  });
+
+  const height = Math.max(items.length * 30 + 16, 60);
+  const header = opts.showTotal
+    ? `<div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:10px;padding-bottom:8px;border-bottom:1px solid var(--rule)">
+        <span style="font-size:11px;color:var(--ink4)">${opts.totLabel || 'Total'}</span>
+        <span style="font-family:'Syne';font-size:18px;font-weight:600;color:var(--ink)">${opts.showTotal}</span>
+      </div>`
+    : '';
+
+  return `${header}<div style="position:relative;height:${height}px"><canvas id="${id}"></canvas></div>`;
 }
 
 /*
@@ -924,61 +1155,152 @@ function clusteredBars(groups, series){
 }
 
 /*
- * lineChart(points, opts) — gráfico de linha SVG responsivo
+ * lineChart(points, opts) — gráfico de linha via Chart.js
  * points: array de { label, value }
+ * opts: { pctAxis, max, min, fmt }
  *
- * Como funciona:
- *   - Calcula coordenadas x e y para cada ponto no espaço do SVG
- *   - Desenha o caminho da linha com <path d="M... L... L...">
- *   - Desenha a área preenchida com um path fechado (vai ao fundo e volta)
- *   - Adiciona <circle> em cada ponto e <text> com o valor (quando não há sobreposição)
- *   - Labels do eixo X: exibe apenas a cada N passos para evitar sobreposição
- *     O último label é suprimido se ficar muito perto do penúltimo exibido.
- *   - Grid horizontal: 5 linhas nos valores 0%, 25%, 50%, 75%, 100%
- *
- * IMPORTANTE sobre o gráfico de evolução:
- *   O gráfico só plota meses ATÉ o mês atual (não projeta futuro).
- *   Se o último ponto está em abril/26, é porque não há conclusões registradas
- *   após abril/26 na planilha — o gráfico avança automaticamente quando a base é atualizada.
+ * NOTA: o gráfico plota apenas meses até o mês atual.
+ * Se o último ponto está em abril/26, é porque não há conclusões
+ * mais recentes na planilha — avança automaticamente ao atualizar a base.
  */
-function lineChart(points, opts={}){
-  if(points.length < 2) return '<div style="font-size:12px;color:var(--ink4)">Dados insuficientes para tendência</div>';
-  const W=opts.w||560, H=opts.h||140, pad={l:32,r:12,t:12,b:24};
-  const iw = W-pad.l-pad.r, ih = H-pad.t-pad.b;
-  const max = opts.max!=null ? opts.max : Math.max(...points.map(p=>p.value), 1);
-  const min = opts.min!=null ? opts.min : 0;
-  // funções de conversão valor→coordenada SVG
-  const x = i => pad.l + (i/(points.length-1)) * iw;
-  const y = v => pad.t + ih - ((v-min)/(max-min||1)) * ih;
-  const path = points.map((p,i) => `${i?'L':'M'}${x(i).toFixed(1)} ${y(p.value).toFixed(1)}`).join(' ');
-  const area = `${path} L${x(points.length-1)} ${pad.t+ih} L${pad.l} ${pad.t+ih} Z`;
-  const dots = points.map((p,i) => {
-    const step = Math.ceil(points.length/7);
-    // exibe o valor numérico sobre o ponto a cada 'step' posições, e sempre no último
-    const showVal = points.length<=7 || i%step===0 || i===points.length-1;
-    return `<circle cx="${x(i)}" cy="${y(p.value)}" r="3" fill="var(--surface)" stroke="var(--info)" stroke-width="2"/>
-    ${showVal ? `<text x="${x(i)}" y="${y(p.value)-9}" text-anchor="middle" font-size="9" font-weight="600" fill="var(--ink2)">${opts.fmt?opts.fmt(p.value):p.value}</text>` : ''}`;
-  }).join('');
-  const xl = points.map((p,i) => {
-    const step = Math.ceil(points.length/7);
-    const isShown = points.length<=7 || i%step===0;
-    const isLast = i === points.length-1;
-    // suprime o último label se ele ficaria muito próximo do penúltimo exibido
-    const lastShownByStep = Math.floor((points.length-1)/step)*step;
-    const lastTooClose = isLast && (points.length-1 - lastShownByStep) < step*0.6;
-    if(!isShown && !(isLast && !lastTooClose)) return '';
-    if(isLast && lastTooClose) return '';
-    return `<text x="${x(i)}" y="${H-6}" text-anchor="middle" font-size="9" fill="var(--ink4)">${p.label}</text>`;
-  }).join('');
-  const grid = [0,.25,.5,.75,1].map(f => {
-    const yy = pad.t + ih - f*ih;
-    const val = Math.round(min + f*(max-min));
-    return `<line x1="${pad.l}" y1="${yy}" x2="${W-pad.r}" y2="${yy}" stroke="var(--rule)" stroke-width="1"/>
-      <text x="${pad.l-6}" y="${yy+3}" text-anchor="end" font-size="8" fill="var(--ink4)">${opts.pctAxis?val+'%':val}</text>`;
-  }).join('');
-  return `<svg width="100%" viewBox="0 0 ${W} ${H}" style="overflow:visible">
-    ${grid}<path d="${area}" fill="var(--info)" opacity="0.08"/>
-    <path d="${path}" fill="none" stroke="var(--info)" stroke-width="2" stroke-linejoin="round"/>${dots}${xl}</svg>`;
+function lineChart(points, opts = {}) {
+  if (points.length < 2)
+    return '<div style="font-size:12px;color:var(--ink4)">Dados insuficientes para tendência</div>';
+
+  const id = _cid('line');
+
+  _pendingCharts.push({
+    id,
+    config: {
+      type: 'line',
+      data: {
+        labels: points.map(p => p.label),
+        datasets: [{
+          data:                 points.map(p => p.value),
+          borderColor:          C.brand,
+          backgroundColor:      'rgba(15,82,153,0.07)',
+          borderWidth:          2,
+          pointRadius:          3,
+          pointBackgroundColor: '#fff',
+          pointBorderColor:     C.brand,
+          pointBorderWidth:     2,
+          fill:                 true,
+          tension:              0.3,
+        }]
+      },
+      options: {
+        responsive:          true,
+        maintainAspectRatio: false,
+        animation:           { duration: 400 },
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            callbacks: {
+              label: ctx => opts.fmt
+                ? ` ${opts.fmt(ctx.parsed.y)}`
+                : ` ${ctx.parsed.y}`
+            }
+          }
+        },
+        scales: {
+          x: {
+            grid:   { display: false },
+            border: { display: false },
+            ticks:  { color: C.ink4, font: { size: 9 }, maxTicksLimit: 8 }
+          },
+          y: {
+            min:    opts.min ?? 0,
+            max:    opts.max,
+            grid:   { color: C.rule },
+            border: { display: false },
+            ticks: {
+              color:    C.ink4,
+              font:     { size: 9 },
+              callback: v => opts.pctAxis ? v + '%' : v
+            }
+          }
+        }
+      }
+    }
+  });
+
+  return `<div style="position:relative;height:160px"><canvas id="${id}"></canvas></div>`;
+}
+
+/*
+ * chartVBars(meses, porMes, porMesV) — barras verticais empilhadas de volume mensal.
+ * Dois datasets: chamados normais (azul brand) e vencidos (vermelho), empilhados.
+ * meses: array de chaves "YYYY-MM" ordenadas
+ * porMes / porMesV: objetos { "YYYY-MM": count }
+ */
+function chartVBars(meses, porMes, porMesV) {
+  const id      = _cid('vbar');
+  const labels  = meses.map(m => ymLabel(m));
+  const totais  = meses.map(m => porMes[m]  || 0);
+  const vencArr = meses.map(m => porMesV[m] || 0);
+  const normais = totais.map((t, i) => t - vencArr[i]);
+
+  _pendingCharts.push({
+    id,
+    config: {
+      type: 'bar',
+      data: {
+        labels,
+        datasets: [
+          {
+            label:           'Chamados',
+            data:            normais,
+            backgroundColor: 'rgba(15,82,153,0.25)',
+            borderRadius:    { topLeft: 3, topRight: 3 },
+            stack:           'vol',
+          },
+          {
+            label:           'Vencidos',
+            data:            vencArr,
+            backgroundColor: 'rgba(197,40,76,0.75)',
+            borderRadius:    { topLeft: 3, topRight: 3 },
+            stack:           'vol',
+          }
+        ]
+      },
+      options: {
+        responsive:          true,
+        maintainAspectRatio: false,
+        animation:           { duration: 300 },
+        plugins: {
+          legend: {
+            position: 'bottom',
+            labels: {
+              boxWidth: 10, boxHeight: 10,
+              borderRadius: 2, useBorderRadius: true,
+              color: C.ink4, padding: 14,
+            }
+          },
+          tooltip: {
+            callbacks: {
+              footer: items => `Total: ${items.reduce((s, i) => s + i.parsed.y, 0)}`
+            }
+          }
+        },
+        scales: {
+          x: {
+            stacked: true,
+            grid:    { display: false },
+            border:  { display: false },
+            ticks:   { color: C.ink4, font: { size: 9 } }
+          },
+          y: {
+            stacked: true,
+            grid:    { color: C.rule },
+            border:  { display: false },
+            ticks:   { color: C.ink4 }
+          }
+        }
+      }
+    }
+  });
+
+  return `<div style="position:relative;height:200px"><canvas id="${id}"></canvas></div>`;
 }
 
 /*
@@ -994,9 +1316,8 @@ function heatmap(matrix, rowLabels, colLabels, opts={}){
   const color = v => {
     if(!v) return 'var(--neu-bg)';
     const t = v/mx;
-    const op = (0.12 + t*0.78).toFixed(2); // opacidade de 12% a 90% conforme intensidade
-    // vermelho do tema (#c0392b aprox) com transparência — rgba funciona em todo navegador
-    return `rgba(199, 93, 93, ${op})`;
+    const op = (0.12 + t * 0.78).toFixed(2); // opacidade de 12% a 90% conforme intensidade
+    return `rgba(1, 149, 214, ${op})`; // azul accent Saint-Gobain
   };
   let html = '<table class="hm"><thead><tr><th class="rh"></th>'+colLabels.map(c=>`<th>${c}</th>`).join('')+'</tr></thead><tbody>';
   matrix.forEach((row,r) => {
@@ -1032,12 +1353,13 @@ function allActions(){
   const out = [];
   App.P.proj.forEach(p => out.push({fonte:'Projetos', sc:p.sc, frente:p.frente, resp:p.resp, dtFim:p.dtFim, prog:p.prog, prio:null}));
   App.P.mel.forEach(m => out.push({fonte:'Pipefy', sc:m.sc, frente:m.frente, resp:m.resp, dtInicio:m.dtInicio, dtFim:m.dtFim, prog:null, prio:null}));
-  App.P.ana.forEach(a => out.push({fonte:'Analytics', sc:a.sc, frente:a.frente, resp:a.resp, dtFim:a.dtFim, prog:null, prio:a.prio}));
+  App.P.ana.forEach(a => out.push({fonte:'Analytics', sc:a.sc, frente:a.frente, resp:a.resp, dtInicio:a.dtInicio, dtFim:a.dtFim, prog:null, prio:a.prio}));
   App.R.forEach(r => out.push({
     fonte:'Chamados RPA',
     sc: r.fase.toLowerCase().includes('conclu') ? 'done' : 'doing',
     frente:null, resp:r.solicitante,
-    dtFim:r.finalizado, criado:r.criado,
+    // activeInRange(criado, finalizado) — ativo em algum momento do período
+    dtInicio:r.criado, dtFim:r.dtFim, criado:r.criado,
     prog:null, prio:null, vencido:r.vencido
   }));
   return out;
@@ -1116,36 +1438,42 @@ function buildGov(){
   }).filter(x => x.total > 0); // exibe só fontes com dados
 
   // KPIs de composição (Concluídas + Em andamento + Backlog + Outros = 100%).
-  let h = `<div class="sh">Visão executiva — todas as frentes</div>
+  let h = `<div class="sh">Painel de Controle — visão executiva</div>
   ${dateNote}
   ${aiBar('gov')}
   <div class="krow k5">
-    <div class="kpi il"><div class="knum">${total}</div><div class="klbl">Total de ações</div>
+    <div class="kpi il">${kpiIcon('list')}<div class="knum">${total}</div><div class="klbl">Total de ações CoE</div>
       <div class="ksub">${fontes.filter(f=>A.some(a=>a.fonte===f)).length} fontes integradas</div></div>
-    <div class="kpi gl"><div class="knum">${pct(done,total)}%</div><div class="klbl">Concluídas</div>
+    <div class="kpi gl">${kpiIcon('check')}<div class="knum">${pct(done,total)}%</div><div class="klbl">Concluídas</div>
       <div class="ksub">${done} de ${total}</div></div>
-    <div class="kpi"><div class="knum">${pct(doing,total)}%</div><div class="klbl">Em andamento</div>
+    <div class="kpi">${kpiIcon('clock')}<div class="knum">${pct(doing,total)}%</div><div class="klbl">Em andamento</div>
       <div class="ksub">${doing} de ${total}</div></div>
-    <div class="kpi"><div class="knum">${pct(backlog,total)}%</div><div class="klbl">Backlog / não iniciadas</div>
+    <div class="kpi">${kpiIcon('stack')}<div class="knum">${pct(backlog,total)}%</div><div class="klbl">Backlog / não iniciadas</div>
       <div class="ksub">${backlog} de ${total}</div></div>
-    <div class="kpi"><div class="knum">${pct(outros,total)}%</div><div class="klbl">Outros</div>
+    <div class="kpi">${kpiIcon('dots')}<div class="knum">${pct(outros,total)}%</div><div class="klbl">Outros</div>
       <div class="ksub">${outrosDesc||'—'}</div></div>
   </div>`;
 
-  h += `<div class="sh mt">Por fonte</div><div class="krow k5" style="grid-template-columns:repeat(${porFonte.length},1fr)">`;
-  porFonte.forEach(x => {
-    h += `<div class="kpi"><div class="knum sm">${x.total}</div><div class="klbl">${x.f}</div>
-      <div class="ksub">${pct(x.done,x.total)}% concl.</div></div>`;
-  });
-  h += `</div>`;
 
-  // Pizza de status: agrupa todos os itens pelos status codes internos
-  // Pizza de status: inclui TODOS os códigos de status para o total do donut
-  // bater com o "Total de ações" (closing e monitor estavam faltando antes).
+  // Donut de status — unifica Encerramento + Monitoramento numa fatia só
+  // ("Em encerramento" = fase final / entregue) e usa uma paleta com lógica:
+  //   verde escuro = concluído · verde claro = em encerramento (fase final) ·
+  //   azul = em andamento · cinza = não iniciado · âmbar = bloqueado ·
+  //   vermelho = cancelado · roxo = suporte/fornecedor.
+  // Ordem do mais avançado/positivo para o menos. O total mostrado bate com o
+  // "Total de ações CoE" porque todos os status estão contemplados.
   const scAll = count(A, a => a.sc);
-  const donutData = ['done','doing','closing','monitor','todo','vendor','blocked','cancel','other'].map(k => (
-    {label:STATUS_PT[k], value:scAll[k]||0, color:STATUS_COLOR[k]}
-  )).filter(d => d.value > 0);
+  const donutDefs = [
+    {label:'Concluído',       value:scAll.done||0,                          color:'#2f7d4f'},
+    {label:'Em encerramento', value:(scAll.closing||0)+(scAll.monitor||0),  color:'#5bbd7a'},
+    {label:'Em andamento',    value:scAll.doing||0,                         color:'#3b82c4'},
+    {label:'Não iniciado',    value:scAll.todo||0,                          color:'#b8bcc2'},
+    {label:'Bloqueado',       value:scAll.blocked||0,                       color:'#d89b3c'},
+    {label:'Suporte / fornec.',value:scAll.vendor||0,                       color:'#8f6fd0'},
+    {label:'Cancelado',       value:scAll.cancel||0,                        color:'#c75d5d'},
+    {label:'Outro',           value:scAll.other||0,                         color:'#9aa0a6'}
+  ];
+  const donutData = donutDefs.filter(d => d.value > 0);
 
   // Total de ações por responsável da equipe CoE (TODAS — abertas, concluídas, canceladas).
   // Mostra SÓ a equipe CoE (ver EQUIPE_COE), somando pelo nome padronizado.
@@ -1164,19 +1492,20 @@ function buildGov(){
   applyDate(App.P.ana).kept.forEach(a => addResp(a.resp));
   applyDate(App.R).kept.forEach(r => (r.responsaveis||[]).forEach(addResp));
   const respTop = Object.entries(respCoE).sort((a,b) => b[1]-a[1]);
-
-  h += `<div class="two">
-    <div class="card"><div class="card-title"><i class="ti ti-chart-pie"></i> Status das ações</div>${donut(donutData)}</div>
-    <div class="card"><div class="card-title"><i class="ti ti-user-bolt"></i> Ações por responsável<span class="rt">equipe CoE · total</span></div>
-      ${respTop.length ? hbars(respTop, {max:18, lw:150}) : '<div style="font-size:12px;color:var(--ink4)">Nenhuma ação da equipe CoE neste recorte.</div>'}</div>
-  </div>`;
+  const totalRespCoE = respTop.reduce((s,e)=>s+e[1],0); // base para o percentual
 
   const frCount = count(A.filter(a => a.frente), a => a.frente);
-  h += `<div class="two">
-    <div class="card"><div class="card-title"><i class="ti ti-building"></i> Ações por frente</div>
+  const fonteInfo = porFonte.map(x =>
+    `<span><b style="color:var(--ink2)">${x.f}</b> ${x.total} <span style="color:var(--ink4)">(${pct(x.done,x.total)}% concl.)</span></span>`
+  ).join(' &thinsp;·&thinsp; ');
+  h += `<div class="g3">
+    <div class="card"><div class="card-title"><i class="ti ti-chart-pie"></i> Status das ações</div>
+      ${donut(donutData)}
+      <div style="margin-top:12px;padding-top:10px;border-top:1px solid var(--rule);font-size:11px;color:var(--ink3);line-height:2">${fonteInfo}</div></div>
+    <div class="card"><div class="card-title"><i class="ti ti-user-bolt"></i> Por responsável <span class="rt">equipe CoE</span></div>
+      ${respTop.length ? hbars(respTop, {max:12, lw:130, tot:totalRespCoE}) : '<div style="font-size:12px;color:var(--ink4)">Sem dados da equipe CoE.</div>'}</div>
+    <div class="card"><div class="card-title"><i class="ti ti-building"></i> Por frente</div>
       ${hbars(Object.entries(frCount).sort((a,b)=>b[1]-a[1]), {max:8, lw:60, tot:Object.values(frCount).reduce((s,v)=>s+v,0)})}</div>
-    <div class="card"><div class="card-title"><i class="ti ti-source-code"></i> Ações por fonte</div>
-      ${hbars(fontes.map(f=>[f,A.filter(a=>a.fonte===f).length]).filter(e=>e[1]), {max:6, lw:100, tot:total})}</div>
   </div>`;
 
   // Rodapé de diagnóstico — mostra de onde vem cada número (auditoria).
@@ -1192,6 +1521,7 @@ function buildGov(){
     Contagem por fonte (total sem filtro de data): ${diag}. Total combinado: ${App.P.mel.length+App.P.proj.length+App.P.ana.length+App.R.length} ações.</div>`;
 
   document.getElementById('gov-content').innerHTML = h;
+  flushCharts();
 }
 
 /*
@@ -1280,13 +1610,13 @@ function buildProj(){
   let h = `<div class="sh">Projetos</div>
   ${aiBar('proj')}
   <div class="krow k5">
-    <div class="kpi"><div class="knum">${P.length}</div><div class="klbl">Total</div></div>
-    <div class="kpi il"><div class="knum">${doing}</div><div class="klbl">Em execução</div></div>
-    <div class="kpi gl"><div class="knum">${finalizando}</div><div class="klbl">Em fase final</div>
+    <div class="kpi">${kpiIcon('folders')}<div class="knum">${P.length}</div><div class="klbl">Total</div></div>
+    <div class="kpi il">${kpiIcon('play')}<div class="knum">${doing}</div><div class="klbl">Em execução</div></div>
+    <div class="kpi gl">${kpiIcon('flag')}<div class="knum">${finalizando}</div><div class="klbl">Em fase final</div>
       <div class="ksub">encerramento / monit.</div></div>
-    <div class="kpi dl"><div class="knum">${atrasados.length}</div><div class="klbl">Atrasados</div>
+    <div class="kpi dl">${kpiIcon('clock')}<div class="knum">${atrasados.length}</div><div class="klbl">Atrasados</div>
       <div class="ksub">prazo vencido</div></div>
-    <div class="kpi wl"><div class="knum">${criticos}</div><div class="klbl">Risco alto</div>
+    <div class="kpi wl">${kpiIcon('flame')}<div class="knum">${criticos}</div><div class="klbl">Risco alto</div>
       <div class="ksub">score de risco</div></div>
   </div>`;
 
@@ -1296,12 +1626,12 @@ function buildProj(){
   //   Não iniciado = cinza | Em andamento = azul | Encerr./Monit. = verde (fase final/entregue)
   //   Concluído = verde escuro | Bloqueado = âmbar | Cancelado = vermelho
   const donutProj = [
-    {label:'Concluído',     value:P.filter(p=>p.sc==='done').length,                       color:'#2f7d4f'},
-    {label:'Em andamento',  value:P.filter(p=>p.sc==='doing').length,                      color:'#3b82c4'},
-    {label:'Encerr./Monit.',value:P.filter(p=>p.sc==='closing'||p.sc==='monitor').length,  color:'#5bbd7a'},
-    {label:'Não iniciado',  value:P.filter(p=>p.sc==='todo').length,                       color:'#b8bcc2'},
-    {label:'Bloqueado',     value:P.filter(p=>p.sc==='blocked').length,                    color:'#d89b3c'},
-    {label:'Cancelado',     value:P.filter(p=>p.sc==='cancel').length,                     color:'#c75d5d'}
+    {label:'Concluído',      value:P.filter(p=>p.sc==='done').length,                       color:'#4DB1B3'},
+    {label:'Em andamento',   value:P.filter(p=>p.sc==='doing').length,                      color:'#0195D6'},
+    {label:'Em encerramento',value:P.filter(p=>p.sc==='closing'||p.sc==='monitor').length,  color:'#E66407'},
+    {label:'Não iniciado',   value:P.filter(p=>p.sc==='todo').length,                       color:'#9CA3AF'},
+    {label:'Bloqueado',      value:P.filter(p=>p.sc==='blocked').length,                    color:'#E83430'},
+    {label:'Cancelado',      value:P.filter(p=>p.sc==='cancel').length,                     color:'#C5284C'}
   ].filter(d=>d.value);
   h += `<div class="two">
     <div class="card"><div class="card-title"><i class="ti ti-chart-pie"></i> Por status</div>
@@ -1310,6 +1640,13 @@ function buildProj(){
       ${Object.keys(frCount).length ? hbars(Object.entries(frCount).sort((a,b)=>b[1]-a[1]),{max:8,lw:80,tot:P.length}) : '<div style="font-size:12px;color:var(--ink4)">Sem dados de área</div>'}</div>
   </div>`;
 
+  h += `<div class="note" style="background:var(--neu-bg);border-color:var(--rule);color:var(--ink3)"><i class="ti ti-info-circle"></i><div>
+    <b>Cálculo de risco automático (score 0–100):</b>
+    <b>Atraso</b> — fator principal, 15pts base + ~1pt/dia, teto 70pts (≈40 dias já é risco alto).
+    <b>Fase</b> — projetos em Diagnóstico/Planejamento pontuam mais (18/14pts) pois têm mais caminho pela frente.
+    <b>Prazo</b> — vence em ≤15 dias = +18pts · ≤30 dias = +10pts · sem prazo definido = +14pts.
+    Nível: <b>alto ≥ 55</b> · <b>médio ≥ 30</b> · <b>baixo &lt; 30</b>. Concluídos e em monitoramento sempre têm risco 0.
+  </div></div>`;
   // Monta os selects de filtro dinamicamente a partir dos valores presentes nos dados
   const pessoas = [...new Set(P.map(p => p.resp).filter(Boolean))].sort();
   h += `<div class="filters" style="margin-top:4px">
@@ -1329,6 +1666,7 @@ function buildProj(){
   </div>`;
   h += `<div class="card np"><div class="ilist" id="proj-list" style="border:none;border-radius:0"></div></div>`;
   document.getElementById('proj-content').innerHTML = h;
+  flushCharts();
   renderProjList();
   setBadge('nb-proj', P.length+' proj', '');
 }
@@ -1383,22 +1721,20 @@ function renderProjList(){
       : (risco.nivel==='medio' ? `<span class="badge warn" title="${risco.motivos.join(' · ')}">risco médio</span>` : '');
     return `<div class="proj-row ${open?'open':''}" data-k="${key.replace(/"/g,'')}">
       <div class="icard" onclick="toggleProj('${key.replace(/'/g,"\\'").replace(/"/g,'&quot;')}')" style="cursor:pointer">
-        <div class="iico" style="background:var(--neu-bg)">
+        <div class="iico" style="background:${lateTag?'var(--err-bg)':'var(--neu-bg)'}">
           <span style="width:11px;height:11px;border-radius:50%;background:${dc};display:block"></span>
         </div>
         <div class="imain"><div class="ititle">${p.titulo}</div>
           <div class="isub">
             ${p.frente?`<span class="apill">${p.frente}</span>`:''}
-            ${p.resp?`<span>${p.resp}</span>`:''}
-            ${p.dtFim?`<span style="color:${lateTag?'var(--err)':'var(--ink4)'}">· ${p.dtFim.toLocaleDateString('pt-BR')}${lateTag?` ⚠ atrasado em ${p.statusRaw}`:''}</span>`:''}
+            ${lateTag?`<span style="font-size:10px;color:var(--err);font-weight:500">⚠ atrasado</span>`:''}
+            ${p.prog!=null?`<span style="font-size:10px;color:var(--ink4)">${Math.round(p.prog*100)}% concluído</span>`:''}
           </div>
-          ${p.prog!=null?`<div class="stk" style="max-width:280px"><div style="width:${Math.round(p.prog*100)}%;background:var(--info)"></div></div>`:''}
         </div>
         <div class="iright">
           ${riscoBadge}
-          ${p.prog!=null?`<span style="font-size:11px;color:var(--ink3);font-weight:600">${Math.round(p.prog*100)}%</span>`:''}
-          <span class="badge ${bd}">${badgeTxt}</span>
-          <span style="color:var(--ink4);font-size:11px;margin-left:6px;display:inline-block;transition:transform .15s;transform:rotate(${open?'90deg':'0deg'})">▶</span>
+          <span class="badge ${bd}" style="font-size:9px">${badgeTxt}</span>
+          <span style="color:var(--ink4);font-size:11px;margin-left:4px;transition:transform .15s;transform:rotate(${open?'90deg':'0deg'})">▶</span>
         </div>
       </div>
       ${open ? projDetails(p) : ''}
@@ -1443,6 +1779,8 @@ function toggleProj(key){
 function projDetails(p){
   const fmt = txt => String(txt||'').trim().replace(/\n/g,'<br>');
   const blocks = [];
+  if(p.resp)        blocks.push({lbl:'Responsável',             val:p.resp});
+  if(p.dtFim)       blocks.push({lbl:'Prazo de conclusão',      val:`${p.dtFim.toLocaleDateString('pt-BR')}${projAtrasado(p)?' &nbsp;<span style="color:var(--err)">⚠ prazo vencido</span>':''}`});
   if(p.descricao)   blocks.push({lbl:'Descrição',              val:fmt(p.descricao)});
   if(p.equipes)     blocks.push({lbl:'Equipes envolvidas',     val:fmt(p.equipes)});
   if(p.focal)       blocks.push({lbl:'Ponto focal',            val:p.focal});
@@ -1466,7 +1804,12 @@ function projDetails(p){
    Para ver todas as melhorias, use o filtro de Status dentro da aba.
    ============================================================ */
 function buildMel(){
-  const {kept:M, noDate} = applyDate(App.P.mel);
+  const {kept: Mfiltrado} = applyDate(App.P.mel);
+  // Backlog sem data = trabalho pendente, não histórico. Sempre incluído.
+  const backlogSemData = App.dateRange.mode !== 'all'
+    ? App.P.mel.filter(m => !m.dtInicio && !m.dtFim && m.sc === 'todo')
+    : [];
+  const M = [...Mfiltrado, ...backlogSemData];
   document.getElementById('mel-empty').style.display  = App.P.mel.length ? 'none' : 'block';
   document.getElementById('mel-content').style.display = App.P.mel.length ? 'block' : 'none';
   if(!App.P.mel.length) return;
@@ -1474,17 +1817,11 @@ function buildMel(){
   const backlog = M.filter(m => m.sc==='todo').length;
   const blocked = M.filter(m => m.sc==='blocked').length;
 
-  // Nota de período: agora o filtro considera melhorias ATIVAS no recorte
-  // (que começaram ou terminaram no período). Mostra também quantas não têm
-  // cada data preenchida no Pipefy, já que isso limita a análise temporal.
   let dn = '';
   if(App.dateRange.mode !== 'all'){
-    const semInicio = App.P.mel.filter(m => !m.dtInicio).length;
-    const semFim    = App.P.mel.filter(m => !m.dtFim).length;
     dn = `<div class="note" style="background:var(--neu-bg);color:var(--ink3)"><i class="ti ti-calendar-stats"></i><div>
-      Período aplicado: <b>${M.length} melhorias</b> ativas no recorte (começaram ou concluíram no intervalo).` +
-      (noDate>0 ? ` ${noDate} sem nenhuma data não entram no filtro.` : '') +
-      `<br><span style="opacity:.85">No Pipefy, ${semInicio} de ${App.P.mel.length} melhorias estão sem data de início e ${semFim} sem data de conclusão — preencher essas datas amplia a análise por período.</span></div></div>`;
+      Período aplicado: <b>${M.length} melhorias</b> no recorte${backlogSemData.length > 0 ? ` (inclui <b>${backlogSemData.length} backlog</b> sem data)` : ''}.
+      </div></div>`;
   }
 
   // "Fluxos (processos)" = número de NomeFluxo únicos no recorte atual
@@ -1494,11 +1831,11 @@ function buildMel(){
   let h = dn + `<div class="sh">Pipefy — Melhorias & Ajustes</div>
   ${aiBar('mel')}
   <div class="krow k5">
-    <div class="kpi"><div class="knum">${M.length}</div><div class="klbl">Total melhorias</div></div>
-    <div class="kpi gl"><div class="knum">${done}</div><div class="klbl">Concluídas</div><div class="ksub">${pct(done,M.length)}% do total</div></div>
-    <div class="kpi"><div class="knum">${backlog}</div><div class="klbl">Backlog</div></div>
-    <div class="kpi wl"><div class="knum">${blocked}</div><div class="klbl">Bloqueadas</div></div>
-    <div class="kpi il"><div class="knum">${fluxosUnicos}</div><div class="klbl">Fluxos (processos)</div><div class="ksub">distintos no recorte</div></div>
+    <div class="kpi">${kpiIcon('message')}<div class="knum">${M.length}</div><div class="klbl">Total melhorias</div></div>
+    <div class="kpi gl">${kpiIcon('check')}<div class="knum">${done}</div><div class="klbl">Concluídas</div><div class="ksub">${pct(done,M.length)}% do total</div></div>
+    <div class="kpi">${kpiIcon('stack')}<div class="knum">${backlog}</div><div class="klbl">Backlog</div></div>
+    <div class="kpi wl">${kpiIcon('lock')}<div class="knum">${blocked}</div><div class="klbl">Bloqueadas</div></div>
+    <div class="kpi il">${kpiIcon('branch')}<div class="knum">${fluxosUnicos}</div><div class="klbl">Fluxos (processos)</div><div class="ksub">distintos no recorte</div></div>
   </div>`;
 
   h += `<div class="two">
@@ -1512,8 +1849,6 @@ function buildMel(){
       ${hbars(Object.entries(count(M.filter(m=>m.complex),m=>m.complex)).sort((a,b)=>b[1]-a[1]),{max:6,lw:90})}</div>
     <div class="card"><div class="card-title"><i class="ti ti-user-code"></i> Por responsável</div>
       ${(() => {
-        // mostra apenas a equipe de desenvolvimento de melhorias (5 pessoas),
-        // removendo entradas pontuais como "Isaac" e "Time / Área"
         const EQUIPE_MEL = ['willian','vinícius','vinicius','felipe','gustavo','caio'];
         const ehEquipe = nome => EQUIPE_MEL.some(p => nome.toLowerCase().includes(p));
         const dados = Object.entries(count(M.filter(m=>m.resp && ehEquipe(m.resp)), m=>m.resp)).sort((a,b)=>b[1]-a[1]);
@@ -1521,6 +1856,7 @@ function buildMel(){
       })()}</div>
   </div>`;
   document.getElementById('mel-content').innerHTML = h;
+  flushCharts();
   setBadge('nb-mel', M.length, '');
 }
 
@@ -1554,30 +1890,31 @@ function buildAna(){
     dn = `<div class="note"><i class="ti ti-info-circle"></i><div>${comData} de ${A.length} atividades têm data registrada. As ${A.length-comData} restantes não têm data preenchida na base, então não entram nos cálculos por período.</div></div>`;
   }
 
-  const prioCount = count(A.filter(a => a.prio), a => 'Prioridade '+a.prio);
+  // só prioridades de 1 a 5 (valores fora dessa faixa são descartados do gráfico)
+  const prioCount = count(A.filter(a => a.prio && a.prio>=1 && a.prio<=5), a => 'Prioridade '+a.prio);
   let h = dn + `<div class="sh">Analytics</div>
   ${aiBar('ana')}
   <div class="krow">
-    <div class="kpi"><div class="knum">${A.length}</div><div class="klbl">Total</div></div>
-    <div class="kpi gl"><div class="knum">${done}</div><div class="klbl">Concluídas</div><div class="ksub">${pct(done,A.length)}%</div></div>
-    <div class="kpi il"><div class="knum">${doing}</div><div class="klbl">Em andamento</div></div>
-    <div class="kpi"><div class="knum">${todo}</div><div class="klbl">Não iniciadas</div></div>
+    <div class="kpi">${kpiIcon('chartbar')}<div class="knum">${A.length}</div><div class="klbl">Total</div></div>
+    <div class="kpi gl">${kpiIcon('check')}<div class="knum">${done}</div><div class="klbl">Concluídas</div><div class="ksub">${pct(done,A.length)}%</div></div>
+    <div class="kpi il">${kpiIcon('clock')}<div class="knum">${doing}</div><div class="klbl">Em andamento</div></div>
+    <div class="kpi">${kpiIcon('minus')}<div class="knum">${todo}</div><div class="klbl">Não iniciadas</div></div>
   </div>`;
-  h += `<div class="two">
+  h += `<div class="g3">
     <div class="card"><div class="card-title"><i class="ti ti-chart-pie"></i> Status</div>
       ${donut(['done','doing','todo','blocked','cancel'].map(k=>({label:STATUS_PT[k],value:A.filter(a=>a.sc===k).length,color:STATUS_COLOR[k]})).filter(d=>d.value))}</div>
     <div class="card"><div class="card-title"><i class="ti ti-flag"></i> Por prioridade</div>
       ${hbars(Object.entries(prioCount).sort((a,b)=>{const na=+a[0].match(/\d+/),nb=+b[0].match(/\d+/);return na-nb;}),{max:10,lw:90})}</div>
-  </div>`;
-  h += `<div class="two">
     <div class="card"><div class="card-title"><i class="ti ti-building"></i> Por frente</div>
       ${hbars(Object.entries(count(A.filter(a=>a.frente),a=>a.frente)).sort((a,b)=>b[1]-a[1]),{max:8,lw:60,tot:A.length})}</div>
+  </div>`;
+  h += `<div class="two">
     <div class="card"><div class="card-title"><i class="ti ti-user"></i> Por responsável</div>
       ${hbars(Object.entries(count(A.filter(a=>a.resp),a=>a.resp)).sort((a,b)=>b[1]-a[1]),{max:8,lw:140})}</div>
+    ${buildHeatmap()}
   </div>`;
-  // Heatmap prioridade × frente (movido da Governança para cá)
-  h += buildHeatmap();
   document.getElementById('ana-content').innerHTML = h;
+  flushCharts();
   setBadge('nb-ana', A.length, '');
 }
 
@@ -1656,21 +1993,22 @@ function buildRPAChamados(){
   let b = `<div class="card"><div class="card-title"><i class="ti ti-trophy"></i> Top bots por nº de manutenções<span class="rt">${procList.length} processos</span></div>
     ${hbars(procList,{max:15,lw:300,color:'var(--err)',fixedLabel:true})}</div>`;
   document.getElementById('rpage-bots').innerHTML = b;
+  flushCharts();
 
   // Sub-aba: Tipos de problema — barras clusterizadas (grupos = fase, barra = problema)
   const porProb = count(R, r => r.problema);
   const porReexec = count(R.filter(r=>r.reexec), r => r.reexec);
   // fases (grupos), na ordem do fluxo do chamado
   const fasesDef = [
-    {key:'Backlog',                    label:'Backlog',          color:'#9a9a92'},
-    {key:'Identificação do problema',  label:'Identificação',    color:'#d4a93c'},
-    {key:'Desenvolvimento da solução', label:'Desenvolvimento',  color:'#4a90d9'},
-    {key:'Reexecução',                 label:'Reexecução',       color:'#8f6fd0'},
-    {key:'Concluído',                  label:'Concluído',        color:'#3fa46a'}
+    {key:'Backlog',                    label:'Backlog',         color:'#9CA3AF'},
+    {key:'Identificação do problema',  label:'Identificação',   color:'#E66407'},
+    {key:'Desenvolvimento da solução', label:'Desenvolvimento', color:'#0195D6'},
+    {key:'Reexecução',                 label:'Reexecução',      color:'#4DB1B3'},
+    {key:'Concluído',                  label:'Concluído',       color:'#0F5299'}
   ];
   // tipos de problema (séries / barras dentro de cada grupo), ordenados por volume
   const probsOrd = Object.entries(porProb).sort((a,b)=>b[1]-a[1]).map(e=>e[0]);
-  const paletaProb = ['#4a90d9','#d49a4a','#3fa46a','#8f6fd0','#d46a6a','#5aa0a0','#9a7ad4'];
+  const paletaProb = ['#0195D6','#E66407','#4DB1B3','#C5284C','#E83430','#0F5299','#8B6FD4'];
   const serieProb = probsOrd.map((pr,i) => ({key:pr, label:pr, color:paletaProb[i%paletaProb.length]}));
   // monta os grupos: para cada fase, a contagem de cada tipo de problema
   const grupos = fasesDef.map(f => {
@@ -1679,30 +2017,46 @@ function buildRPAChamados(){
     probsOrd.forEach(pr => { valores[pr] = sub.filter(r=>r.problema===pr).length; });
     return {label:f.label, color:f.color, valores};
   });
-  let p = `<div class="card"><div class="card-title"><i class="ti ti-alert-circle"></i> Tipos de problema <span class="rt">por fase do chamado</span></div>
+  let p = `<div class="two">
+    <div class="card"><div class="card-title"><i class="ti ti-alert-circle"></i> Tipos de problema <span class="rt">por fase do chamado</span></div>
       ${clusteredBars(grupos, serieProb)}</div>
     <div class="card"><div class="card-title"><i class="ti ti-refresh"></i> Admite reexecução?</div>
-      ${donut(Object.entries(porReexec).map(([k,vv],i)=>({label:k,value:vv,color:i===0?'var(--ok)':'var(--warn)'})))}</div>`;
+      ${donut(Object.entries(porReexec).map(([k,vv],i)=>({label:k,value:vv,color:i===0?'var(--ok)':'var(--warn)'})))}
+      <div class="note" style="margin-top:14px;margin-bottom:0;background:var(--neu-bg);color:var(--ink3)"><i class="ti ti-info-circle"></i><div>
+        <b>O que é reexecução?</b> Indica se o bot pode ser rodado novamente após uma falha sem risco de duplicar transações.
+        <b>Admite:</b> basta re-executar — o resultado é o mesmo.
+        <b>Não admite:</b> é preciso investigar até onde processou antes de qualquer ação (ex: evitar pagamento duplo ou lançamento duplicado no SAP).
+      </div></div></div>
+  </div>`;
   document.getElementById('rpage-prob').innerHTML = p;
+  flushCharts();
 
   // Sub-aba: Tempo de resolução por fase e por bot
   const avg = (arr,k) => { const v=arr.filter(r=>r[k]!=null).map(r=>r[k]); return v.length?(v.reduce((s,x)=>s+x,0)/v.length).toFixed(1):'—'; };
   let t = `<div class="krow">
-    <div class="kpi"><div class="knum sm">${avg(R,'tIdent')}</div><div class="klbl">Média dias · Identificação</div></div>
-    <div class="kpi"><div class="knum sm">${avg(R,'tDesenv')}</div><div class="klbl">Média dias · Desenvolvimento</div></div>
-    <div class="kpi"><div class="knum sm">${avg(R,'tReexec')}</div><div class="klbl">Média dias · Reexecução</div></div>
-    <div class="kpi"><div class="knum sm">${R.filter(r=>r.tIdent!=null||r.tDesenv!=null).length}</div><div class="klbl">Chamados com tempo medido</div></div>
+    <div class="kpi">${kpiIcon('clock')}<div class="knum sm">${avg(R,'tIdent')}</div><div class="klbl">Média dias · Identificação</div></div>
+    <div class="kpi">${kpiIcon('clock')}<div class="knum sm">${avg(R,'tDesenv')}</div><div class="klbl">Média dias · Desenvolvimento</div></div>
+    <div class="kpi">${kpiIcon('clock')}<div class="knum sm">${avg(R,'tReexec')}</div><div class="klbl">Média dias · Reexecução</div></div>
+    <div class="kpi">${kpiIcon('chartbar')}<div class="knum sm">${R.filter(r=>r.tIdent!=null||r.tDesenv!=null).length}</div><div class="klbl">Chamados com tempo medido</div></div>
   </div>`;
   // tempo médio por bot (só bots com 3+ chamados para ter significância estatística)
   const procTempo={};
   R.forEach(r=>{ const tt=(r.tIdent||0)+(r.tDesenv||0); if(tt>0){if(!procTempo[r.processo])procTempo[r.processo]={s:0,n:0};procTempo[r.processo].s+=tt;procTempo[r.processo].n++;} });
   const procAvg = Object.entries(procTempo).filter(e=>e[0]!=='(sem processo)'&&e[1].n>=3).map(([k,v])=>[labelComArea(k),+(v.s/v.n).toFixed(1)]).sort((a,b)=>b[1]-a[1]);
-  t += `<div class="card"><div class="card-title"><i class="ti ti-clock"></i> Tempo médio de resolução por bot<span class="rt">dias · bots com 3+ chamados</span></div>
-    ${hbars(procAvg,{max:12,lw:300,color:'var(--warn)',fixedLabel:true})}
-    <div class="note" style="margin-top:14px;margin-bottom:0;background:var(--neu-bg);color:var(--ink3)"><i class="ti ti-info-circle"></i><div>
-      <b>Como o tempo é calculado:</b> para cada chamado, somamos os dias que ele passou na fase de <b>Identificação do problema</b> e na de <b>Desenvolvimento da solução</b> (as fases de trabalho ativo). A barra mostra a <b>média desses dias</b> entre os chamados de cada bot.
-      Só entram bots com <b>3 chamados ou mais</b>, para a média ser estatisticamente confiável — um único chamado muito longo distorceria o número. Quanto maior a barra, mais tempo aquele bot leva, em média, para ter a manutenção resolvida.</div></div></div>`;
+  // bots com apenas 1 chamado: mostramos o tempo daquele único chamado (não é "média")
+  const procUm = Object.entries(procTempo).filter(e=>e[0]!=='(sem processo)'&&e[1].n===1).map(([k,v])=>[labelComArea(k),+v.s.toFixed(1)]).sort((a,b)=>b[1]-a[1]);
+  const _noteAvg = `<div class="note" style="margin-top:14px;margin-bottom:0;background:var(--neu-bg);color:var(--ink3)"><i class="ti ti-info-circle"></i><div>Soma dos dias em <b>Identificação</b> + <b>Desenvolvimento</b> dividida pelo nº de chamados do bot. Só bots com <b>3+ chamados</b> entram (evita distorção de amostra única).</div></div>`;
+  const _cardAvg = `<div class="card"><div class="card-title"><i class="ti ti-clock"></i> Tempo médio por bot<span class="rt">dias · 3+ chamados</span></div>
+    ${hbars(procAvg,{max:12,lw:180,color:'var(--warn)',fixedLabel:true})}${_noteAvg}</div>`;
+  if(procUm.length){
+    t += `<div class="two">${_cardAvg}<div class="card"><div class="card-title"><i class="ti ti-clock-hour-4"></i> Bots com 1 chamado<span class="rt">dias · ${procUm.length} bots</span></div>
+      ${hbars(procUm,{max:20,lw:180,color:'#5aa0a0',fixedLabel:true})}
+      <div class="note" style="margin-top:14px;margin-bottom:0;background:var(--neu-bg);color:var(--ink3)"><i class="ti ti-info-circle"></i><div>Um único chamado — não é média, serve de referência.</div></div></div></div>`;
+  } else {
+    t += _cardAvg;
+  }
   document.getElementById('rpage-tempo').innerHTML = t;
+  flushCharts();
 
   // Sub-aba: Lista paginada de chamados com busca
   let l = `<div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
@@ -1738,35 +2092,29 @@ function renderRPAStatus(){
   if(cnt) cnt.textContent = fs ? `${total} chamados em "${fs}"` : `${total} chamados`;
 
   let v = `<div class="krow k5">
-    <div class="kpi"><div class="knum">${total}</div><div class="klbl">Total chamados</div><div class="ksub">${procUnicos} processos distintos</div></div>
-    <div class="kpi gl"><div class="knum">${concl}</div><div class="klbl">Concluídos</div><div class="ksub">${pct(concl,total)}%</div></div>
-    <div class="kpi il"><div class="knum">${abertos}</div><div class="klbl">Abertos</div></div>
-    <div class="kpi dl"><div class="knum">${venc}</div><div class="klbl">Vencidos</div><div class="ksub">${pctVenc}% do total</div></div>
-    <div class="kpi wl"><div class="knum">${reexec}</div><div class="klbl">Reexecuções</div></div>
+    <div class="kpi">${kpiIcon('ticket')}<div class="knum">${total}</div><div class="klbl">Total chamados</div><div class="ksub">${procUnicos} processos distintos</div></div>
+    <div class="kpi gl">${kpiIcon('check')}<div class="knum">${concl}</div><div class="klbl">Concluídos</div><div class="ksub">${pct(concl,total)}%</div></div>
+    <div class="kpi il">${kpiIcon('clock')}<div class="knum">${abertos}</div><div class="klbl">Abertos</div></div>
+    <div class="kpi dl">${kpiIcon('alert')}<div class="knum">${venc}</div><div class="klbl">Vencidos</div><div class="ksub">${pctVenc}% do total</div></div>
+    <div class="kpi wl">${kpiIcon('refresh')}<div class="knum">${reexec}</div><div class="klbl">Reexecuções</div></div>
   </div>`;
 
-  // Volume mensal (barras cinza=total, vermelho=vencidos)
+  // Volume mensal (barras empilhadas: chamados normais + vencidos)
   const porMes={}, porMesV={};
-  R.forEach(r=>{ if(r.mes){ porMes[r.mes]=(porMes[r.mes]||0)+1; if(r.vencido) porMesV[r.mes]=(porMesV[r.mes]||0)+1; } });
-  const meses = Object.keys(porMes).sort();
-  const mx = Math.max(...meses.map(m=>porMes[m]), 1);
-  let vol = '<div class="vchart">';
-  meses.slice(-12).forEach(m => {
-    const t=porMes[m]||0, vv=porMesV[m]||0;
-    const hTot = Math.round(t/mx*100);
-    // número do total posicionado logo acima do topo da barra cinza
-    vol += `<div class="vcol"><div class="vcol-bars">
-      <div class="vcol-num" style="bottom:calc(${hTot}% + 2px)">${t}</div>
-      <div class="vbar-total" style="height:${hTot}%"></div>
-      <div class="vbar-inc" style="height:${Math.round(vv/mx*100)}%"></div>
-    </div><div class="vcol-lbl">${ymLabel(m)}</div>${vv>0?`<div class="vcol-venc">${vv} venc.</div>`:''}</div>`;
+  R.forEach(r => {
+    if (r.mes) {
+      porMes[r.mes]  = (porMes[r.mes]  || 0) + 1;
+      if (r.vencido) porMesV[r.mes] = (porMesV[r.mes] || 0) + 1;
+    }
   });
-  vol += '</div><div class="vlegend"><div class="vleg"><div class="vleg-dot" style="background:var(--ink);opacity:.3"></div>Total</div><div class="vleg"><div class="vleg-dot" style="background:var(--err)"></div>Vencidos</div></div>';
+  const meses = Object.keys(porMes).sort().slice(-12);
+  const vol   = chartVBars(meses, porMes, porMesV);
 
+  // Volume mensal + donut de fase lado a lado (visão temporal + estado atual)
   v += `<div class="two">
     <div class="card"><div class="card-title"><i class="ti ti-chart-bar"></i> Volume mensal</div>${vol}</div>
-    <div class="card"><div class="card-title"><i class="ti ti-calendar"></i> Abertura por dia da semana</div>
-      ${hbars(DOW.slice(0,5).map((d,i)=>[d,R.filter(r=>r.dow===i).length]),{max:5,lw:40})}</div>
+    <div class="card"><div class="card-title"><i class="ti ti-chart-pie"></i> Status (fase) dos chamados</div>
+      ${donut(Object.entries(count(R,r=>r.fase)).map(([k,vv],i)=>({label:k,value:vv,color:['var(--ok)','var(--info)','var(--warn)','var(--err)','#7c5cbf','var(--ink4)'][i%6]})))}</div>
   </div>`;
 
   // Tickets por área (área herdada do inventário de bots via match de nome).
@@ -1786,14 +2134,11 @@ function renderRPAStatus(){
   });
   areaEntries.sort((a,b)=>b[1]-a[1]);
   if(outrosArea > 0) areaEntries.push(['Outros', outrosArea]); // "Outros" sempre por último
-  v += `<div class="two">
-    <div class="card"><div class="card-title"><i class="ti ti-building"></i> Tickets por área</div>
-      ${hbars(areaEntries,{max:12,lw:120,tot:total,fixedLabel:true})}</div>
-    <div class="card"><div class="card-title"><i class="ti ti-chart-pie"></i> Status (fase) dos chamados</div>
-      ${donut(Object.entries(count(R,r=>r.fase)).map(([k,vv],i)=>({label:k,value:vv,color:['var(--ok)','var(--info)','var(--warn)','var(--err)','#7c5cbf','var(--ink4)'][i%6]})))}</div>
-  </div>`;
+  v += `<div class="card"><div class="card-title"><i class="ti ti-building"></i> Tickets por área</div>
+    ${hbars(areaEntries,{max:12,lw:120,tot:total,fixedLabel:true})}</div>`;
 
   document.getElementById('rpa-visao-kpis').innerHTML = v;
+  flushCharts();
 }
 
 /*
@@ -1862,10 +2207,10 @@ function buildBots(){
   let h = dn + `<div class="sh">Inventário de Bots — RPA</div>
   ${aiBar('bots')}
   <div class="krow">
-    <div class="kpi"><div class="knum">${B.length}</div><div class="klbl">Total de bots</div></div>
-    <div class="kpi gl"><div class="knum">${prd}</div><div class="klbl">Em produção</div><div class="ksub">${pct(prd,B.length)}% do total</div></div>
-    <div class="kpi wl"><div class="knum">${dev}</div><div class="klbl">Em desenvolvimento</div></div>
-    <div class="kpi"><div class="knum">${backlog}</div><div class="klbl">Backlog</div></div>
+    <div class="kpi">${kpiIcon('robot')}<div class="knum">${B.length}</div><div class="klbl">Total de bots</div></div>
+    <div class="kpi gl">${kpiIcon('rocket')}<div class="knum">${prd}</div><div class="klbl">Em produção</div><div class="ksub">${pct(prd,B.length)}% do total</div></div>
+    <div class="kpi wl">${kpiIcon('code')}<div class="knum">${dev}</div><div class="klbl">Em desenvolvimento</div></div>
+    <div class="kpi">${kpiIcon('stack')}<div class="knum">${backlog}</div><div class="klbl">Backlog</div></div>
   </div>`;
 
   const prdBots = B.filter(b=>b.status==='PRD');
@@ -1889,7 +2234,13 @@ function buildBots(){
   </div>`;
   h += `<div class="two">
     <div class="card"><div class="card-title"><i class="ti ti-alert-octagon"></i> Por criticidade</div>
-      ${hbars([1,2,3,4].map(c=>['Criticidade '+c,prdBots.filter(b=>b.criticidade===c).length]).filter(e=>e[1]),{max:4,lw:100})}</div>
+      ${hbars([1,2,3,4].map(c=>['Criticidade '+c,prdBots.filter(b=>b.criticidade===c).length]).filter(e=>e[1]),{max:4,lw:100})}
+      <div class="note" style="margin-top:14px;margin-bottom:0;background:var(--neu-bg);color:var(--ink3)"><i class="ti ti-info-circle"></i><div>
+        <b>Critérios de criticidade:</b><br>
+        <b>1 — Crítica:</b> processo essencial; falha gera impacto financeiro/fiscal imediato ou para a operação.<br>
+        <b>2 — Alta:</b> processo importante com prazo sensível; falha causa atraso relevante.<br>
+        <b>3 — Média:</b> processo recorrente; falha tem impacto moderado e contornável.<br>
+        <b>4 — Baixa:</b> processo de apoio; falha tem baixo impacto e pode esperar.</div></div></div>
     <div class="card"><div class="card-title"><i class="ti ti-repeat"></i> Por frequência</div>
       ${hbars(Object.entries(count(prdBots.filter(b=>b.freq),b=>b.freq)).sort((a,b)=>b[1]-a[1]),{max:6,lw:80})}</div>
   </div>`;
@@ -1903,10 +2254,10 @@ function buildBots(){
       <option>PRD</option><option>DEV</option><option>BACKLOG</option><option>CANCELADO</option><option>DESATIVADO</option></select>
     <label>Área</label><select id="bot-fa" onchange="renderBotsList()"><option value="">Todas</option>
       ${[...new Set(B.map(b=>b.area))].filter(Boolean).sort().map(a=>`<option>${a}</option>`).join('')}</select></div>
-    <div class="ilist" id="bots-list"></div>`;
+    <div class="card np"><div class="ilist" id="bots-list" style="border:none;border-radius:0"></div></div>`;
   document.getElementById('bots-content').innerHTML = h;
+  flushCharts();
   renderBotsList();
-  setBadge('nb-bots', prd+' PRD', 'ok');
 }
 
 /*
@@ -1966,29 +2317,71 @@ function renderBotsList(){
       return true;
     });
   }
+  if(!App.botsOpen) App.botsOpen = new Set();
   let B = source.filter(b => (!fs||b.status===fs) && (!fa||b.area===fa));
   const sb = {PRD:'ok', DEV:'info', BACKLOG:'neu', CANCELADO:'red', DESATIVADO:'red'};
-  // cor da bolinha de status do bot (CSS puro); fundo do quadrado segue o tema (--neu-bg)
-  const botDot = {PRD:'#3fa46a', DEV:'#4a90d9', BACKLOG:'#9a9a92', CANCELADO:'#d46a6a', DESATIVADO:'#d46a6a'};
-  let h = B.slice(0,200).map(b => `<div class="icard">
-    <div class="iico" style="background:var(--neu-bg)"><span style="width:11px;height:11px;border-radius:50%;background:${botDot[b.status]||'#9a9a92'};display:block"></span></div>
-    <div class="imain"><div class="ititle">${b.nome}</div>
-      <div class="isub">
-        ${b.area?`<span class="apill">${b.area}</span>`:''}
-        ${b.perimetro&&b.perimetro!=='Brasil'?`<span class="apill">${b.perimetro}</span>`:''}
-        ${b.dev?`<span>${b.dev}</span>`:''}
-        ${b.freq?`<span style="color:var(--ink4)">· ${b.freq}</span>`:''}
-        ${b.vol?`<span style="color:var(--ink4)">· ${b.vol.toLocaleString('pt-BR')}/mês</span>`:''}
-      </div></div>
-    <div class="iright">
-      ${b.criticidade?`<span style="font-size:10px;color:var(--ink4)">Crit ${b.criticidade}</span>`:''}
-      <span class="badge ${sb[b.status]||'neu'}">${b.status}</span>
-    </div></div>`).join('');
+  const botDot = {PRD:'#4DB1B3', DEV:'#0195D6', BACKLOG:'#9CA3AF', CANCELADO:'#C5284C', DESATIVADO:'#E83430'};
+  const critLabel = {1:'Crítica',2:'Alta',3:'Média',4:'Baixa'};
+  const critBadge = {1:'err',2:'warn',3:'neu',4:'neu'};
+  let h = B.slice(0,200).map(b => {
+    const key = b.nome;
+    const open = App.botsOpen.has(key);
+    const safeKey = key.replace(/'/g,"\\'").replace(/"/g,'&quot;');
+    return `<div class="proj-row ${open?'open':''}">
+      <div class="icard" onclick="toggleBot('${safeKey}')" style="cursor:pointer">
+        <div class="iico" style="background:var(--neu-bg);flex-direction:column;gap:4px">
+          <span style="width:11px;height:11px;border-radius:50%;background:${botDot[b.status]||'#9a9a92'};display:block"></span>
+        </div>
+        <div class="imain">
+          <div class="ititle">${b.nome}</div>
+          <div class="isub">
+            ${b.area?`<span class="apill">${b.area}</span>`:''}
+            ${b.perimetro&&b.perimetro!=='Brasil'?`<span class="apill">${b.perimetro}</span>`:''}
+            ${b.areaCliente&&b.areaCliente&&b.areaCliente!==b.area?`<span style="color:var(--ink4);font-size:10px">→ ${b.areaCliente}</span>`:''}
+            ${b.freq?`<span style="color:var(--ink4)">${b.freq}</span>`:''}
+            ${b.fte?`<span class="badge ok" style="font-size:9px;padding:1px 5px">${b.fte} FTE</span>`:''}
+            ${b.vol?`<span style="color:var(--ink4);font-size:10px">${b.vol.toLocaleString('pt-BR')}/mês</span>`:''}
+          </div>
+        </div>
+        <div class="iright">
+          ${b.anoPrd&&b.status==='PRD'?`<span style="font-size:10px;color:var(--ink4)">PRD ${b.anoPrd}</span>`:''}
+          ${b.criticidade?`<span class="badge ${critBadge[b.criticidade]||'neu'}" style="font-size:9px" title="Criticidade ${b.criticidade}: ${critLabel[b.criticidade]}">${critLabel[b.criticidade]||'Crit '+b.criticidade}</span>`:''}
+          <span class="badge ${sb[b.status]||'neu'}" style="font-size:9px">${b.status}</span>
+          <span style="color:var(--ink4);font-size:11px;margin-left:4px;transition:transform .15s;transform:rotate(${open?'90deg':'0deg'})">▶</span>
+        </div>
+      </div>
+      ${open ? botDetails(b) : ''}
+    </div>`;
+  }).join('');
   if(B.length>200) h += `<div class="icard" style="justify-content:center;color:var(--ink4);font-size:12px">Exibindo 200 de ${B.length}</div>`;
   const el = document.getElementById('bots-list');
   if(el) el.innerHTML = h || '<div class="empty" style="padding:24px">Nenhum bot neste filtro</div>';
 }
 
+
+function toggleBot(key){
+  if(!App.botsOpen) App.botsOpen = new Set();
+  if(App.botsOpen.has(key)) App.botsOpen.delete(key);
+  else App.botsOpen.add(key);
+  renderBotsList();
+}
+
+function botDetails(b){
+  const row = (lbl, val) => val ? `<div class="pd-block"><div class="pd-lbl">${lbl}</div><div class="pd-val">${val}</div></div>` : '';
+  const critDesc = {1:'Falha gera impacto financeiro/fiscal imediato ou para a operação.',2:'Processo com prazo sensível — falha causa atraso relevante.',3:'Falha tem impacto moderado e contornável.',4:'Processo de apoio — falha tem baixo impacto.'};
+  const critTxt = b.criticidade ? `${b.criticidade} — ${['Crítica','Alta','Média','Baixa'][b.criticidade-1]||''}: ${critDesc[b.criticidade]||''}` : '';
+  return `<div class="proj-detail">
+    ${row('Desenvolvedor', b.dev)}
+    ${row('Suporte / Sustentação', b.suporte)}
+    ${row('Descrição', b.desc)}
+    ${row('Área cliente', b.areaCliente)}
+    ${row('Sistema SAP', b.sap)}
+    ${row('Criticidade', critTxt)}
+    ${row('FTEs economizados', b.fte ? b.fte+' FTE' : '')}
+    ${row('Volumetria mensal', b.vol ? b.vol.toLocaleString('pt-BR')+' transações/mês' : '')}
+    ${row('Nº de robôs', b.nBots ? String(b.nBots) : '')}
+  </div>`;
+}
 
 /* ============================================================
    FILTRO DE DATA GLOBAL — CONTROLES DO HEADER
@@ -2009,6 +2402,13 @@ function renderBotsList(){
  * campos de data, depois aciona o filtro. Marca o chip ativo visualmente.
  */
 function setQuickRange(mode){
+  // Se o chip clicado já está ativo, limpa o filtro (toggle)
+  const chip = document.getElementById('dfc-' + mode);
+  if (chip && chip.classList.contains('active')) {
+    clearDateFilter();
+    return;
+  }
+
   const y = HOJE.getFullYear();
   const m = HOJE.getMonth();
   let from, to;
@@ -2340,7 +2740,7 @@ function analiseAna(){
   }
 
   // sem data (transparência)
-  const semData = A.filter(a=>!a.dtFim && !a.dtAbre).length;
+  const semData = A.filter(a=>!a.dtFim && !a.dtInicio).length;
   if(semData>0){
     ins.push({tipo:'neu', ico:'○',
       texto:`${semData} de ${tot} atividades não têm data registrada, então não entram nos cálculos por período.`});
@@ -2438,11 +2838,15 @@ function analiseBots(){
   if(App.R.length){
     const norm = s => s.toLowerCase().replace(/^\[.*?\]/,'').replace(/[^a-z0-9]/g,'');
     const chamPorProc = count(App.R, r=>r.processo);
-    let maxCh=0, botMaisCh='';
-    prdBots.forEach(b=>{
-      const bn=norm(b.nome); let ch=0;
-      Object.entries(chamPorProc).forEach(([proc,n])=>{ const pn=norm(proc); if(pn&&bn&&(bn.includes(pn)||pn.includes(bn))) ch+=n; });
-      if(ch>maxCh){ maxCh=ch; botMaisCh=b.nome; }
+    let maxCh = 0, botMaisCh = '';
+    prdBots.forEach(b => {
+      const bn = norm(b.nome);
+      let ch = 0;
+      Object.entries(chamPorProc).forEach(([proc, n]) => {
+        const pn = norm(proc);
+        if (pn && bn && (bn.includes(pn) || pn.includes(bn))) ch += n;
+      });
+      if (ch > maxCh) { maxCh = ch; botMaisCh = b.nome; }
     });
     if(maxCh>0){
       ins.push({tipo:'warn', ico:'⚙',
@@ -2460,6 +2864,12 @@ function analiseBots(){
    Orquestra: parsers → descobre range de datas → constrói todas as views → navega.
    ============================================================ */
 function generate(){
+  // Destroi instâncias Chart.js anteriores e reseta o contador de IDs
+  // para evitar o erro "Canvas already in use" a cada re-geração do dashboard
+  Object.values(_chartInstances).forEach(ch => { try { ch.destroy(); } catch(_){} });
+  Object.keys(_chartInstances).forEach(k => delete _chartInstances[k]);
+  _chartSeq = 0;
+
   // 1. Parseia cada fonte (converte Excel bruto em objetos normalizados)
   if(App.gov) parseGov();   // base de governança: Pipefy, Projetos, Analytics
   if(App.gov) parseInv();   // inventário de bots (aba separada dentro da base de governança)
@@ -2493,7 +2903,7 @@ function generate(){
   if(App.P.mel.length) setBadge('nb-mel', App.P.mel.length, '');
   const now = new Date();
   const ts  = `Atualizado ${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`;
-  const src = [App.loaded.gov?'Governança':'', App.loaded.rpa?'Chamados RPA':''].filter(Boolean).join(' · ');
+  const src = [App.loaded.gov?'Base Governança':'', App.loaded.rpa?'Chamados RPA':''].filter(Boolean).join(' · ');
   const lbl = document.getElementById('sync-lbl');
   lbl.textContent = `${ts} · ${src}`;
   lbl.dataset.base = `${ts} · ${src}`; // guarda para o updateDateBadge não sobrescrever
