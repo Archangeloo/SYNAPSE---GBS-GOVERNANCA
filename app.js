@@ -2918,3 +2918,9 @@ function generate(){
 
 // Inicializa na tela de Upload ao carregar a página
 setNav('upload');
+
+// Botão "voltar ao topo": aparece após 300px de scroll, some quando no topo
+window.addEventListener('scroll', () => {
+  const btn = document.getElementById('btn-top');
+  if (btn) btn.classList.toggle('visible', window.scrollY > 300);
+});
