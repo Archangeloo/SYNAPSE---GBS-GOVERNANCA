@@ -1,6 +1,6 @@
 import { App } from '../state.js';
 import { applyDate, ymLabel } from '../utils/date.js';
-import { count, pct, hbars as _hbars } from '../utils/helpers.js';
+import { count, pct } from '../utils/helpers.js';
 import { donut, hbars, clusteredBars } from '../charts.js';
 import { aiBar } from '../analysis.js';
 import { setBadge } from '../nav.js';

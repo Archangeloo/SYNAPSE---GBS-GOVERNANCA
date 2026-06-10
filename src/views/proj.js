@@ -1,6 +1,7 @@
 import { App } from '../state.js';
 import { applyDate } from '../utils/date.js';
-import { projAtrasado, projRisco, projFase, STATUS_BADGE } from '../utils/classify.js';
+import { projAtrasado, projRisco, projFase } from '../utils/classify.js';
+import { STATUS_BADGE } from '../constants.js';
 import { count, pct } from '../utils/helpers.js';
 import { donut, hbars } from '../charts.js';
 import { aiBar } from '../analysis.js';
