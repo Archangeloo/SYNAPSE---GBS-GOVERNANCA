@@ -1079,43 +1079,6 @@ function hbars(entries, opts = {}) {
   return `${header}<div style="position:relative;height:${height}px"><canvas id="${id}"></canvas></div>`;
 }
 
-/*
- * stackedBars(rows, segDefs) — barras horizontais empilhadas FINAS (estilo do site).
- * A barra mostra só a proporção em cores; os números de cada fase ficam AO LADO,
- * cada um com sua bolinha colorida, seguidos do total. Fases com zero ficam esmaecidas.
- * rows: array de { label, valores: {chaveSeg: n, ...} }
- * segDefs: array ordenado de { key, label, color }.
- */
-function stackedBars(rows, segDefs){
-  if(!rows.length) return '<div style="font-size:12px;color:var(--ink4)">Sem dados</div>';
-  const totais = rows.map(r => segDefs.reduce((s,d)=>s+(r.valores[d.key]||0),0));
-  const maxTot = Math.max(...totais, 1);
-  const corpo = rows.map((r,idx) => {
-    const tot = totais[idx];
-    const larguraBarra = Math.round(tot/maxTot*100); // barra proporcional ao maior total
-    const segs = segDefs.map(d => {
-      const n = r.valores[d.key]||0;
-      if(!n) return '';
-      const pctNoTot = (n/tot*100).toFixed(2);
-      return `<div class="sbar-seg" style="flex:0 0 ${pctNoTot}%;background:${d.color}" title="${d.label}: ${n}"></div>`;
-    }).join('');
-    // números por fase ao lado (cada um com bolinha); fase zerada fica esmaecida
-    const nums = segDefs.map(d => {
-      const n = r.valores[d.key]||0;
-      return `<span class="sn${n?'':' sn-z'}" title="${d.label}"><span class="sn-dot" style="background:${d.color}"></span>${n}</span>`;
-    }).join('');
-    return `<div class="sbar-row">
-      <span class="sbar-lbl" title="${String(r.label).replace(/"/g,'')}">${r.label}</span>
-      <div class="sbar-track" style="max-width:${larguraBarra}%">${segs}</div>
-      <span class="sbar-nums">${nums}</span>
-      <span class="sbar-tot">${tot}</span>
-    </div>`;
-  }).join('');
-  const legenda = segDefs.map(d =>
-    `<div class="sbar-leg"><span class="sbar-leg-dot" style="background:${d.color}"></span>${d.label}</div>`
-  ).join('');
-  return corpo + `<div class="sbar-legend">${legenda}</div>`;
-}
 
 /*
  * clusteredBars(groups, series) — gráfico de barras clusterizado (agrupado).
@@ -1440,7 +1403,7 @@ function buildGov(){
   }).filter(x => x.total > 0); // exibe só fontes com dados
 
   // KPIs de composição (Concluídas + Em andamento + Backlog + Outros = 100%).
-  let h = `<div class="sh">Painel de Controle — visão executiva</div>
+  let html = `<div class="sh">Painel de Controle — visão executiva</div>
   ${dateNote}
   ${aiBar('gov')}
   <div class="krow k5">
@@ -1506,7 +1469,7 @@ function buildGov(){
   const fonteInfo = porFonte.map(x =>
     `<span><b style="color:var(--ink2)">${x.f}</b> ${x.total} <span style="color:var(--ink4)">(${pct(x.done,x.total)}% concl.)</span></span>`
   ).join(' &thinsp;·&thinsp; ');
-  h += `<div class="g3">
+  html += `<div class="g3">
     <div class="card"><div class="card-title"><i class="ti ti-chart-pie"></i> Status das ações</div>
       ${donut(donutData)}
       ${impedimentosDesc ? `<div style="margin-top:10px;padding:7px 10px;background:rgba(197,40,76,0.07);border-radius:var(--r);font-size:11px;color:var(--err)">
@@ -1528,10 +1491,10 @@ function buildGov(){
     `Chamados RPA: ${App.R.length}`,
     `Bots: ${App.B.length}`
   ].join(' · ');
-  h += `<div style="font-size:10px;color:var(--ink4);margin-top:18px;padding-top:12px;border-top:1px solid var(--rule)">
+  html += `<div style="font-size:10px;color:var(--ink4);margin-top:18px;padding-top:12px;border-top:1px solid var(--rule)">
     Contagem por fonte (total sem filtro de data): ${diag}. Total combinado: ${App.P.mel.length+App.P.proj.length+App.P.ana.length+App.R.length} ações.</div>`;
 
-  document.getElementById('gov-content').innerHTML = h;
+  document.getElementById('gov-content').innerHTML = html;
   flushCharts();
 }
 
@@ -1624,7 +1587,7 @@ function buildProj(){
         <br><span style="font-size:10px;opacity:.6;font-style:italic">Referência de data: prazo de conclusão do projeto</span>
         </div></div>` : '';
 
-  let h = `<div class="sh">Projetos</div>
+  let html = `<div class="sh">Projetos</div>
   ${dnProj}
   ${aiBar('proj')}
   <div class="krow k5">
@@ -1651,14 +1614,14 @@ function buildProj(){
     {label:'Bloqueado',      value:P.filter(p=>p.sc==='blocked').length,                    color:'#E83430'},
     {label:'Cancelado',      value:P.filter(p=>p.sc==='cancel').length,                     color:'#C5284C'}
   ].filter(d=>d.value);
-  h += `<div class="two">
+  html += `<div class="two">
     <div class="card"><div class="card-title"><i class="ti ti-chart-pie"></i> Por status</div>
       ${donut(donutProj)}</div>
     <div class="card"><div class="card-title"><i class="ti ti-building"></i> Por frente / área cliente</div>
       ${Object.keys(frCount).length ? hbars(Object.entries(frCount).sort((a,b)=>b[1]-a[1]),{max:8,lw:80,tot:P.length}) : '<div style="font-size:12px;color:var(--ink4)">Sem dados de área</div>'}</div>
   </div>`;
 
-  h += `<div class="note" style="background:var(--neu-bg);border-color:var(--rule);color:var(--ink3)"><i class="ti ti-info-circle"></i><div>
+  html += `<div class="note" style="background:var(--neu-bg);border-color:var(--rule);color:var(--ink3)"><i class="ti ti-info-circle"></i><div>
     <b>Cálculo de risco automático (score 0–100):</b>
     <b>Atraso</b> — fator principal, 15pts base + ~1pt/dia, teto 70pts (≈40 dias já é risco alto).
     <b>Fase</b> — projetos em Diagnóstico/Planejamento pontuam mais (18/14pts) pois têm mais caminho pela frente.
@@ -1667,7 +1630,7 @@ function buildProj(){
   </div></div>`;
   // Monta os selects de filtro dinamicamente a partir dos valores presentes nos dados
   const pessoas = [...new Set(P.map(p => p.resp).filter(Boolean))].sort();
-  h += `<div class="filters" style="margin-top:4px">
+  html += `<div class="filters" style="margin-top:4px">
     <input type="text" id="proj-q" placeholder="Buscar projeto, responsável, frente..." oninput="renderProjList()" style="flex:1;max-width:280px">
     <button class="df-chip" id="proj-chip-atraso" onclick="toggleProjChip('atraso')">⚠ Só atrasados</button>
     <button class="df-chip" id="proj-chip-risco" onclick="toggleProjChip('risco')">Risco alto</button>
@@ -1682,8 +1645,8 @@ function buildProj(){
       ${[...new Set(P.map(p=>p.frente).filter(Boolean))].sort().map(f=>`<option>${f}</option>`).join('')}</select>
     <span style="font-size:11px;color:var(--ink4);margin-left:auto" id="proj-count"></span>
   </div>`;
-  h += `<div class="card np"><div class="ilist" id="proj-list" style="border:none;border-radius:0"></div></div>`;
-  document.getElementById('proj-content').innerHTML = h;
+  html += `<div class="card np"><div class="ilist" id="proj-list" style="border:none;border-radius:0"></div></div>`;
+  document.getElementById('proj-content').innerHTML = html;
   flushCharts();
   renderProjList();
   setBadge('nb-proj', P.length+' proj', '');
@@ -1718,7 +1681,7 @@ function renderProjList(){
   const cnt = document.getElementById('proj-count');
   if(cnt) cnt.textContent = `${vis.length} de ${P.length}`;
   if(!App.projOpen) App.projOpen = new Set();
-  let h = vis.map(p => {
+  let itensProjeto = vis.map(p => {
     const bd = STATUS_BADGE[p.sc];
     const lateTag = projAtrasado(p);
     const risco = projRisco(p); // { score, nivel, motivos }
@@ -1759,7 +1722,7 @@ function renderProjList(){
     </div>`;
   }).join('');
   const el = document.getElementById('proj-list');
-  if(el) el.innerHTML = h || '<div class="empty" style="padding:24px">Nenhum projeto neste filtro</div>';
+  if(el) el.innerHTML = itensProjeto || '<div class="empty" style="padding:24px">Nenhum projeto neste filtro</div>';
 }
 
 /*
@@ -1847,7 +1810,7 @@ function buildMel(){
   // Isso responde "quantos processos distintos foram tratados no período"
   const fluxosUnicos = new Set(M.map(m => m.fluxo).filter(Boolean)).size;
 
-  let h = dn + `<div class="sh">Pipefy — Melhorias & Ajustes</div>
+  let html = dn + `<div class="sh">Pipefy — Melhorias & Ajustes</div>
   ${aiBar('mel')}
   <div class="krow k5">
     <div class="kpi">${kpiIcon('message')}<div class="knum">${M.length}</div><div class="klbl">Total melhorias</div></div>
@@ -1857,13 +1820,13 @@ function buildMel(){
     <div class="kpi il">${kpiIcon('branch')}<div class="knum">${fluxosUnicos}</div><div class="klbl">Fluxos (processos)</div><div class="ksub">distintos no recorte</div></div>
   </div>`;
 
-  h += `<div class="two">
+  html += `<div class="two">
     <div class="card"><div class="card-title"><i class="ti ti-chart-pie"></i> Status</div>
       ${donut(['done','doing','todo','vendor','blocked','cancel'].map(k=>({label:STATUS_PT[k],value:M.filter(m=>m.sc===k).length,color:STATUS_COLOR[k]})).filter(d=>d.value))}</div>
     <div class="card"><div class="card-title"><i class="ti ti-building"></i> Por frente</div>
       ${hbars(Object.entries(count(M,m=>m.frente)).sort((a,b)=>b[1]-a[1]),{max:8,lw:60,tot:M.length})}</div>
   </div>`;
-  h += `<div class="two">
+  html += `<div class="two">
     <div class="card"><div class="card-title"><i class="ti ti-stack-2"></i> Por complexidade</div>
       ${hbars(Object.entries(count(M.filter(m=>m.complex),m=>m.complex)).sort((a,b)=>b[1]-a[1]),{max:6,lw:90})}</div>
     <div class="card"><div class="card-title"><i class="ti ti-user-code"></i> Por responsável</div>
@@ -1874,7 +1837,7 @@ function buildMel(){
         return hbars(dados,{max:8,lw:130});
       })()}</div>
   </div>`;
-  document.getElementById('mel-content').innerHTML = h;
+  document.getElementById('mel-content').innerHTML = html;
   flushCharts();
   setBadge('nb-mel', M.length, '');
 }
@@ -1913,7 +1876,7 @@ function buildAna(){
 
   // só prioridades de 1 a 5 (valores fora dessa faixa são descartados do gráfico)
   const prioCount = count(A.filter(a => a.prio && a.prio>=1 && a.prio<=5), a => 'Prioridade '+a.prio);
-  let h = dn + `<div class="sh">Analytics</div>
+  let html = dn + `<div class="sh">Analytics</div>
   ${aiBar('ana')}
   <div class="krow">
     <div class="kpi">${kpiIcon('chartbar')}<div class="knum">${A.length}</div><div class="klbl">Total</div></div>
@@ -1921,7 +1884,7 @@ function buildAna(){
     <div class="kpi il">${kpiIcon('clock')}<div class="knum">${doing}</div><div class="klbl">Em andamento</div></div>
     <div class="kpi">${kpiIcon('minus')}<div class="knum">${todo}</div><div class="klbl">Não iniciadas</div></div>
   </div>`;
-  h += `<div class="g3">
+  html += `<div class="g3">
     <div class="card"><div class="card-title"><i class="ti ti-chart-pie"></i> Status</div>
       ${donut(['done','doing','todo','blocked','cancel'].map(k=>({label:STATUS_PT[k],value:A.filter(a=>a.sc===k).length,color:STATUS_COLOR[k]})).filter(d=>d.value))}</div>
     <div class="card"><div class="card-title"><i class="ti ti-flag"></i> Por prioridade</div>
@@ -1929,12 +1892,12 @@ function buildAna(){
     <div class="card"><div class="card-title"><i class="ti ti-building"></i> Por frente</div>
       ${hbars(Object.entries(count(A.filter(a=>a.frente),a=>a.frente)).sort((a,b)=>b[1]-a[1]),{max:8,lw:60,tot:A.length})}</div>
   </div>`;
-  h += `<div class="two">
+  html += `<div class="two">
     <div class="card"><div class="card-title"><i class="ti ti-user"></i> Por responsável</div>
       ${hbars(Object.entries(count(A.filter(a=>a.resp),a=>a.resp)).sort((a,b)=>b[1]-a[1]),{max:8,lw:140})}</div>
     ${buildHeatmap()}
   </div>`;
-  document.getElementById('ana-content').innerHTML = h;
+  document.getElementById('ana-content').innerHTML = html;
   flushCharts();
   setBadge('nb-ana', A.length, '');
 }
@@ -1994,8 +1957,8 @@ function buildRPAChamados(){
     <span style="font-size:11px;color:var(--ink4);margin-left:auto" id="rpa-fs-count"></span>
   </div>`;
 
-  let v = dn + aiBar('rpa') + filtroStatus + `<div id="rpa-visao-kpis"></div>`;
-  document.getElementById('rpage-visao').innerHTML = v;
+  let htmlVisao = dn + aiBar('rpa') + filtroStatus + `<div id="rpa-visao-kpis"></div>`;
+  document.getElementById('rpage-visao').innerHTML = htmlVisao;
   // os KPIs e gráficos são renderizados por renderRPAStatus (respeita o filtro de status)
   renderRPAStatus();
 
@@ -2013,9 +1976,9 @@ function buildRPAChamados(){
   const porProcV = count(R, r => r.processo);
   const procList = Object.entries(porProcV).filter(e=>e[0]!=='(sem processo)').sort((a,b)=>b[1]-a[1])
     .map(([proc,n]) => [labelComArea(proc), n]); // adiciona a área ao rótulo
-  let b = `<div class="card"><div class="card-title"><i class="ti ti-trophy"></i> Top bots por nº de manutenções<span class="rt">${procList.length} processos</span></div>
+  let htmlTopBots = `<div class="card"><div class="card-title"><i class="ti ti-trophy"></i> Top bots por nº de manutenções<span class="rt">${procList.length} processos</span></div>
     ${hbars(procList,{max:15,lw:300,color:'var(--err)',fixedLabel:true})}</div>`;
-  document.getElementById('rpage-bots').innerHTML = b;
+  document.getElementById('rpage-bots').innerHTML = htmlTopBots;
   flushCharts();
 
   // Sub-aba: Tipos de problema — barras clusterizadas (grupos = fase, barra = problema)
@@ -2040,7 +2003,7 @@ function buildRPAChamados(){
     probsOrd.forEach(pr => { valores[pr] = sub.filter(r=>r.problema===pr).length; });
     return {label:f.label, color:f.color, valores};
   });
-  let p = `<div class="two">
+  let htmlProblemas = `<div class="two">
     <div class="card"><div class="card-title"><i class="ti ti-alert-circle"></i> Tipos de problema <span class="rt">por fase do chamado</span></div>
       ${clusteredBars(grupos, serieProb)}</div>
     <div class="card"><div class="card-title"><i class="ti ti-refresh"></i> Admite reexecução?</div>
@@ -2051,12 +2014,12 @@ function buildRPAChamados(){
         <b>Não admite:</b> é preciso investigar até onde processou antes de qualquer ação (ex: evitar pagamento duplo ou lançamento duplicado no SAP).
       </div></div></div>
   </div>`;
-  document.getElementById('rpage-prob').innerHTML = p;
+  document.getElementById('rpage-prob').innerHTML = htmlProblemas;
   flushCharts();
 
   // Sub-aba: Tempo de resolução por fase e por bot
   const avg = (arr,k) => { const v=arr.filter(r=>r[k]!=null).map(r=>r[k]); return v.length?(v.reduce((s,x)=>s+x,0)/v.length).toFixed(1):'—'; };
-  let t = `<div class="krow">
+  let htmlTempo = `<div class="krow">
     <div class="kpi">${kpiIcon('clock')}<div class="knum sm">${avg(R,'tIdent')}</div><div class="klbl">Média dias · Identificação</div></div>
     <div class="kpi">${kpiIcon('clock')}<div class="knum sm">${avg(R,'tDesenv')}</div><div class="klbl">Média dias · Desenvolvimento</div></div>
     <div class="kpi">${kpiIcon('clock')}<div class="knum sm">${avg(R,'tReexec')}</div><div class="klbl">Média dias · Reexecução</div></div>
@@ -2072,23 +2035,23 @@ function buildRPAChamados(){
   const _cardAvg = `<div class="card"><div class="card-title"><i class="ti ti-clock"></i> Tempo médio por bot<span class="rt">dias · 3+ chamados</span></div>
     ${hbars(procAvg,{max:12,lw:180,color:'var(--warn)',fixedLabel:true})}${_noteAvg}</div>`;
   if(procUm.length){
-    t += `<div class="two">${_cardAvg}<div class="card"><div class="card-title"><i class="ti ti-clock-hour-4"></i> Bots com 1 chamado<span class="rt">dias · ${procUm.length} bots</span></div>
+    htmlTempo += `<div class="two">${_cardAvg}<div class="card"><div class="card-title"><i class="ti ti-clock-hour-4"></i> Bots com 1 chamado<span class="rt">dias · ${procUm.length} bots</span></div>
       ${hbars(procUm,{max:20,lw:180,color:'#5aa0a0',fixedLabel:true})}
       <div class="note" style="margin-top:14px;margin-bottom:0;background:var(--neu-bg);color:var(--ink3)"><i class="ti ti-info-circle"></i><div>Um único chamado — não é média, serve de referência.</div></div></div></div>`;
   } else {
-    t += _cardAvg;
+    htmlTempo += _cardAvg;
   }
-  document.getElementById('rpage-tempo').innerHTML = t;
+  document.getElementById('rpage-tempo').innerHTML = htmlTempo;
   flushCharts();
 
   // Sub-aba: Lista paginada de chamados com busca
-  let l = `<div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
+  let htmlLista = `<div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
     <input type="text" id="rsearch" placeholder="Buscar por código, processo, solicitante..." oninput="renderRPALista()" style="flex:1;max-width:360px">
     <span style="font-size:11px;color:var(--ink4)" id="rlista-count">${total} chamados</span></div>
     <div class="card np"><div style="overflow-x:auto"><table class="tbl" style="margin:0">
     <thead><tr><th style="padding-left:20px">Código</th><th>Processo</th><th>Problema</th><th>Fase</th><th>Mês</th><th style="padding-right:20px">Status</th></tr></thead>
     <tbody id="rlista-body"></tbody></table></div></div>`;
-  document.getElementById('rpage-lista').innerHTML = l;
+  document.getElementById('rpage-lista').innerHTML = htmlLista;
   renderRPALista();
   setBadge('nb-rpa', venc>0 ? venc+' venc' : total, venc>0?'warn':'');
 }
@@ -2114,7 +2077,7 @@ function renderRPAStatus(){
   const cnt = document.getElementById('rpa-fs-count');
   if(cnt) cnt.textContent = fs ? `${total} chamados em "${fs}"` : `${total} chamados`;
 
-  let v = `<div class="krow k5">
+  let htmlKpis = `<div class="krow k5">
     <div class="kpi">${kpiIcon('ticket')}<div class="knum">${total}</div><div class="klbl">Total chamados</div><div class="ksub">${procUnicos} processos distintos</div></div>
     <div class="kpi gl">${kpiIcon('check')}<div class="knum">${concl}</div><div class="klbl">Concluídos</div><div class="ksub">${pct(concl,total)}%</div></div>
     <div class="kpi il">${kpiIcon('clock')}<div class="knum">${abertos}</div><div class="klbl">Abertos</div></div>
@@ -2134,7 +2097,7 @@ function renderRPAStatus(){
   const vol   = chartVBars(meses, porMes, porMesV);
 
   // Volume mensal + donut de fase lado a lado (visão temporal + estado atual)
-  v += `<div class="two">
+  htmlKpis += `<div class="two">
     <div class="card"><div class="card-title"><i class="ti ti-chart-bar"></i> Volume mensal</div>${vol}</div>
     <div class="card"><div class="card-title"><i class="ti ti-chart-pie"></i> Status (fase) dos chamados</div>
       ${donut(Object.entries(count(R,r=>r.fase)).map(([k,vv],i)=>({label:k,value:vv,color:['var(--ok)','var(--info)','var(--warn)','var(--err)','#7c5cbf','var(--ink4)'][i%6]})))}</div>
@@ -2157,10 +2120,10 @@ function renderRPAStatus(){
   });
   areaEntries.sort((a,b)=>b[1]-a[1]);
   if(outrosArea > 0) areaEntries.push(['Outros', outrosArea]); // "Outros" sempre por último
-  v += `<div class="card"><div class="card-title"><i class="ti ti-building"></i> Tickets por área</div>
+  htmlKpis += `<div class="card"><div class="card-title"><i class="ti ti-building"></i> Tickets por área</div>
     ${hbars(areaEntries,{max:12,lw:120,tot:total,fixedLabel:true})}</div>`;
 
-  document.getElementById('rpa-visao-kpis').innerHTML = v;
+  document.getElementById('rpa-visao-kpis').innerHTML = htmlKpis;
   flushCharts();
 }
 
@@ -2175,7 +2138,7 @@ function renderRPALista(){
   const vis = q ? R.filter(r=>(r.cod+r.processo+r.solicitante+r.problema).toLowerCase().includes(q)) : R;
   const cnt = document.getElementById('rlista-count');
   if(cnt) cnt.textContent = vis.length+' chamados';
-  let h = vis.slice(0,1000).map(r => {
+  let linhasChamados = vis.slice(0,1000).map(r => {
     const concl = r.fase.toLowerCase().includes('conclu');
     return `<tr>
       <td style="padding-left:20px;font-family:monospace;font-size:11px;color:var(--ink3)">${r.cod}</td>
@@ -2185,9 +2148,9 @@ function renderRPALista(){
       <td style="font-size:11px;color:var(--ink4)">${ymLabel(r.mes)}</td>
       <td style="padding-right:20px">${r.vencido?'<span class="badge red">Vencido</span>':'<span class="badge neu">No prazo</span>'}</td></tr>`;
   }).join('');
-  if(vis.length > 1000) h += `<tr><td colspan="6" style="text-align:center;padding:16px;color:var(--ink4);font-size:12px">Exibindo 1000 de ${vis.length} — use a busca para refinar</td></tr>`;
-  const b = document.getElementById('rlista-body');
-  if(b) b.innerHTML = h;
+  if(vis.length > 1000) linhasChamados += `<tr><td colspan="6" style="text-align:center;padding:16px;color:var(--ink4);font-size:12px">Exibindo 1000 de ${vis.length} — use a busca para refinar</td></tr>`;
+  const corpoTabela = document.getElementById('rlista-body');
+  if(corpoTabela) corpoTabela.innerHTML = linhasChamados;
 }
 
 
@@ -2229,7 +2192,7 @@ function buildBots(){
   const backlog   = B.filter(b=>b.status==='BACKLOG').length;
   const cancel    = B.filter(b=>b.status==='CANCELADO'||b.status==='DESATIVADO').length;
 
-  let h = dn + `<div class="sh">Inventário de Bots — RPA</div>
+  let html = dn + `<div class="sh">Inventário de Bots — RPA</div>
   ${aiBar('bots')}
   <div class="krow">
     <div class="kpi">${kpiIcon('robot')}<div class="knum">${B.length}</div><div class="klbl">Total de bots</div></div>
@@ -2251,13 +2214,13 @@ function buildBots(){
   });
   areaBots.sort((a,b) => b[1]-a[1]);
   if(outrosPrd > 0) areaBots.push(['Outros', outrosPrd]); // "Outros" por último
-  h += `<div class="two">
+  html += `<div class="two">
     <div class="card"><div class="card-title"><i class="ti ti-building"></i> Bots em PRD por área</div>
       ${hbars(areaBots,{max:6,lw:60,tot:prd})}</div>
     <div class="card"><div class="card-title"><i class="ti ti-world"></i> Por perímetro</div>
       ${donut(Object.entries(count(prdBots,b=>b.perimetro)).map(([k,v],i)=>({label:k,value:v,color:['var(--info)','var(--ok)','var(--warn)','var(--err)'][i%4]})))}</div>
   </div>`;
-  h += `<div class="two">
+  html += `<div class="two">
     <div class="card"><div class="card-title"><i class="ti ti-alert-octagon"></i> Por criticidade</div>
       ${hbars([1,2,3,4].map(c=>['Criticidade '+c,prdBots.filter(b=>b.criticidade===c).length]).filter(e=>e[1]),{max:4,lw:100})}
       <div class="note" style="margin-top:14px;margin-bottom:0;background:var(--neu-bg);color:var(--ink3)"><i class="ti ti-info-circle"></i><div>
@@ -2271,16 +2234,16 @@ function buildBots(){
   </div>`;
 
   // Cruzamento inventário × chamados (só se o relatório de RPA estiver carregado)
-  if(App.R.length) h += buildBotsCruzamento(B);
+  if(App.R.length) html += buildBotsCruzamento(B);
 
   // Lista filtrada por status e área
-  h += `<div class="filters" style="margin-top:8px">
+  html += `<div class="filters" style="margin-top:8px">
     <label>Status</label><select id="bot-fs" onchange="renderBotsList()"><option value="">Todos</option>
       <option>PRD</option><option>DEV</option><option>BACKLOG</option><option>CANCELADO</option><option>DESATIVADO</option></select>
     <label>Área</label><select id="bot-fa" onchange="renderBotsList()"><option value="">Todas</option>
       ${[...new Set(B.map(b=>b.area))].filter(Boolean).sort().map(a=>`<option>${a}</option>`).join('')}</select></div>
     <div class="card np"><div class="ilist" id="bots-list" style="border:none;border-radius:0"></div></div>`;
-  document.getElementById('bots-content').innerHTML = h;
+  document.getElementById('bots-content').innerHTML = html;
   flushCharts();
   renderBotsList();
 }
@@ -2348,7 +2311,7 @@ function renderBotsList(){
   const botDot = {PRD:'#4DB1B3', DEV:'#0195D6', BACKLOG:'#9CA3AF', CANCELADO:'#C5284C', DESATIVADO:'#E83430'};
   const critLabel = {1:'Crítica',2:'Alta',3:'Média',4:'Baixa'};
   const critBadge = {1:'err',2:'warn',3:'neu',4:'neu'};
-  let h = B.slice(0,200).map(b => {
+  let itensBots = B.slice(0,200).map(b => {
     const key = b.nome;
     const open = App.botsOpen.has(key);
     const safeKey = key.replace(/'/g,"\\'").replace(/"/g,'&quot;');
@@ -2378,9 +2341,9 @@ function renderBotsList(){
       ${open ? botDetails(b) : ''}
     </div>`;
   }).join('');
-  if(B.length>200) h += `<div class="icard" style="justify-content:center;color:var(--ink4);font-size:12px">Exibindo 200 de ${B.length}</div>`;
-  const el = document.getElementById('bots-list');
-  if(el) el.innerHTML = h || '<div class="empty" style="padding:24px">Nenhum bot neste filtro</div>';
+  if(B.length>200) itensBots += `<div class="icard" style="justify-content:center;color:var(--ink4);font-size:12px">Exibindo 200 de ${B.length}</div>`;
+  const listaBots = document.getElementById('bots-list');
+  if(listaBots) listaBots.innerHTML = itensBots || '<div class="empty" style="padding:24px">Nenhum bot neste filtro</div>';
 }
 
 
