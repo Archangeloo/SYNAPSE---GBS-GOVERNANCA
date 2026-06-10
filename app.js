@@ -1426,7 +1426,9 @@ function buildGov(){
     dateNote = `<div class="note" style="background:var(--neu-bg);color:var(--ink3)"><i class="ti ti-calendar-stats"></i><div>
       Período <b>${fmt(App.dateRange.from)} → ${fmt(App.dateRange.to)}</b>: <b>${total} ações</b> no recorte.`+
       (noDate>0 ? ` (${noDate} ações sem data não entram no filtro.)` : '')+
-      ` Para ver tudo, limpe os campos de data no topo.</div></div>`;
+      ` Para ver tudo, limpe os campos de data no topo.
+      <br><span style="font-size:10px;opacity:.6;font-style:italic">Referência por fonte: prazo de conclusão (Projetos) · início/conclusão do desenvolvimento (Pipefy) · data de abertura ou fechamento (Analytics) · data de abertura (RPA)</span>
+      </div></div>`;
   }
 
   // KPIs por fonte — calcula total e concluídas de cada uma individualmente
@@ -1464,16 +1466,22 @@ function buildGov(){
   // "Total de ações CoE" porque todos os status estão contemplados.
   const scAll = count(A, a => a.sc);
   const donutDefs = [
-    {label:'Concluído',       value:scAll.done||0,                          color:'#2f7d4f'},
-    {label:'Em encerramento', value:(scAll.closing||0)+(scAll.monitor||0),  color:'#5bbd7a'},
-    {label:'Em andamento',    value:scAll.doing||0,                         color:'#3b82c4'},
-    {label:'Não iniciado',    value:scAll.todo||0,                          color:'#b8bcc2'},
-    {label:'Bloqueado',       value:scAll.blocked||0,                       color:'#d89b3c'},
-    {label:'Suporte / fornec.',value:scAll.vendor||0,                       color:'#8f6fd0'},
-    {label:'Cancelado',       value:scAll.cancel||0,                        color:'#c75d5d'},
-    {label:'Outro',           value:scAll.other||0,                         color:'#9aa0a6'}
+    {label:'Concluído',       value: scAll.done    || 0,                          color:'#4DB1B3'},
+    {label:'Em encerramento', value:(scAll.closing || 0) + (scAll.monitor || 0),  color:'#E66407'},
+    {label:'Em andamento',    value: scAll.doing   || 0,                          color:'#0195D6'},
+    {label:'Não iniciado',    value: scAll.todo    || 0,                          color:'#9CA3AF'},
+    {label:'Impedimentos',    value:(scAll.blocked || 0) + (scAll.vendor  || 0)
+                                  +(scAll.cancel  || 0) + (scAll.other   || 0),   color:'#C5284C'},
   ];
   const donutData = donutDefs.filter(d => d.value > 0);
+
+  // Detalha o que compõe "Impedimentos" (só exibe categorias com valor > 0)
+  const impedimentosDesc = [
+    scAll.blocked ? `${scAll.blocked} bloqueado${scAll.blocked > 1 ? 's' : ''}` : '',
+    scAll.cancel  ? `${scAll.cancel} cancelado${scAll.cancel  > 1 ? 's' : ''}` : '',
+    scAll.vendor  ? `${scAll.vendor} suporte/fornec.`                           : '',
+    scAll.other   ? `${scAll.other} outro${scAll.other > 1 ? 's' : ''}`         : '',
+  ].filter(Boolean).join(' · ');
 
   // Total de ações por responsável da equipe CoE (TODAS — abertas, concluídas, canceladas).
   // Mostra SÓ a equipe CoE (ver EQUIPE_COE), somando pelo nome padronizado.
@@ -1501,7 +1509,10 @@ function buildGov(){
   h += `<div class="g3">
     <div class="card"><div class="card-title"><i class="ti ti-chart-pie"></i> Status das ações</div>
       ${donut(donutData)}
-      <div style="margin-top:12px;padding-top:10px;border-top:1px solid var(--rule);font-size:11px;color:var(--ink3);line-height:2">${fonteInfo}</div></div>
+      ${impedimentosDesc ? `<div style="margin-top:10px;padding:7px 10px;background:rgba(197,40,76,0.07);border-radius:var(--r);font-size:11px;color:var(--err)">
+        <b>Impedimentos:</b> ${impedimentosDesc}
+      </div>` : ''}
+      <div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--rule);font-size:11px;color:var(--ink3);line-height:2">${fonteInfo}</div></div>
     <div class="card"><div class="card-title"><i class="ti ti-user-bolt"></i> Por responsável <span class="rt">equipe CoE</span></div>
       ${respTop.length ? hbars(respTop, {max:12, lw:130, tot:totalRespCoE}) : '<div style="font-size:12px;color:var(--ink4)">Sem dados da equipe CoE.</div>'}</div>
     <div class="card"><div class="card-title"><i class="ti ti-building"></i> Por frente</div>
@@ -1607,7 +1618,14 @@ function buildProj(){
   const atrasados = P.filter(projAtrasado);                // prazo vencido e não entregue
   const criticos = P.filter(p => projRisco(p).nivel==='alto').length; // risco alto
 
+  const dnProj = App.dateRange.mode !== 'all'
+    ? `<div class="note" style="background:var(--neu-bg);color:var(--ink3)"><i class="ti ti-calendar-stats"></i><div>
+        Período aplicado: <b>${P.length} projetos</b> no recorte.${noDate > 0 ? ` ${noDate} sem prazo definido não entram no filtro.` : ''}
+        <br><span style="font-size:10px;opacity:.6;font-style:italic">Referência de data: prazo de conclusão do projeto</span>
+        </div></div>` : '';
+
   let h = `<div class="sh">Projetos</div>
+  ${dnProj}
   ${aiBar('proj')}
   <div class="krow k5">
     <div class="kpi">${kpiIcon('folders')}<div class="knum">${P.length}</div><div class="klbl">Total</div></div>
@@ -1821,6 +1839,7 @@ function buildMel(){
   if(App.dateRange.mode !== 'all'){
     dn = `<div class="note" style="background:var(--neu-bg);color:var(--ink3)"><i class="ti ti-calendar-stats"></i><div>
       Período aplicado: <b>${M.length} melhorias</b> no recorte${backlogSemData.length > 0 ? ` (inclui <b>${backlogSemData.length} backlog</b> sem data)` : ''}.
+      <br><span style="font-size:10px;opacity:.6;font-style:italic">Referência de data: início e conclusão do desenvolvimento — inclui melhorias ativas no período, mesmo que iniciadas antes dele</span>
       </div></div>`;
   }
 
@@ -1884,7 +1903,9 @@ function buildAna(){
   if(App.dateRange.mode !== 'all'){
     dn = `<div class="note" style="background:var(--neu-bg);color:var(--ink3)"><i class="ti ti-calendar-stats"></i><div>
       Período aplicado: <b>${A.length} atividades</b> no recorte.` +
-      (noDate>0 ? ` ${noDate} sem data não entram no filtro.` : '') + `</div></div>`;
+      (noDate>0 ? ` ${noDate} sem data não entram no filtro.` : '') +
+      `<br><span style="font-size:10px;opacity:.6;font-style:italic">Referência de data: data de abertura da atividade (ou fechamento como fallback)</span>
+      </div></div>`;
   } else if(comData < A.length){
     // sem filtro ativo: avisa quantas têm data (relevante para o gráfico de evolução)
     dn = `<div class="note"><i class="ti ti-info-circle"></i><div>${comData} de ${A.length} atividades têm data registrada. As ${A.length-comData} restantes não têm data preenchida na base, então não entram nos cálculos por período.</div></div>`;
@@ -1959,7 +1980,9 @@ function buildRPAChamados(){
   if(App.dateRange.mode !== 'all'){
     dn = `<div class="note" style="background:var(--neu-bg);color:var(--ink3)"><i class="ti ti-calendar-stats"></i><div>
       Período aplicado: <b>${total} chamados</b> abertos no recorte.` +
-      (noDate>0 ? ` ${noDate} sem data de criação não entram no filtro.` : '') + `</div></div>`;
+      (noDate>0 ? ` ${noDate} sem data de criação não entram no filtro.` : '') +
+      `<br><span style="font-size:10px;opacity:.6;font-style:italic">Referência de data: data de abertura do chamado</span>
+      </div></div>`;
   }
 
   // Filtro local por status (fase) — opções derivadas das fases presentes nos dados
@@ -2193,7 +2216,9 @@ function buildBots(){
     const semAno = App.B.filter(b => isNaN(parseInt(b.anoPrd))).length;
     dn = `<div class="note" style="background:var(--neu-bg);color:var(--ink3)"><i class="ti ti-calendar-stats"></i><div>
       Período aplicado: <b>${B.length} bots</b> que entraram em produção entre ${yFrom||'∞'} e ${yTo||'∞'}.` +
-      (semAno>0 ? ` ${semAno} bots sem ano de PRD não entram no filtro.` : '') + `</div></div>`;
+      (semAno>0 ? ` ${semAno} bots sem ano de PRD não entram no filtro.` : '') +
+      `<br><span style="font-size:10px;opacity:.6;font-style:italic">Referência de data: ano de entrada em produção (AnoPRD) — filtra por ano, não por data exata</span>
+      </div></div>`;
   }
   document.getElementById('bots-empty').style.display  = App.B.length ? 'none' : 'block';
   document.getElementById('bots-content').style.display = App.B.length ? 'block' : 'none';
