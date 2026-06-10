@@ -70,7 +70,7 @@ body {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  height: 52px;
+  height: 76px;
   position: sticky;
   top: 0;
   z-index: 50;
@@ -84,11 +84,13 @@ body {
 }
 
 .tb-logo {
-  height: 86px;
   width: auto;
   object-fit: contain;
   filter: brightness(0) invert(1);
 }
+
+.tb-logo-sg  { height: 48px; }
+.tb-logo-gbs { height: 70px; }
 
 .tb-divider {
   width: 1px;
