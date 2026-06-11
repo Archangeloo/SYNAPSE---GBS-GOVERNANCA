@@ -56,3 +56,9 @@ export const STATUS_COLOR = {
 
 // SVG inline do ícone "faísca" — não depende de fonte de ícone externa
 export const AI_SPARK = '<svg class="ai-spark" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.9 5.8L20 11l-6.1 2.2L12 19l-1.9-5.8L4 11l6.1-2.2z"/></svg>';
+
+// ─── Equipe de desenvolvimento de Melhorias Pipefy ──────────────────────────
+// Usado na aba Pipefy Melhorias para filtrar o gráfico "Por responsável",
+// mostrando apenas quem desenvolve as melhorias (não solicitantes ou champions).
+// Para adicionar ou remover alguém, edite este array — não precisa mexer na view.
+export const EQUIPE_MEL = ['willian', 'vinícius', 'vinicius', 'felipe', 'gustavo', 'caio'];

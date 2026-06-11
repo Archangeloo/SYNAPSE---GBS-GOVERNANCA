@@ -6,6 +6,18 @@ import { count, pct } from './utils/helpers.js';
 import { allActionsFiltered } from './views/gov.js';
 import { HOJE } from './constants.js';
 
+// ─── MÓDULO: analysis.js ─────────────────────────────────────────────────────
+// Painel de análise automática de cada aba do dashboard.
+// IMPORTANTE: não é IA nem modelo de linguagem — são análises programadas que
+// detectam padrões nos dados (concentração, tendência, gargalos, outliers) e
+// geram frases dinâmicas em português conforme os dados e filtro de período.
+//
+// Exporta:
+//   aiBar(aba)          — HTML do botão "Gerar análise" + placeholder do painel
+//   gerarAnalise(aba)   — calcula insights e renderiza o painel (toggle)
+//   topEntry(obj, excl) — entrada com maior valor num objeto { chave: n }
+// ─────────────────────────────────────────────────────────────────────────────
+
 // ─── Botão e painel de análise automática ────────────────────────────────────
 // Gera leituras analíticas 100% no navegador — não é um modelo de linguagem.
 // São análises programadas (concentração, tendência, gargalos, outliers)

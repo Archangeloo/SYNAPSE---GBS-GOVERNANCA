@@ -1,5 +1,19 @@
 import { App } from './state.js';
 
+// ─── MÓDULO: upload.js ───────────────────────────────────────────────────────
+// Gerencia o upload de arquivos Excel: drag-and-drop e seleção via input file.
+// Usa FileReader + SheetJS (XLSX global injetado via CDN no index.html).
+//
+// Exporta:
+//   dzO(e, id)       — drag-over: adiciona classe visual 'over'
+//   dzL(id)          — drag-leave: remove classe 'over'
+//   dzD(e, t)        — drag-drop: lê o arquivo solto
+//   hf(i, t)         — handler do <input type="file">
+//   readFile(f, type) — lê arquivo Excel e popula App.gov ou App.rpa
+//   showOk(type, name, wb) — atualiza UI após leitura bem-sucedida
+//   updateBar()      — atualiza contador de bases carregadas
+// ─────────────────────────────────────────────────────────────────────────────
+
 // ─── Drag & drop ──────────────────────────────────────────────────────────────
 export function dzO(e, id)  { e.preventDefault(); document.getElementById(id).classList.add('over'); }
 export function dzL(id)     { document.getElementById(id).classList.remove('over'); }

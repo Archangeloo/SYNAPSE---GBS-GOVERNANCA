@@ -5,6 +5,24 @@ import { donut, hbars, clusteredBars } from '../charts.js';
 import { aiBar } from '../analysis.js';
 import { setBadge } from '../nav.js';
 
+// ─── MÓDULO: views/rpa.js ────────────────────────────────────────────────────
+// Aba RPA & Bots — chamados de manutenção (5 sub-abas).
+//
+// Exporta:
+//   buildRPAChamados()   — renderiza estrutura da aba e todas as sub-abas
+//   renderRPAStatus()    — re-renderiza KPIs + gráficos da visão geral
+//                          (chamada ao mudar filtro local de fase)
+//   renderRPALista()     — re-renderiza tabela paginada de chamados
+//                          (chamada ao digitar na busca)
+//
+// Sub-abas e seus elementos DOM:
+//   #rpage-visao   — KPIs, volume mensal, tickets por área
+//   #rpage-bots    — top bots por volume de manutenções
+//   #rpage-prob    — tipos de problema × fase (barras clusterizadas)
+//   #rpage-tempo   — tempo médio de resolução por bot
+//   #rpage-lista   — tabela paginada com busca por texto
+// ─────────────────────────────────────────────────────────────────────────────
+
 // ─── buildRPAChamados ─────────────────────────────────────────────────────────
 // Monta a aba RPA & Bots com 5 sub-abas: Visão geral, Top bots, Tipos de problema,
 // Tempo de resolução, Chamados.

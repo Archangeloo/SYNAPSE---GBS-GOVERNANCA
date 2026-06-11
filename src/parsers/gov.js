@@ -3,6 +3,25 @@ import { findSheet, get } from '../utils/helpers.js';
 import { toDate } from '../utils/date.js';
 import { statusClass } from '../utils/classify.js';
 
+// ─── MÓDULO: parsers/gov.js ──────────────────────────────────────────────────
+// Parser da Base Governança (arquivo Excel principal do CoE).
+// Lê 3 abas e normaliza os dados para os arrays de estado global.
+//
+// Exporta:
+//   parseGov() — processa Pipefy_Melhorias → App.P.mel
+//                         Projetos          → App.P.proj
+//                         Analytics         → App.P.ana
+//
+// TOLERÂNCIAS IMPLEMENTADAS:
+//   - Nomes de aba: busca por fragmento, insensível a maiúsculas/underlines
+//   - Nomes de coluna: cada campo aceita múltiplos nomes alternativos
+//   - Layout de Projetos: detecta automaticamente se o cabeçalho está correto
+//     ou embaralhado (versão antiga), e lê por posição como fallback
+//
+// Para mapear uma nova coluna da planilha: adicione o nome no array do get()
+// e inclua o campo no objeto retornado pelo .map().
+// ─────────────────────────────────────────────────────────────────────────────
+
 // ─── parseGov ─────────────────────────────────────────────────────────────────
 // Processa as 3 abas da Base Governança: Pipefy_Melhorias, Projetos e Analytics.
 // Chamado por generate() após o usuário clicar em "Gerar dashboard".
@@ -97,7 +116,7 @@ export function parseGov() {
         prio:      (() => { const m = String(get(r, ['Prioridade'])).match(/\d+/); return m ? +m[0] : null; })(),
         frente:    String(get(r, ['Frente'])).trim(),
         resp:      String(get(r, ['Responsavel'])).trim(),
-        // ~49 de 161 atividades têm DataAbertura; 36 têm DataFechamento
+        // Muitas atividades não têm DataAbertura — o fallback para DataFechamento amplia a cobertura
         dtAbre:    toDate(get(r, ['DataAbertura'])),
         dtFim:     toDate(get(r, ['DataFechamento']))
       })).filter(r => r.titulo)

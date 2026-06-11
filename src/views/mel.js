@@ -1,10 +1,22 @@
 import { App } from '../state.js';
 import { applyDate } from '../utils/date.js';
-import { STATUS_PT, STATUS_COLOR } from '../constants.js';
+import { STATUS_PT, STATUS_COLOR, EQUIPE_MEL } from '../constants.js';
 import { count, pct } from '../utils/helpers.js';
 import { donut, hbars } from '../charts.js';
 import { aiBar } from '../analysis.js';
 import { setBadge } from '../nav.js';
+
+// ─── MÓDULO: views/mel.js ────────────────────────────────────────────────────
+// Aba Pipefy Melhorias: KPIs, gráficos de status/frente/complexidade/responsável.
+//
+// Exporta:
+//   buildMel() — renderiza a aba completa
+//
+// ATENÇÃO — filtro de data por intervalo:
+//   Usa dtInicio + dtFim (intervalo de desenvolvimento). Uma melhoria entra no
+//   recorte se esteve ativa em algum momento do período selecionado.
+//   Melhorias de backlog sem nenhuma data são sempre incluídas.
+// ─────────────────────────────────────────────────────────────────────────────
 
 // ─── buildMel ─────────────────────────────────────────────────────────────────
 // Monta a aba Pipefy Melhorias.
@@ -54,8 +66,6 @@ export function buildMel() {
       ${hbars(Object.entries(count(M.filter(m => m.complex), m => m.complex)).sort((a, b) => b[1] - a[1]), { max: 6, lw: 90 })}</div>
     <div class="card"><div class="card-title"><i class="ti ti-user-code"></i> Por responsável</div>
       ${(() => {
-        // Mostra apenas a equipe de desenvolvimento de melhorias
-        const EQUIPE_MEL = ['willian', 'vinícius', 'vinicius', 'felipe', 'gustavo', 'caio'];
         const ehEquipe = nome => EQUIPE_MEL.some(p => nome.toLowerCase().includes(p));
         const dados = Object.entries(count(M.filter(m => m.resp && ehEquipe(m.resp)), m => m.resp)).sort((a, b) => b[1] - a[1]);
         return hbars(dados, { max: 8, lw: 130 });

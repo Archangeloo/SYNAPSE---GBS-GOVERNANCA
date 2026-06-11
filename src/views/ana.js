@@ -7,10 +7,22 @@ import { buildHeatmap } from './gov.js';
 import { aiBar } from '../analysis.js';
 import { setBadge } from '../nav.js';
 
+// ─── MÓDULO: views/ana.js ────────────────────────────────────────────────────
+// Aba Analytics: KPIs de atividades, gráficos de status/prioridade/frente/responsável.
+//
+// Exporta:
+//   buildAna() — renderiza a aba completa
+//
+// ATENÇÃO — cobertura de datas baixa:
+//   Muitas atividades não têm data preenchida na planilha de origem.
+//   Com filtro de período ativo, apenas atividades com data entram no recorte;
+//   a interface exibe quantas ficaram de fora para transparência.
+// ─────────────────────────────────────────────────────────────────────────────
+
 // ─── buildAna ─────────────────────────────────────────────────────────────────
 // Monta a aba Analytics.
 // FILTRO DE DATA: usa DataAbertura (início) ou DataFechamento (término) como fallback.
-// ~49 de 161 atividades têm DataAbertura; 36 têm DataFechamento; ~76 sem data.
+// Muitas atividades não têm data preenchida — a interface exibe quantas ficaram fora do recorte.
 export function buildAna() {
   const { kept: A, noDate } = applyDate(App.P.ana);
   document.getElementById('ana-empty').style.display  = App.P.ana.length ? 'none' : 'block';

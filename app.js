@@ -2016,8 +2016,7 @@ function buildMel(){
    ============================================================
    FILTRO DE DATA: usa DataAbertura (início do desenvolvimento)
    ou DataFechamento (término da validação) como fallback.
-   ~49 de 161 atividades têm DataAbertura; 36 têm DataFechamento.
-   As demais (~76) não têm data na planilha de origem.
+   Muitas atividades não têm data preenchida — a interface exibe quantas ficaram fora do recorte.
    ============================================================ */
 /*
  * buildAna() — aba Analytics.
@@ -2098,7 +2097,7 @@ function setBadge(id, txt, cls){
    VIEW: CHAMADOS RPA (5 sub-abas)
    ============================================================
    FILTRO DE DATA: usa 'criado' (data de abertura do chamado).
-   Todos os 625 chamados têm essa data preenchida.
+   Todos os chamados têm essa data preenchida (campo obrigatório no Pipefy).
    Sub-abas: Visão geral, Top bots, Tipos de problema, Tempo de resolução, Chamados.
    ============================================================ */
 /*

@@ -7,6 +7,19 @@ import { donut, hbars } from '../charts.js';
 import { aiBar } from '../analysis.js';
 import { setBadge } from '../nav.js';
 
+// ─── MÓDULO: views/proj.js ───────────────────────────────────────────────────
+// Aba Projetos: KPIs de portfólio, gráficos de status/frente e lista filtrável.
+//
+// Exporta:
+//   buildProj()            — renderiza aba completa (KPIs + filtros + lista)
+//   renderProjList()       — re-renderiza apenas a lista com filtros atuais
+//   toggleProjChip(qual)   — ativa/desativa filtro rápido ('atraso' | 'risco')
+//   toggleProj(key)        — expande ou recolhe o painel de detalhes de um projeto
+//
+// Funções internas (privadas):
+//   projDetails(p)         — HTML do painel expandido com campos ricos da planilha
+// ─────────────────────────────────────────────────────────────────────────────
+
 // ─── buildProj ────────────────────────────────────────────────────────────────
 // Monta a aba Projetos com KPIs, donut de status, barras por frente e lista filtrada.
 export function buildProj() {
@@ -155,8 +168,10 @@ export function toggleProj(key) {
   renderProjList();
 }
 
-// ─── projDetails ───────────────────────────────────────────────────────────────
-// Gera o HTML do painel expandido de um projeto. Omite campos vazios.
+// ─── projDetails [PRIVADO] ───────────────────────────────────────────────────
+// Gera o HTML do painel expandido de um projeto ao clicar na linha.
+// Só renderiza campos preenchidos — campos vazios na planilha não aparecem.
+// Chamada apenas por renderProjList().
 function projDetails(p) {
   const fmt = txt => String(txt || '').trim().replace(/\n/g, '<br>');
   const blocks = [];

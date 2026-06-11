@@ -1,6 +1,19 @@
 import { App } from '../state.js';
 import { MESES, HOJE } from '../constants.js';
 
+// ─── MÓDULO: utils/date.js ────────────────────────────────────────────────────
+// Conversão, formatação e filtragem de datas.
+//
+// Exporta:
+//   toDate(v)                  — converte qualquer valor (Date, serial Excel, ISO) → Date nativa
+//   ym(d)                      — Date → "YYYY-MM" (chave de agrupamento mensal)
+//   ymLabel(m)                 — "YYYY-MM" → "Mmm/AA" (ex: "Abr/26")
+//   refDate(item)              — data de referência de um item (dtFim > criado)
+//   inDateRange(d)             — boolean: data passa no filtro global?
+//   activeInRange(ini, fim)    — 'in'|'out'|'nodate': intervalo cruza o filtro?
+//   applyDate(arr)             — aplica filtro ao array → { kept, noDate }
+// ─────────────────────────────────────────────────────────────────────────────
+
 // ─── Conversão de valores para Date ─────────────────────────────────────────
 
 // Aceita Date nativo, número serial do Excel ou string ISO.
