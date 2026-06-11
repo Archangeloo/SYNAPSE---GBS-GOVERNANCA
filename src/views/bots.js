@@ -4,6 +4,22 @@ import { count, pct } from '../utils/helpers.js';
 import { donut, hbars } from '../charts.js';
 import { aiBar } from '../analysis.js';
 
+// ─── MÓDULO: views/bots.js ───────────────────────────────────────────────────
+// Sub-aba Inventário de Bots (dentro de RPA & Bots): catálogo de automações RPA.
+//
+// Exporta:
+//   buildBots()       — renderiza inventário completo com KPIs e cruzamento
+//   renderBotsList()  — re-renderiza lista filtrada por status e área
+//
+// Funções internas (privadas):
+//   buildBotsCruzamento(Bf) — tabela top 10 bots PRD × chamados de manutenção
+//   botDetails(b)           — HTML do painel expandido com detalhes de um bot
+//
+// FILTRO DE DATA DIFERENTE:
+//   Usa AnoPRD (ano de entrada em produção), não datas de chamados ou ações.
+//   "Filtrar por 2026" exibe apenas bots que foram ao ar em 2026.
+// ─────────────────────────────────────────────────────────────────────────────
+
 // ─── buildBots ────────────────────────────────────────────────────────────────
 // Monta a sub-aba Inventário de bots (dentro da aba RPA & Bots).
 // FILTRO DE DATA DIFERENTE: usa AnoPRD (ano de entrada em produção), não data de ação.

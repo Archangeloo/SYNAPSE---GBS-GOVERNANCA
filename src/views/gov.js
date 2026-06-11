@@ -8,6 +8,19 @@ import { aiBar } from '../analysis.js';
 import { ymLabel, ym } from '../utils/date.js';
 import { HOJE } from '../constants.js';
 
+// ─── MÓDULO: views/gov.js ────────────────────────────────────────────────────
+// Painel de Controle — visão executiva que cruza todas as fontes de dados.
+//
+// Exporta:
+//   allActions()           — array unificado com ações de todas as 4 fontes
+//   allActionsFiltered()   — allActions() com filtro de data aplicado
+//   buildHeatmap()         — heatmap Analytics: prioridade × frente (usado por ana.js)
+//   buildGov()             — renderiza o dashboard executivo completo
+//
+// Funções internas (privadas):
+//   buildEvolucao(A)       — gráfico de linha: % concluído acumulado mês a mês
+// ─────────────────────────────────────────────────────────────────────────────
+
 // ─── allActions / allActionsFiltered ─────────────────────────────────────────
 // Unifica as 4 fontes num único array de "ações" para a visão executiva.
 export function allActions() {
@@ -172,8 +185,11 @@ export function buildHeatmap() {
 }
 
 // ─── buildEvolucao ────────────────────────────────────────────────────────────
-// Gráfico de linha: % concluído acumulado mês a mês.
-// Só plota meses até o mês atual para não exibir meses futuros com zero.
+// ─── buildEvolucao [PRIVADO] ─────────────────────────────────────────────────
+// Gráfico de linha: % concluído acumulado mês a mês (curva de progresso).
+// Só plota meses até o mês atual — evita exibir meses futuros com zero.
+// Retorna '' se houver menos de 3 pontos (insuficiente para tendência).
+// Chamada apenas por buildGov().
 function buildEvolucao(A) {
   const comData = A.filter(a => a.dtFim);
   if (comData.length < 3) return '';

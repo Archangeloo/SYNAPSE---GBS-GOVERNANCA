@@ -1,5 +1,16 @@
 import { HOJE, EQUIPE_COE } from '../constants.js';
 
+// ─── MÓDULO: utils/classify.js ───────────────────────────────────────────────
+// Normalização de status, identificação de equipe e cálculos de risco de projeto.
+//
+// Exporta:
+//   statusClass(s)         — texto bruto → código interno (done/doing/todo/blocked…)
+//   coeNomePadrao(resp)    — nome do responsável → nome padronizado CoE (ou null)
+//   projFase(statusRaw)    — texto de status → número da fase 1–5 (ou null)
+//   projAtrasado(p)        — boolean: projeto com prazo vencido e não entregue?
+//   projRisco(p)           — { score 0–100, nivel, motivos[] }: risco calculado
+// ─────────────────────────────────────────────────────────────────────────────
+
 // ─── Normalização de status ───────────────────────────────────────────────────
 // Converte o texto bruto da planilha em código interno, normalizando variações
 // de digitação, acentos e os status específicos do GBS.

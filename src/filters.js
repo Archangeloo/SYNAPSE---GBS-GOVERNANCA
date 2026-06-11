@@ -7,6 +7,18 @@ import { buildAna } from './views/ana.js';
 import { buildRPAChamados } from './views/rpa.js';
 import { buildBots } from './views/bots.js';
 
+// ─── MÓDULO: filters.js ──────────────────────────────────────────────────────
+// Controles do filtro global de período (data range) do header.
+// Quando o filtro muda, chama renderAll() para redesenhar todas as abas.
+//
+// Exporta:
+//   setQuickRange(mode)         — atalho: 'month' | 'quarter' | 'year'
+//   applyDateFilter(fromChip?)  — lê os inputs de data e aplica o filtro
+//   clearDateFilter()           — reseta para modo 'all' (sem filtro)
+//   renderAll()                 — redesenha todas as abas com filtro atual
+//   updateDateBadge()           — atualiza texto de status no header
+// ─────────────────────────────────────────────────────────────────────────────
+
 // ─── Filtro global de período ─────────────────────────────────────────────────
 
 // Aplica um atalho de período (mês/trimestre/ano atual).

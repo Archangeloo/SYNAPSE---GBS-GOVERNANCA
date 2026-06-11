@@ -1,4 +1,13 @@
-// ─── Helpers genéricos ────────────────────────────────────────────────────────
+// ─── MÓDULO: utils/helpers.js ─────────────────────────────────────────────────
+// Funções utilitárias reutilizadas em toda a aplicação.
+// Sem dependências internas — pode ser importado por qualquer módulo.
+//
+// Exporta:
+//   findSheet(wb, frag)   — busca aba em workbook pelo nome (tolerante a variações)
+//   get(row, keys)        — lê coluna de linha SheetJS com múltiplos nomes possíveis
+//   count(arr, fn)        — frequência de valores em array → objeto { chave: n }
+//   pct(a, b)             — percentual arredondado, seguro contra divisão por zero
+// ─────────────────────────────────────────────────────────────────────────────
 
 // Busca uma aba num workbook por fragmento de nome (insensível a maiúsculas,
 // underlines e espaços). Ex: findSheet(wb, 'melhorias') → 'Pipefy_Melhorias'.

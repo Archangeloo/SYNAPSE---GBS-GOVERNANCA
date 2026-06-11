@@ -2,6 +2,21 @@ import { App } from '../state.js';
 import { findSheet, get } from '../utils/helpers.js';
 import { toDate, ym } from '../utils/date.js';
 
+// ─── MÓDULO: parsers/rpa.js ──────────────────────────────────────────────────
+// Parser do relatório de chamados RPA + Inventário de Bots.
+//
+// Exporta:
+//   parseRPA()            — chamados de manutenção → App.R
+//   parseInv()            — inventário de bots     → App.B
+//   enrichRPAComArea()    — associa área a cada chamado (match bot × chamado)
+//   areaPorPalavra(proc)  — regra de fallback: área pelo nome do processo
+//
+// NOTA sobre nomes em inglês em areaPorPalavra():
+//   Os processos no Pipefy têm nomes em inglês (BankStatement, PaymentRun…)
+//   porque seguem a nomenclatura internacional do ERP SAP usado pelo grupo.
+//   As strings de comparação devem permanecer em inglês para casar com os dados.
+// ─────────────────────────────────────────────────────────────────────────────
+
 // ─── parseRPA ─────────────────────────────────────────────────────────────────
 // Processa o relatório de chamados de manutenção RPA (export do Pipefy).
 // Robusto: procura a aba correta entre todas (pode não ser a primeira), valida

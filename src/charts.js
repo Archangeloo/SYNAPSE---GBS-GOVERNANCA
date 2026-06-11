@@ -1,5 +1,17 @@
 import { pct } from './utils/helpers.js';
 
+// ─── MÓDULO: charts.js ───────────────────────────────────────────────────────
+// Componentes de gráfico: SVG/HTML puro, sem bibliotecas externas.
+// Cada função retorna uma string HTML que pode ser injetada via innerHTML.
+//
+// Exporta:
+//   donut(data, opts)                      — gráfico de rosca
+//   hbars(entries, opts)                   — barras horizontais simples
+//   clusteredBars(groups, series)          — barras clusterizadas (grupo × série)
+//   lineChart(points, opts)               — linha com área preenchida
+//   heatmap(matrix, rowLabels, colLabels) — tabela de calor com gradiente de cor
+// ─────────────────────────────────────────────────────────────────────────────
+
 // ─── Todos os gráficos são SVG/HTML puro, sem bibliotecas externas ────────────
 // Gerados como strings HTML e injetados via innerHTML. Isso mantém zero
 // dependências externas (além do SheetJS para leitura de Excel).

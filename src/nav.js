@@ -1,3 +1,12 @@
+// ─── MÓDULO: nav.js ──────────────────────────────────────────────────────────
+// Controla a navegação entre abas do dashboard.
+//
+// Exporta:
+//   setNav(id)            — ativa aba principal ('upload'|'gov'|'proj'|'mel'|'rpa'|'ana')
+//   rpaPage(id)           — ativa sub-aba dentro de RPA & Bots
+//   setBadge(id, txt, cls) — atualiza o badge numérico de uma aba no menu
+// ─────────────────────────────────────────────────────────────────────────────
+
 // ─── Navegação principal ──────────────────────────────────────────────────────
 
 // Alterna entre as abas principais do dashboard.
