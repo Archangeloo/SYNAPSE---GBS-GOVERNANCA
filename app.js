@@ -392,6 +392,102 @@ function projRisco(p){
 
 
 /* ============================================================
+   MODELO DE DADOS NORMALIZADO
+   ============================================================
+   Cada parser lê uma aba do Excel e produz um array de objetos
+   com campos padronizados. Este bloco documenta o formato de
+   cada objeto para facilitar a manutenção.
+
+   ── App.P.mel[]  (Pipefy Melhorias) ─────────────────────────
+   {
+     num:       número ou id da melhoria
+     frente:    gerência/área responsável (P2P, O2C, H2R…)
+     fluxo:     nome do fluxo de processo no Pipefy
+     atividade: descrição resumida da melhoria
+     statusRaw: texto original da planilha (ex: "Em andamento")
+     sc:        código interno normalizado → ver STATUS_COLOR
+     resp:      nome do responsável pelo desenvolvimento
+     champion:  nome do champion/solicitante
+     complex:   complexidade declarada (Baixa, Média, Alta)
+     tipo:      tipo de melhoria ou ajuste
+     dtInicio:  Date — início do desenvolvimento (pode ser null)
+     dtFim:     Date — conclusão/previsão de conclusão (pode ser null)
+     horas:     estimativa de horas
+   }
+
+   ── App.P.proj[]  (Projetos) ────────────────────────────────
+   {
+     num:        número ou código do projeto
+     titulo:     nome do projeto
+     resp:       responsável pelo projeto (equipe CoE)
+     frente:     área cliente ou frente de negócio
+     focal:      ponto focal do lado do negócio
+     statusRaw:  texto original do status na planilha
+     sc:         código interno normalizado
+     dtFim:      Date — prazo de conclusão (pode ser null)
+     proximos:   próximos passos (texto livre)
+     equipes:    equipes envolvidas
+     descricao:  descrição do projeto
+     atvConcl:   atividades já concluídas
+     atvAndam:   atividades em andamento
+     comentarios:comentários gerais
+     prog:       número 0.0–1.0 representando % de progresso (pode ser null)
+   }
+
+   ── App.P.ana[]  (Analytics) ────────────────────────────────
+   {
+     titulo:    nome ou descrição da atividade
+     resp:      responsável
+     frente:    área de negócio
+     statusRaw: texto original
+     sc:        código interno normalizado
+     dtFim:     Date — data de fechamento/conclusão (pode ser null)
+     criado:    Date — data de abertura (pode ser null)
+     prio:      número 1–4 (prioridade declarada)
+     tipo:      tipo de atividade
+     fonte:     sempre 'Analytics' (para identificar a origem no painel executivo)
+   }
+
+   ── App.R[]  (Chamados RPA) ──────────────────────────────────
+   {
+     cod:           código/id do chamado no Pipefy
+     processo:      nome do processo (bot) relacionado
+     solicitante:   quem abriu o chamado
+     responsaveis:  array de nomes de quem atendeu
+     problema:      tipo de problema relatado
+     reexec:        texto indicando se admite reexecução (ou null)
+     fase:          fase atual do chamado no fluxo do Pipefy
+     mes:           string "YYYY-MM" da data de abertura
+     criado:        Date — data de abertura do chamado
+     vencido:       boolean — prazo de SLA vencido?
+     tIdent:        número de dias na fase Identificação (pode ser null)
+     tDesenv:       número de dias na fase Desenvolvimento (pode ser null)
+     tReexec:       número de dias na fase Reexecução (pode ser null)
+     area:          área do bot (enriquecido por enrichRPAComArea, pode ser null)
+   }
+
+   ── App.B[]  (Inventário de Bots) ───────────────────────────
+   {
+     nome:       nome do bot/automação
+     perimetro:  perímetro geográfico (Brasil, MEX, ARG…)
+     area:       área funcional (P2P, TAX, H2R…)
+     status:     'PRD' | 'DEV' | 'BACKLOG' | 'CANCELADO' | 'DESATIVADO'
+     anoPrd:     ano de entrada em produção (número ou string)
+     desc:       descrição do que o bot faz
+     dev:        desenvolvedor responsável
+     suporte:    responsável por suporte/sustentação
+     criticidade:número 1–4 (1=crítico, 4=baixo)
+     freq:       frequência de execução (diária, semanal…)
+     fte:        FTEs economizados (número)
+     vol:        volumetria mensal de transações (número)
+     nBots:      número de bots no processo
+     areaCliente:área do cliente atendida
+     sap:        módulo SAP relacionado (se houver)
+   }
+   ============================================================ */
+
+
+/* ============================================================
    NAVEGAÇÃO
    ============================================================ */
 
@@ -598,9 +694,22 @@ function pct(a, b){ return b ? Math.round(a/b*100) : 0; }
    ============================================================ */
 
 /*
- * parseGov() — processa as 3 abas da Base Governança:
- *   Pipefy_Melhorias, Projetos e Analytics.
- * Chamado por generate() após o usuário clicar em "Gerar dashboard".
+ * parseGov() — parser da Base Governança (arquivo Excel principal).
+ *
+ * Lê:     App.gov (workbook SheetJS carregado pelo usuário)
+ * Escreve: App.P.mel  → melhorias Pipefy normalizadas
+ *          App.P.proj → projetos normalizados
+ *          App.P.ana  → atividades de Analytics normalizadas
+ * Chamada por: generate()
+ *
+ * TOLERÂNCIA A VARIAÇÕES:
+ *   - Nomes de aba: busca por fragmento, insensível a maiúsculas e underlines
+ *   - Nomes de coluna: cada campo tenta múltiplos nomes alternativos (ver get())
+ *   - Layout de Projetos: detecta automaticamente se o cabeçalho está correto
+ *     ou embaralhado (layout antigo), e lê por posição como fallback
+ *
+ * Para adicionar um novo campo: adicione o nome da coluna no array do get()
+ * e mapeie para o campo normalizado no objeto retornado pelo .map().
  */
 function parseGov(){
   const wb = App.gov;
@@ -713,6 +822,25 @@ function parseGov(){
  * as colunas esperadas, e descarta linhas-lixo (sem qualquer identificador real).
  * Se o arquivo não parecer um relatório de chamados, registra um aviso em App.rpaWarn
  * e deixa App.R vazio (em vez de gerar centenas de linhas-lixo).
+ */
+/*
+ * parseRPA() — parser do relatório de chamados de manutenção RPA.
+ *
+ * Lê:     App.rpa (workbook SheetJS carregado pelo usuário)
+ * Escreve: App.R → chamados RPA normalizados
+ * Chamada por: generate()
+ *
+ * DETECÇÃO AUTOMÁTICA DE ABA:
+ *   Testa cada aba do arquivo e escolhe a que tem colunas típicas de chamados
+ *   (Código, Processo, Fase…). Se nenhuma aba parecer um relatório de chamados,
+ *   registra App.rpaWarn e deixa App.R vazio — evita gerar lixo na tela.
+ *
+ * CAMPOS CALCULADOS:
+ *   - mes:    string "YYYY-MM" derivada de criado, para agrupamento mensal
+ *   - vencido: true se a fase não é "Concluído" e criado > 30 dias atrás
+ *   - tIdent / tDesenv / tReexec: dias em cada fase (calculados a partir de
+ *     colunas de data de entrada/saída de fase, se disponíveis)
+ *   - area: preenchido posteriormente por enrichRPAComArea() via match com App.B
  */
 function parseRPA(){
   const wb = App.rpa;
@@ -1352,9 +1480,19 @@ function isLate(a){
 }
 
 /*
- * buildGov() — monta a aba Governança (visão executiva).
- * Calcula todos os KPIs cruzados, gera o HTML e injeta em #gov-content.
- * É chamada pelo generate() inicial e pelo renderAll() quando o filtro de data muda.
+ * buildGov() — Painel de Controle (visão executiva).
+ *
+ * Lê:     App.P.mel, App.P.proj, App.P.ana, App.R (todas as fontes)
+ * Escreve: #gov-content
+ * Chama:  allActionsFiltered(), buildHeatmap(), buildEvolucao(), flushCharts()
+ * Chamada por: generate() e renderAll() (quando filtro de data muda)
+ *
+ * Produz:
+ *  - KPIs de composição: Concluídas / Em andamento / Backlog / Outros
+ *  - Donut de status unificado com segmento "Impedimentos"
+ *  - Barras por responsável (equipe CoE) e por frente
+ *  - Heatmap de prioridade × frente (Analytics)
+ *  - Gráfico de evolução do % concluído mês a mês
  */
 function buildGov(){
   const any = App.loaded.gov || App.loaded.rpa;
@@ -1567,6 +1705,20 @@ function buildEvolucao(A){
    - Expand inline ao clicar: revela campos ricos da planilha (descrição, equipes, etc.)
    ============================================================ */
 
+/*
+ * buildProj() — aba Projetos.
+ *
+ * Lê:     App.P.proj
+ * Escreve: #proj-content  (estrutura + filtros)
+ *          #proj-list      (lista de itens, via renderProjList())
+ * Chamada por: generate() e renderAll()
+ *
+ * Produz:
+ *  - KPIs: total, em execução, fase final, atrasados, risco alto
+ *  - Donut por status e barras por frente/área cliente
+ *  - Lista filtrável com expand inline (detalhes do projeto)
+ *  - Score de risco automático 0–100 por projeto
+ */
 function buildProj(){
   const {kept:P, noDate} = applyDate(App.P.proj);
   document.getElementById('proj-empty').style.display = (P.length||noDate) ? 'none' : 'block';
@@ -1784,6 +1936,22 @@ function projDetails(p){
    Ao filtrar por período, elas ficam fora — comportamento correto e documentado.
    Para ver todas as melhorias, use o filtro de Status dentro da aba.
    ============================================================ */
+/*
+ * buildMel() — aba Pipefy Melhorias.
+ *
+ * Lê:     App.P.mel
+ * Escreve: #mel-content
+ * Chamada por: generate() e renderAll()
+ *
+ * ATENÇÃO — lógica especial de filtro de data:
+ *   Usa dtInicio + dtFim (intervalo de desenvolvimento), não uma data única.
+ *   Melhorias de backlog sem data são SEMPRE incluídas, mesmo com filtro ativo
+ *   (elas representam trabalho pendente, não histórico).
+ *
+ * Produz:
+ *  - KPIs: total, concluídas, backlog, bloqueadas, fluxos distintos
+ *  - Donut de status, barras por frente, complexidade e responsável
+ */
 function buildMel(){
   const {kept: Mfiltrado} = applyDate(App.P.mel);
   // Backlog sem data = trabalho pendente, não histórico. Sempre incluído.
@@ -1851,6 +2019,23 @@ function buildMel(){
    ~49 de 161 atividades têm DataAbertura; 36 têm DataFechamento.
    As demais (~76) não têm data na planilha de origem.
    ============================================================ */
+/*
+ * buildAna() — aba Analytics.
+ *
+ * Lê:     App.P.ana
+ * Escreve: #ana-content
+ * Chamada por: generate() e renderAll()
+ *
+ * ATENÇÃO — cobertura de datas baixa:
+ *   Muitas atividades não têm data preenchida na planilha.
+ *   Com filtro ativo, apenas atividades COM data entram no recorte.
+ *   A interface exibe quantas ficaram de fora para transparência.
+ *
+ * Produz:
+ *  - KPIs: total, concluídas, em andamento, não iniciadas
+ *  - Donut de status, barras por prioridade, frente e responsável
+ *  - Heatmap de prioridade × frente (chamado via buildHeatmap em buildGov)
+ */
 function buildAna(){
   const {kept:A, noDate} = applyDate(App.P.ana);
   document.getElementById('ana-empty').style.display  = App.P.ana.length ? 'none' : 'block';
@@ -1916,6 +2101,26 @@ function setBadge(id, txt, cls){
    Todos os 625 chamados têm essa data preenchida.
    Sub-abas: Visão geral, Top bots, Tipos de problema, Tempo de resolução, Chamados.
    ============================================================ */
+/*
+ * buildRPAChamados() — aba RPA & Bots (sub-abas de chamados).
+ *
+ * Lê:     App.R (chamados), App.B (inventário, via areaPorProc)
+ * Escreve: #rpa-empty / #rpa-content  (visibilidade)
+ *          #rpage-visao   → estrutura + chama renderRPAStatus()
+ *          #rpage-bots    → top bots por volume de manutenções
+ *          #rpage-prob    → tipos de problema × fase (clusteredBars)
+ *          #rpage-tempo   → tempo médio por bot
+ *          #rpage-lista   → tabela paginada com busca
+ * Chamada por: generate() e renderAll()
+ *
+ * ESTRUTURA DA FUNÇÃO:
+ *   1. Validação e nota de filtro de data
+ *   2. Sub-aba Visão Geral  → htmlVisao + renderRPAStatus()
+ *   3. Sub-aba Top Bots     → htmlTopBots
+ *   4. Sub-aba Tipos Problema → htmlProblemas
+ *   5. Sub-aba Tempo        → htmlTempo
+ *   6. Sub-aba Lista        → htmlLista + renderRPALista()
+ */
 function buildRPAChamados(){
   const {kept:R, noDate} = applyDate(App.R);
   const emptyEl = document.getElementById('rpa-empty');
@@ -1972,7 +2177,7 @@ function buildRPAChamados(){
     return a && a !== '(não mapeada)' ? `${proc}  ·  ${a}` : proc;
   };
 
-  // Sub-aba: Top Bots (processos com mais chamados de manutenção)
+  // ── Sub-aba: Top Bots ─────────────────────────────────────────
   const porProcV = count(R, r => r.processo);
   const procList = Object.entries(porProcV).filter(e=>e[0]!=='(sem processo)').sort((a,b)=>b[1]-a[1])
     .map(([proc,n]) => [labelComArea(proc), n]); // adiciona a área ao rótulo
@@ -1981,7 +2186,7 @@ function buildRPAChamados(){
   document.getElementById('rpage-bots').innerHTML = htmlTopBots;
   flushCharts();
 
-  // Sub-aba: Tipos de problema — barras clusterizadas (grupos = fase, barra = problema)
+  // ── Sub-aba: Tipos de Problema ───────────────────────────────
   const porProb = count(R, r => r.problema);
   const porReexec = count(R.filter(r=>r.reexec), r => r.reexec);
   // fases (grupos), na ordem do fluxo do chamado
@@ -2017,7 +2222,7 @@ function buildRPAChamados(){
   document.getElementById('rpage-prob').innerHTML = htmlProblemas;
   flushCharts();
 
-  // Sub-aba: Tempo de resolução por fase e por bot
+  // ── Sub-aba: Tempo de Resolução ──────────────────────────────
   const avg = (arr,k) => { const v=arr.filter(r=>r[k]!=null).map(r=>r[k]); return v.length?(v.reduce((s,x)=>s+x,0)/v.length).toFixed(1):'—'; };
   let htmlTempo = `<div class="krow">
     <div class="kpi">${kpiIcon('clock')}<div class="knum sm">${avg(R,'tIdent')}</div><div class="klbl">Média dias · Identificação</div></div>
@@ -2044,7 +2249,7 @@ function buildRPAChamados(){
   document.getElementById('rpage-tempo').innerHTML = htmlTempo;
   flushCharts();
 
-  // Sub-aba: Lista paginada de chamados com busca
+  // ── Sub-aba: Lista de Chamados ───────────────────────────────
   let htmlLista = `<div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
     <input type="text" id="rsearch" placeholder="Buscar por código, processo, solicitante..." oninput="renderRPALista()" style="flex:1;max-width:360px">
     <span style="font-size:11px;color:var(--ink4)" id="rlista-count">${total} chamados</span></div>
@@ -2161,6 +2366,25 @@ function renderRPALista(){
    não uma data de ação. Ao filtrar "2026", mostra apenas bots que
    entraram em PRD em 2026 (não chamados nem melhorias de 2026).
    ============================================================ */
+/*
+ * buildBots() — aba Inventário de Bots (dentro de RPA & Bots).
+ *
+ * Lê:     App.B (inventário), App.R (para cruzamento de chamados, se disponível)
+ * Escreve: #bots-empty / #bots-content
+ *          #bots-list  → lista filtrável de bots, via renderBotsList()
+ * Chamada por: generate() e renderAll()
+ *
+ * FILTRO DE DATA DIFERENTE:
+ *   Usa o AnoPRD (ano de entrada em produção), não datas de ação.
+ *   "Filtrar por 2026" mostra bots que foram ao ar em 2026, não chamados de 2026.
+ *
+ * Produz:
+ *  - KPIs: total de bots, em PRD, em DEV, backlog
+ *  - Barras por área e donut por perímetro (bots em PRD)
+ *  - Barras por criticidade e frequência
+ *  - Tabela de cruzamento inventário × chamados (se App.R disponível)
+ *  - Lista filtrada com expand inline (detalhes do bot)
+ */
 function buildBots(){
   // Filtro especial por AnoPRD (extrai apenas o ano do range de datas selecionado)
   const dr = App.dateRange;
