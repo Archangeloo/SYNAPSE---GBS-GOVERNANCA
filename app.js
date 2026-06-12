@@ -1784,8 +1784,8 @@ function buildProj(){
   const pessoas = [...new Set(P.map(p => p.resp).filter(Boolean))].sort();
   html += `<div class="filters" style="margin-top:4px">
     <input type="text" id="proj-q" placeholder="Buscar projeto, responsável, frente..." oninput="renderProjList()" style="flex:1;max-width:280px">
-    <button class="df-chip" id="proj-chip-atraso" onclick="toggleProjChip('atraso')">⚠ Só atrasados</button>
-    <button class="df-chip" id="proj-chip-risco" onclick="toggleProjChip('risco')">Risco alto</button>
+    <button class="chip" id="proj-chip-atraso" onclick="toggleProjChip('atraso')">⚠ Só atrasados</button>
+    <button class="chip" id="proj-chip-risco" onclick="toggleProjChip('risco')">Risco alto</button>
     <label>Responsável</label>
     <select id="proj-fp" onchange="renderProjList()"><option value="">Todos</option>
       ${pessoas.map(p=>`<option>${p}</option>`).join('')}</select>
