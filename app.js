@@ -1928,6 +1928,86 @@ function projDetails(p){
 }
 
 
+/*
+ * overviewFrentes(M) — tabela "Overview por categoria" da aba Pipefy Melhorias.
+ *
+ * Linhas  = frentes (P2P, O2C, TAX…), na ordem padrão + extras ao final.
+ * Colunas = Melhorias (total) + breakdown por status.
+ *
+ * "Dev + Planej." e "Validação" são ambos sc='doing', distinguidos pelo statusRaw:
+ *   Validação    → statusRaw contém "validação" ou "aguardando"
+ *   Dev + Planej → sc='doing' e não é validação
+ */
+function overviewFrentes(M) {
+  const isValidacao = m => {
+    const t = (m.statusRaw || '').toLowerCase();
+    return t.includes('validação') || t.includes('validacao') || t.includes('aguardando');
+  };
+
+  const COLUNAS = [
+    { label: 'Melhorias',     fn: null,                                    cls: '' },
+    { label: 'Backlog',       fn: m => m.sc === 'todo',                    cls: '' },
+    { label: 'Dev + Planej.', fn: m => m.sc === 'doing' && !isValidacao(m), cls: '' },
+    { label: 'Validação',     fn: m => isValidacao(m),                     cls: '' },
+    { label: 'Pipefy',        fn: m => m.sc === 'vendor',                  cls: '' },
+    { label: 'Bloqueado',     fn: m => m.sc === 'blocked',                 cls: '' },
+    { label: 'Concluídos',    fn: m => m.sc === 'done',                    cls: 'ov-done' },
+    { label: 'Cancelados',    fn: m => m.sc === 'cancel',                  cls: 'ov-cancel' },
+  ];
+
+  const ORDEM  = ['COE','P2P','O2C','R2R','TAX','H2R'];
+  const CORES  = { COE:'#0195D6', P2P:'#E83430', O2C:'#4DB1B3', R2R:'#E66407', TAX:'#0F5299', H2R:'#8B6FD4' };
+
+  const todasFrentes = [...new Set(M.map(m => m.frente).filter(Boolean))];
+  const frentes = [
+    ...ORDEM.filter(f => todasFrentes.includes(f)),
+    ...todasFrentes.filter(f => !ORDEM.includes(f)).sort(),
+  ];
+  if (!frentes.length) return '';
+
+  const cel = n => n
+    ? `<td>${n}</td>`
+    : `<td class="ov-zero">—</td>`;
+
+  const linhas = frentes.map(f => {
+    const itens = M.filter(m => m.frente === f);
+    const cor   = CORES[f] || 'var(--ink3)';
+    const cols  = COLUNAS.map((c, i) => cel(i === 0 ? itens.length : itens.filter(c.fn).length)).join('');
+    return `<tr>
+      <td><span class="ov-badge" style="background:${cor}">${f}</span></td>
+      ${cols}
+    </tr>`;
+  }).join('');
+
+  const totais = COLUNAS.map((c, i) =>
+    `<td>${i === 0 ? M.length : M.filter(c.fn).length}</td>`
+  ).join('');
+
+  const cabecalhos = COLUNAS.map(c =>
+    `<th class="${c.cls}">${c.label}</th>`
+  ).join('');
+
+  return `<div class="card">
+    <div class="card-title">
+      <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M3 15h18M9 3v18"/>
+      </svg>
+      Overview por categoria
+    </div>
+    <div style="overflow-x:auto">
+      <table class="ov-table">
+        <thead><tr><th></th>${cabecalhos}</tr></thead>
+        <tbody>${linhas}</tbody>
+        <tfoot><tr>
+          <td style="text-align:left">Total</td>
+          ${totais}
+        </tr></tfoot>
+      </table>
+    </div>
+  </div>`;
+}
+
+
 /* ============================================================
    VIEW: PIPEFY MELHORIAS
    ============================================================
@@ -2005,6 +2085,7 @@ function buildMel(){
         return hbars(dados,{max:8,lw:130});
       })()}</div>
   </div>`;
+  html += overviewFrentes(M);
   document.getElementById('mel-content').innerHTML = html;
   flushCharts();
   setBadge('nb-mel', M.length, '');

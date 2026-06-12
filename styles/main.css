@@ -965,6 +965,93 @@ input[type="text"] {
 }
 
 
+/* ── Tabela overview por frente (Pipefy Melhorias) ──────────── */
+
+.ov-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+/* Cabeçalho */
+.ov-table thead th {
+  padding: 11px 18px;
+  text-align: center;
+  font-size: 11px;
+  font-weight: 600;
+  color: #fff;
+  background: var(--brand);
+  white-space: nowrap;
+  letter-spacing: 0.02em;
+}
+
+.ov-table thead th:first-child {
+  background: transparent;
+  width: 80px;
+}
+
+.ov-table thead th.ov-done   { background: var(--ok); }
+.ov-table thead th.ov-cancel { background: var(--warn); }
+
+/* Primeira coluna (total) — número em destaque */
+.ov-table tbody td:nth-child(2) {
+  font-weight: 600;
+  color: var(--ink);
+}
+
+/* Células de dados */
+.ov-table td {
+  padding: 10px 18px;
+  text-align: center;
+  border-bottom: 1px solid var(--rule);
+  color: var(--ink2);
+  font-variant-numeric: tabular-nums;
+  transition: background 0.1s;
+}
+
+.ov-table td:first-child { text-align: left; }
+
+.ov-table tbody tr:last-child td { border-bottom: none; }
+
+.ov-table tbody tr:hover td { background: var(--paper); }
+
+/* Linha de total */
+.ov-table tfoot td {
+  padding: 11px 18px;
+  font-weight: 700;
+  color: #fff;
+  background: var(--brand);
+  border-top: 2px solid rgba(255,255,255,0.15);
+  border-bottom: none;
+  text-align: center;
+}
+
+.ov-table tfoot td:first-child {
+  text-align: left;
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+/* Badge colorido da frente */
+.ov-badge {
+  display: inline-block;
+  padding: 4px 10px;
+  border-radius: 5px;
+  font-size: 11px;
+  font-weight: 700;
+  color: #fff;
+  white-space: nowrap;
+  letter-spacing: 0.03em;
+}
+
+/* Célula vazia (zero ocorrências) */
+.ov-zero {
+  color: var(--ink4);
+  font-size: 11px;
+}
+
+
 /* ── Tabela ───────────────────────────────────────────────── */
 
 .tbl {
