@@ -1069,8 +1069,9 @@ function resolveColor(c) {
  * data: array de { label, value, color }
  */
 function donut(data, opts = {}) {
-  const filtered = data.filter(d => d.value > 0);
-  const total    = filtered.reduce((s, d) => s + d.value, 0);
+  const filtered   = data.filter(d => d.value > 0);
+  const total      = filtered.reduce((s, d) => s + d.value, 0);
+  const totalLabel = opts.total != null ? opts.total : total; // total exibido no centro (pode ser sobrescrito)
   if (!total) return '<div style="font-size:12px;color:var(--ink4)">Sem dados</div>';
 
   const id = _cid('donut');
@@ -1117,7 +1118,7 @@ function donut(data, opts = {}) {
     <div style="position:relative;width:130px;height:130px;flex-shrink:0">
       <canvas id="${id}" width="130" height="130"></canvas>
       <div style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;pointer-events:none">
-        <div style="font-family:'Syne',sans-serif;font-size:26px;font-weight:600;color:var(--ink);line-height:1">${total}</div>
+        <div style="font-family:'Syne',sans-serif;font-size:26px;font-weight:600;color:var(--ink);line-height:1">${totalLabel}</div>
         <div style="font-size:9px;color:var(--ink4);letter-spacing:1px;margin-top:2px">TOTAL</div>
       </div>
     </div>
@@ -2253,13 +2254,13 @@ function buildMel(){
 
   // "Fluxos (processos)" = número de NomeFluxo únicos no recorte atual
   // Isso responde "quantos processos distintos foram tratados no período"
-  const fluxosUnicos = new Set(M.map(m => m.fluxo).filter(Boolean)).size;
+  const fluxosUnicos = new Set(App.P.mel.map(m => m.fluxo).filter(Boolean)).size;
 
   let html = dn + `<div class="sh">Pipefy — Melhorias & Ajustes</div>
   ${aiBar('mel')}
   <div class="krow k5">
-    <div class="kpi">${kpiIcon('message')}<div class="knum">${M.length}</div><div class="klbl">Total melhorias</div></div>
-    <div class="kpi gl">${kpiIcon('check')}<div class="knum">${done}</div><div class="klbl">Concluídas</div><div class="ksub">${pct(done,M.length)}% do total</div></div>
+    <div class="kpi">${kpiIcon('message')}<div class="knum">${App.P.mel.length}</div><div class="klbl">Total melhorias</div>${App.dateRange.mode !== 'all' ? `<div class="ksub">${M.length} no recorte</div>` : ''}</div>
+    <div class="kpi gl">${kpiIcon('check')}<div class="knum">${done}</div><div class="klbl">Concluídas</div><div class="ksub">${pct(done,App.P.mel.length)}% do total</div></div>
     <div class="kpi">${kpiIcon('stack')}<div class="knum">${backlog}</div><div class="klbl">Backlog</div></div>
     <div class="kpi wl">${kpiIcon('lock')}<div class="knum">${blocked}</div><div class="klbl">Bloqueadas</div></div>
     <div class="kpi il">${kpiIcon('branch')}<div class="knum">${fluxosUnicos}</div><div class="klbl">Fluxos (processos)</div><div class="ksub">distintos no recorte</div></div>
@@ -2267,7 +2268,7 @@ function buildMel(){
 
   html += `<div class="two">
     <div class="card"><div class="card-title"><i class="ti ti-chart-pie"></i> Status</div>
-      ${donut(['done','doing','todo','vendor','blocked','cancel'].map(k=>({label:STATUS_PT[k],value:M.filter(m=>m.sc===k).length,color:STATUS_COLOR[k]})).filter(d=>d.value))}</div>
+      ${donut(['done','doing','todo','vendor','blocked','cancel'].map(k=>({label:STATUS_PT[k],value:M.filter(m=>m.sc===k).length,color:STATUS_COLOR[k]})).filter(d=>d.value), {total:App.P.mel.length})}</div>
     <div class="card"><div class="card-title"><i class="ti ti-building"></i> Por frente</div>
       ${hbars(Object.entries(count(M,m=>m.frente)).sort((a,b)=>b[1]-a[1]),{max:8,lw:60,tot:M.length})}</div>
   </div>`;
