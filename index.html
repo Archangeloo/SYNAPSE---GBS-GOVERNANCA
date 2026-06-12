@@ -21,6 +21,8 @@
 
 <body>
 
+<canvas id="bg-canvas" style="position:fixed;inset:0;width:100%;height:100%;z-index:-1;pointer-events:none"></canvas>
+
 <!-- ── Topbar ──────────────────────────────────────────────── -->
 <header class="topbar">
 
@@ -249,6 +251,118 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <script src="app.js"></script>
+
+<script>
+(function () {
+  const canvas = document.getElementById('bg-canvas');
+  const ctx    = canvas.getContext('2d');
+
+  const N      = 95;      // número de partículas
+  const LINK   = 160;     // distância máxima para traçar linha (px)
+  const LINK2  = LINK * LINK;
+  const MRAD   = 200;     // raio de influência do cursor (px)
+  const MRAD2  = MRAD * MRAD;
+  const VMAX   = 0.55;    // velocidade máxima natural
+  const PUSH   = 0.5;     // intensidade do empurrão do cursor
+
+  // Cores da paleta Saint-Gobain
+  const DOT_CLR  = 'rgba(1, 149, 214, 0.7)';    // azul accent
+  const LINE_CLR = [15, 82, 153];                 // azul marca (para rgba dinâmico)
+
+  let W, H;
+  const mouse = { x: -999, y: -999 };
+  const pts   = [];
+
+  function resize() {
+    W = canvas.width  = window.innerWidth;
+    H = canvas.height = window.innerHeight;
+  }
+
+  function init() {
+    pts.length = 0;
+    for (let i = 0; i < N; i++) {
+      pts.push({
+        x:  Math.random() * W,
+        y:  Math.random() * H,
+        vx: (Math.random() - 0.5) * VMAX,
+        vy: (Math.random() - 0.5) * VMAX,
+        r:  Math.random() * 1.8 + 1.2,
+      });
+    }
+  }
+
+  function tick() {
+    ctx.clearRect(0, 0, W, H);
+
+    // ── Atualiza posições ──────────────────────────────────────
+    for (const p of pts) {
+      const dx   = p.x - mouse.x;
+      const dy   = p.y - mouse.y;
+      const dist2 = dx * dx + dy * dy;
+
+      // Repulsão suave do cursor
+      if (dist2 < MRAD2 && dist2 > 0) {
+        const dist  = Math.sqrt(dist2);
+        const force = (1 - dist / MRAD) * PUSH;
+        p.vx += (dx / dist) * force;
+        p.vy += (dy / dist) * force;
+      }
+
+      // Amortecimento leve para manter velocidade controlada
+      p.vx *= 0.98;
+      p.vy *= 0.98;
+
+      // Limita velocidade máxima
+      const spd = Math.sqrt(p.vx * p.vx + p.vy * p.vy);
+      if (spd > VMAX * 4) { p.vx = p.vx / spd * VMAX * 4; p.vy = p.vy / spd * VMAX * 4; }
+
+      p.x += p.vx;
+      p.y += p.vy;
+
+      // Rebate nas bordas em vez de teleportar (evita flash de linha)
+      if (p.x < 0)  { p.x = 0;  p.vx *= -1; }
+      if (p.x > W)  { p.x = W;  p.vx *= -1; }
+      if (p.y < 0)  { p.y = 0;  p.vy *= -1; }
+      if (p.y > H)  { p.y = H;  p.vy *= -1; }
+    }
+
+    // ── Linhas entre partículas próximas ───────────────────────
+    for (let i = 0; i < N; i++) {
+      for (let j = i + 1; j < N; j++) {
+        const dx   = pts[i].x - pts[j].x;
+        const dy   = pts[i].y - pts[j].y;
+        const dist2 = dx * dx + dy * dy;
+        if (dist2 < LINK2) {
+          const op = (1 - dist2 / LINK2) * 0.28; // opacidade inversamente proporcional à distância
+          ctx.strokeStyle = `rgba(${LINE_CLR[0]},${LINE_CLR[1]},${LINE_CLR[2]},${op.toFixed(3)})`;
+          ctx.lineWidth   = 1;
+          ctx.beginPath();
+          ctx.moveTo(pts[i].x, pts[i].y);
+          ctx.lineTo(pts[j].x, pts[j].y);
+          ctx.stroke();
+        }
+      }
+    }
+
+    // ── Pontos ────────────────────────────────────────────────
+    ctx.fillStyle = DOT_CLR;
+    for (const p of pts) {
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    requestAnimationFrame(tick);
+  }
+
+  window.addEventListener('mousemove', e => { mouse.x = e.clientX; mouse.y = e.clientY; });
+  window.addEventListener('resize',    () => { resize(); init(); });
+
+  resize();
+  init();
+  tick();
+})();
+</script>
 
 </body>
 </html>
