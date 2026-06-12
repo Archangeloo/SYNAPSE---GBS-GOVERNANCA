@@ -1013,8 +1013,12 @@ function flushCharts() {
   _pendingCharts.forEach(({ id, config }) => {
     const el = document.getElementById(id);
     if (!el) return;
-    if (_chartInstances[id]) _chartInstances[id].destroy();
-    _chartInstances[id] = new Chart(el, config);
+    try {
+      if (_chartInstances[id]) _chartInstances[id].destroy();
+      _chartInstances[id] = new Chart(el, config);
+    } catch (e) {
+      console.error(`flushCharts: falha ao criar gráfico ${id}`, e);
+    }
   });
   _pendingCharts = [];
 }
@@ -1158,7 +1162,7 @@ function hbars(entries, opts = {}) {
           tooltip: { display: false },
         },
         layout: {
-          padding: { right: tot ? 76 : 40 }
+          padding: { right: tot ? 90 : 52 }
         },
         scales: {
           x: {
@@ -1176,19 +1180,22 @@ function hbars(entries, opts = {}) {
       plugins: [{
         id: 'hbarLabels',
         afterDatasetsDraw(chart) {
-          const { ctx, data } = chart;
+          const { ctx, chartArea, data } = chart;
           const meta = chart.getDatasetMeta(0);
           ctx.save();
           ctx.fillStyle    = C.ink2;
           ctx.font         = `500 11px 'Inter', system-ui, sans-serif`;
           ctx.textAlign    = 'left';
           ctx.textBaseline = 'middle';
+          // Todos os labels ficam alinhados na mesma coluna X (logo após a barra mais longa)
+          // evita que labels de barras curtas fiquem no meio do gráfico
+          const xBase = chartArea.right + 6;
           data.datasets[0].data.forEach((value, i) => {
             const bar   = meta.data[i];
             const label = tot
               ? `${value}  (${pct(value, tot)}%)`
               : String(value);
-            ctx.fillText(label, bar.x + 6, bar.y);
+            ctx.fillText(label, xBase, bar.y);
           });
           ctx.restore();
         }
@@ -1196,7 +1203,7 @@ function hbars(entries, opts = {}) {
     }
   });
 
-  const height = Math.max(items.length * 30 + 16, 60);
+  const height = Math.max(items.length * 36 + 20, 70);
   const header = opts.showTotal
     ? `<div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:10px;padding-bottom:8px;border-bottom:1px solid var(--rule)">
         <span style="font-size:11px;color:var(--ink4)">${opts.totLabel || 'Total'}</span>
@@ -1929,6 +1936,196 @@ function projDetails(p){
 
 
 /*
+ * buildGraficoEvolutivo(M) — gráfico de linhas: Concluídas × Backlog × Previsão.
+ *
+ * Linha 1 — Concluídas/mês: items com sc='done' agrupados por dtFim
+ * Linha 2 — Backlog/mês: reconstruído historicamente como
+ *           items_todo_hoje + items_concluídos_após_aquele_mês
+ * Linha 3 — Previsão (futuro): média das últimas 3 competências projetada para frente
+ *
+ * Linha vertical vermelha tracejada marca o mês atual (divisor passado/futuro).
+ * Retorna '' se não houver dados suficientes (< 3 meses com conclusões).
+ */
+function buildGraficoEvolutivo(M) {
+  const concluidas = M.filter(m => m.sc === 'done' && m.dtFim);
+  if (concluidas.length < 3) return '';
+
+  // Contagem de conclusões por mês
+  const porMes = {};
+  concluidas.forEach(m => { const k = ym(m.dtFim); porMes[k] = (porMes[k] || 0) + 1; });
+
+  const mesAtual   = ym(HOJE);
+  const mesesHist  = Object.keys(porMes).sort().filter(k => k <= mesAtual);
+  if (mesesHist.length < 2) return '';
+
+  // Gera todos os meses: do início histórico até 6 meses à frente
+  const avancaMes = k => {
+    const [y, mo] = k.split('-').map(Number);
+    return mo === 12 ? `${y + 1}-01` : `${y}-${String(mo + 1).padStart(2, '0')}`;
+  };
+
+  const allMeses = [];
+  let cur = mesesHist[0];
+  let fimRange = mesAtual;
+  for (let i = 0; i < 6; i++) fimRange = avancaMes(fimRange); // 6 meses futuros
+
+  while (cur <= fimRange) { allMeses.push(cur); cur = avancaMes(cur); }
+
+  const idxAtual = allMeses.indexOf(mesAtual);
+
+  // Linha 1: Concluídas por mês (null no futuro)
+  const dataConcl = allMeses.map(m => m <= mesAtual ? (porMes[m] || 0) : null);
+
+  // Linha 2: Backlog reconstruído historicamente
+  // backlog(mês M) = itens ainda em todo hoje + itens concluídos após M
+  const itemsTodoAtual = M.filter(m => m.sc === 'todo').length;
+  const dataBacklog = allMeses.map(m => {
+    if (m > mesAtual) return null; // só histórico
+    const concluídasDepois = concluidas.filter(c => ym(c.dtFim) > m).length;
+    return itemsTodoAtual + concluídasDepois;
+  });
+
+  // Linha 3: Previsão — backlog atual dividido igualmente pelos meses futuros
+  const mesesFuturos = allMeses.filter(m => m >= mesAtual);
+  const prevPorMes   = mesesFuturos.length > 0 ? Math.max(1, Math.round(itemsTodoAtual / mesesFuturos.length)) : 1;
+  const dataPrevisao = allMeses.map(m => m >= mesAtual ? prevPorMes : null);
+
+  const labels = allMeses.map(m => ymLabel(m));
+  const id     = _cid('mel-evol');
+
+  // Plugin inline para exibir os valores numéricos sobre cada ponto
+  const dataLabels = {
+    id: 'dataLabels',
+    afterDatasetsDraw(chart) {
+      const { ctx, data } = chart;
+      data.datasets.forEach((dataset, i) => {
+        const meta = chart.getDatasetMeta(i);
+        if (meta.hidden) return;
+        // Previsão (i===2): rótulo abaixo do ponto para não colidir com Concluídas
+        const above = i !== 2;
+        meta.data.forEach((el, j) => {
+          const value = dataset.data[j];
+          if (value == null) return;
+          ctx.save();
+          ctx.fillStyle   = dataset.borderColor;
+          ctx.font        = `bold 10px Inter, system-ui, sans-serif`;
+          ctx.textAlign   = 'center';
+          ctx.textBaseline = above ? 'bottom' : 'top';
+          ctx.fillText(value, el.x, el.y + (above ? -5 : 5));
+          ctx.restore();
+        });
+      });
+    }
+  };
+
+  // Plugin inline para desenhar a linha vertical do mês atual
+  const linhaHoje = {
+    id: 'linhaHoje',
+    afterDraw(chart) {
+      if (idxAtual < 0) return;
+      const { ctx, chartArea, scales } = chart;
+      const x = scales.x.getPixelForValue(chart.data.labels[idxAtual]);
+      ctx.save();
+      ctx.beginPath();
+      ctx.setLineDash([6, 4]);
+      ctx.strokeStyle = C.err;
+      ctx.lineWidth = 1.5;
+      ctx.moveTo(x, chartArea.top);
+      ctx.lineTo(x, chartArea.bottom);
+      ctx.stroke();
+      ctx.restore();
+    }
+  };
+
+  _pendingCharts.push({
+    id,
+    config: {
+      type: 'line',
+      data: {
+        labels,
+        datasets: [
+          {
+            label:               'Concluídas',
+            data:                dataConcl,
+            borderColor:         C.ink,
+            backgroundColor:     'transparent',
+            borderWidth:         2,
+            pointRadius:         4,
+            pointBackgroundColor: C.ink,
+            tension:             0.1,
+            spanGaps:            false,
+          },
+          {
+            label:               'Backlog',
+            data:                dataBacklog,
+            borderColor:         C.ink,
+            backgroundColor:     'transparent',
+            borderWidth:         2,
+            borderDash:          [6, 4],
+            pointRadius:         3,
+            pointBackgroundColor: C.ink,
+            tension:             0.1,
+            spanGaps:            false,
+          },
+          {
+            label:               'Previsão',
+            data:                dataPrevisao,
+            borderColor:         C.err,
+            backgroundColor:     'transparent',
+            borderWidth:         1.5,
+            pointRadius:         3,
+            pointBackgroundColor: C.err,
+            tension:             0,
+            spanGaps:            false,
+          }
+        ]
+      },
+      options: {
+        responsive:          true,
+        maintainAspectRatio: false,
+        animation:           { duration: 400 },
+        plugins: {
+          legend: {
+            position: 'top',
+            labels: { color: C.ink3, boxWidth: 20, boxHeight: 2, padding: 20, font: { size: 11 } }
+          },
+          tooltip: {
+            callbacks: {
+              label: ctx => ctx.parsed.y != null
+                ? ` ${ctx.dataset.label}: ${ctx.parsed.y}`
+                : null
+            }
+          }
+        },
+        scales: {
+          x: {
+            grid:   { display: false },
+            border: { display: false },
+            ticks:  { color: C.ink4, font: { size: 10 }, maxTicksLimit: 14 }
+          },
+          y: {
+            grid:   { color: C.rule },
+            border: { display: false },
+            ticks:  { color: C.ink4, font: { size: 10 } }
+          }
+        }
+      },
+      plugins: [dataLabels, linhaHoje]
+    }
+  });
+
+  return `<div class="card">
+    <div class="card-title">
+      <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+      Melhorias Concluídas × Backlog
+      <span class="rt">previsão = ${itemsTodoAtual} pendentes ÷ ${mesesFuturos.length} meses = ${prevPorMes}/mês · linha vermelha = hoje</span>
+    </div>
+    <div style="position:relative;height:280px"><canvas id="${id}"></canvas></div>
+  </div>`;
+}
+
+
+/*
  * overviewFrentes(M) — tabela "Overview por categoria" da aba Pipefy Melhorias.
  *
  * Linhas  = frentes (P2P, O2C, TAX…), na ordem padrão + extras ao final.
@@ -2085,6 +2282,7 @@ function buildMel(){
         return hbars(dados,{max:8,lw:130});
       })()}</div>
   </div>`;
+  html += buildGraficoEvolutivo(M);
   html += overviewFrentes(M);
   document.getElementById('mel-content').innerHTML = html;
   flushCharts();
@@ -2898,11 +3096,14 @@ function analiseGov(){
   const totalAbertas = Object.values(abertasPorResp).reduce((s,v)=>s+v,0);
   const topResp = topEntry(abertasPorResp);
   if(topResp && totalAbertas>0){
+    // Limiar 30%: uma pessoa carregando >30% das ações abertas é possível gargalo.
+    // Abaixo disso é "maior carga individual" — informativo, não problemático.
     ins.push({tipo: topResp[1]/totalAbertas>0.3?'warn':'neu', ico:'@',
       texto:`Na equipe CoE, <b>${topResp[0]}</b> concentra ${topResp[1]} ações abertas (${pct(topResp[1],totalAbertas)}% do total da equipe) — ${topResp[1]/totalAbertas>0.3?'possível gargalo de capacidade':'maior carga individual'}.`});
   }
 
   // 4. Canceladas (sinaliza se for relevante)
+  // Limiar 5%: abaixo disso é ruído normal do planejamento; acima merece revisão de processo.
   const cancel = A.filter(a=>a.sc==='cancel').length;
   if(cancel>0 && pct(cancel,tot)>=5){
     ins.push({tipo:'warn', ico:'×',
@@ -2961,6 +3162,7 @@ function analiseProj(){
   }
 
   // 5. Projetos não iniciados
+  // Limiar 30%: se mais de 30% da carteira ainda não começou, o pipeline está represado.
   const naoIni = P.filter(p=>p.sc==='todo').length;
   if(naoIni>0){
     ins.push({tipo: pct(naoIni,tot)>30?'warn':'neu', ico:'○',
@@ -3050,6 +3252,8 @@ function analiseRPA(){
   const concl = R.filter(r=>r.fase.toLowerCase().includes('conclu')).length;
 
   // 1. Concentração nos top bots
+  // Limiar 40%: se 3 processos (de dezenas) concentram >40% dos chamados,
+  // estabilizá-los tem impacto desproporcional no volume total de suporte.
   const porProc = count(R.filter(r=>r.processo!=='(sem processo)'), r=>r.processo);
   const ordenado = Object.entries(porProc).sort((a,b)=>b[1]-a[1]);
   const totalProc = ordenado.reduce((s,e)=>s+e[1],0);
@@ -3060,7 +3264,8 @@ function analiseRPA(){
       texto:`Os 3 processos com mais manutenções (<b>${top3.map(e=>e[0]).join(', ')}</b>) concentram <b>${pct(soma3,totalProc)}%</b> dos chamados. Estabilizá-los reduz bastante o volume de suporte.`});
   }
 
-  // 2. Taxa de vencidos
+  // 2. Taxa de vencidos de SLA
+  // Limiar: >25% = crítico (vermelho), >0% = atenção (laranja), 0% = bom (verde).
   ins.push({tipo: pct(venc,tot)>25?'neg':(pct(venc,tot)>0?'warn':'pos'), ico: pct(venc,tot)>25?'!':'%',
     texto:`<b>${pct(venc,tot)}% dos ${tot} chamados venceram o prazo</b> (${venc}). Concluídos: ${pct(concl,tot)}%.`});
 
@@ -3072,15 +3277,17 @@ function analiseRPA(){
       texto:`Problema mais frequente: <b>"${topProb[0]}"</b> (${topProb[1]} chamados, ${pct(topProb[1],tot)}%).`});
   }
 
-  // 4. Tendência mês a mês (compara últimos 3 meses com 3 anteriores)
+  // 4. Tendência mês a mês: compara a média da 1ª metade do período com a 2ª metade.
+  // Limiar 15%: variações abaixo disso são flutuação normal; acima é tendência real.
+  // A divisão em duas metades funciona com qualquer quantidade de meses disponíveis.
   const porMes = {};
   R.forEach(r=>{ if(r.mes) porMes[r.mes]=(porMes[r.mes]||0)+1; });
   const meses = Object.keys(porMes).sort();
   if(meses.length>=4){
     const metade = Math.floor(meses.length/2);
-    const recentes = meses.slice(-metade).reduce((s,m)=>s+porMes[m],0)/metade;
-    const antigos = meses.slice(0,metade).reduce((s,m)=>s+porMes[m],0)/metade;
-    const variacao = antigos>0 ? Math.round((recentes-antigos)/antigos*100) : 0;
+    const recentes = meses.slice(-metade).reduce((s,m)=>s+porMes[m],0)/metade; // média 2ª metade
+    const antigos  = meses.slice(0,metade).reduce((s,m)=>s+porMes[m],0)/metade; // média 1ª metade
+    const variacao = antigos>0 ? Math.round((recentes-antigos)/antigos*100) : 0; // variação em %
     if(Math.abs(variacao)>=15){
       ins.push({tipo: variacao>0?'warn':'pos', ico: variacao>0?'↑':'↓',
         texto:`O volume de chamados está <b>${variacao>0?'subindo':'caindo'}</b>: média recente ${recentes.toFixed(0)}/mês vs ${antigos.toFixed(0)}/mês no início do período (${variacao>0?'+':''}${variacao}%).`});
