@@ -2292,8 +2292,11 @@ function buildMel(){
   }
 
   // "Fluxos (processos)" = número de NomeFluxo únicos no recorte atual
-  // Isso responde "quantos processos distintos foram tratados no período"
   const fluxosUnicos = new Set(App.P.mel.map(m => m.fluxo).filter(Boolean)).size;
+
+  // Qualidade de dados: concluídas sem dtFim = erro de preenchimento na planilha.
+  // Itens não-concluídos sem dtFim são corretos (ainda estão em andamento/backlog).
+  const doneSemData = App.P.mel.filter(m => m.sc==='done' && !m.dtFim).length;
 
   let html = dn + `<div class="sh">Pipefy — Melhorias & Ajustes</div>
   ${aiBar('mel')}
@@ -2303,7 +2306,11 @@ function buildMel(){
     <div class="kpi">${kpiIcon('stack')}<div class="knum">${backlog}</div><div class="klbl">Backlog</div></div>
     <div class="kpi wl">${kpiIcon('lock')}<div class="knum">${blocked}</div><div class="klbl">Bloqueadas</div></div>
     <div class="kpi il">${kpiIcon('branch')}<div class="knum">${fluxosUnicos}</div><div class="klbl">Fluxos (processos)</div><div class="ksub">distintos no recorte</div></div>
-  </div>`;
+  </div>
+  ${doneSemData > 0 ? `<div class="note" style="background:var(--neu-bg);color:var(--ink3)"><i class="ti ti-alert-triangle" style="color:var(--warn)"></i><div>
+    <b>${doneSemData} melhorias marcadas como concluídas não têm data de conclusão preenchida.</b>
+    Isso é um erro de preenchimento na planilha — preencher o campo <i>DataConclusaoRealDesenvolvimento</i> permite análise temporal correta dessas entregas.
+  </div></div>` : ''}`;
 
   html += `<div class="two">
     <div class="card"><div class="card-title"><i class="ti ti-chart-pie"></i> Status</div>
