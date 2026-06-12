@@ -18,12 +18,12 @@
   --ink4: #9CA3AF;
 
   /* Fundos */
-  --paper:   #EEF3FA;
+  --paper:   #F0F4FA;
   --surface: #FFFFFF;
 
   /* Bordas */
-  --rule:  rgba(15, 82, 153, 0.07);
-  --rule2: rgba(15, 82, 153, 0.13);
+  --rule:  rgba(15, 82, 153, 0.05);
+  --rule2: rgba(15, 82, 153, 0.09);
 
   /* Status semânticos — paleta Saint-Gobain */
   --ok:      #0d8f91;           /* teal escuro — concluído */
@@ -38,8 +38,8 @@
   --neu-bg:  #F3F4F6;
 
   /* Raios de borda */
-  --r:  6px;
-  --r2: 10px;
+  --r:  8px;
+  --r2: 14px;
 }
 
 
@@ -64,17 +64,19 @@ body {
 /* ── Topbar ───────────────────────────────────────────────── */
 
 .topbar {
-  background: var(--brand);
-  border-bottom: none;
+  background: rgba(13, 68, 148, 0.94);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.07);
   padding: 0 28px;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  height: 76px;
+  height: 60px;
   position: sticky;
   top: 0;
   z-index: 50;
-  box-shadow: 0 2px 12px rgba(15, 82, 153, 0.22);
+  box-shadow: 0 1px 0 rgba(255,255,255,0.06), 0 4px 28px rgba(8, 36, 80, 0.22);
 }
 
 .tb-left {
@@ -89,8 +91,8 @@ body {
   filter: brightness(0) invert(1);
 }
 
-.tb-logo-sg  { height: 48px; }
-.tb-logo-gbs { height: 70px; }
+.tb-logo-sg  { height: 32px; }
+.tb-logo-gbs { height: 50px; }
 
 .tb-divider {
   width: 1px;
@@ -253,7 +255,8 @@ body {
 
 .nav {
   background: var(--surface);
-  border-bottom: 1px solid var(--rule2);
+  border-bottom: none;
+  box-shadow: 0 2px 12px rgba(15, 82, 153, 0.07);
   display: flex;
   padding: 0 28px;
   overflow-x: auto;
@@ -337,10 +340,11 @@ body {
   grid-template-columns: repeat(4, 1fr);
   gap: 1px;
   margin-bottom: 24px;
-  background: var(--rule2);
-  border: 1px solid var(--rule2);
+  background: rgba(15, 82, 153, 0.07);
+  border: 1px solid rgba(15, 82, 153, 0.08);
   border-radius: var(--r2);
   overflow: hidden;
+  box-shadow: 0 2px 8px rgba(15, 82, 153, 0.05), 0 8px 28px rgba(15, 82, 153, 0.04);
 }
 
 .krow.k5 {
@@ -375,7 +379,7 @@ body {
 
 .knum {
   font-family: 'Syne', sans-serif;
-  font-size: 30px;
+  font-size: 32px;
   font-weight: 600;
   line-height: 1;
   letter-spacing: -0.02em;
@@ -436,10 +440,11 @@ body {
 
 .card {
   background: var(--surface);
-  border: 1px solid var(--rule2);
+  border: 1px solid rgba(15, 82, 153, 0.08);
   border-radius: var(--r2);
   padding: 20px;
   margin-bottom: 16px;
+  box-shadow: 0 1px 4px rgba(15, 82, 153, 0.05), 0 6px 20px rgba(15, 82, 153, 0.04);
 }
 
 .card.np {
@@ -477,10 +482,11 @@ body {
   display: flex;
   flex-direction: column;
   gap: 1px;
-  background: var(--rule);
-  border: 1px solid var(--rule2);
+  background: rgba(15, 82, 153, 0.05);
+  border: 1px solid rgba(15, 82, 153, 0.08);
   border-radius: var(--r2);
   overflow: hidden;
+  box-shadow: 0 1px 4px rgba(15, 82, 153, 0.04), 0 4px 16px rgba(15, 82, 153, 0.03);
 }
 
 .icard {
@@ -663,7 +669,7 @@ body {
 
 .btn {
   font-size: 12px;
-  padding: 7px 14px;
+  padding: 7px 16px;
   border-radius: var(--r);
   border: 1px solid var(--rule2);
   background: transparent;
@@ -671,9 +677,10 @@ body {
   display: flex;
   align-items: center;
   gap: 6px;
-  transition: all 0.12s;
+  transition: all 0.15s;
   font-family: 'Inter', sans-serif;
   cursor: pointer;
+  letter-spacing: 0.01em;
 }
 
 .btn:hover {
