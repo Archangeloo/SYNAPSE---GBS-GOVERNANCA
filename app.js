@@ -1021,6 +1021,39 @@ function flushCharts() {
     }
   });
   _pendingCharts = [];
+
+  // Anima KPIs recém-renderizados (atributo data-an evita re-animar)
+  document.querySelectorAll('.knum:not([data-an])').forEach(el => {
+    el.dataset.an = '1';
+    _animateNum(el);
+  });
+}
+
+/*
+ * _animateNum(el) — conta o número de 0 até o valor exibido em ~850ms.
+ * Extrai o número do texto (int ou float), anima com cubic ease-out
+ * e restaura o texto original exato ao final.
+ * Valores menores que 2 são ignorados (0 e 1 não precisam de animação).
+ */
+function _animateNum(el) {
+  const raw = el.textContent.trim();
+  const m   = raw.match(/^(\d+\.?\d*)(.*)/);
+  if (!m) return;
+  const target  = parseFloat(m[1]);
+  const suffix  = m[2];
+  const isFloat = m[1].includes('.');
+  if (!target || target < 2) return;
+
+  const duration = 850;
+  const start    = performance.now();
+
+  (function frame(now) {
+    const t     = Math.min((now - start) / duration, 1);
+    const eased = 1 - Math.pow(1 - t, 3); // cubic ease-out: começa rápido, desacelera
+    el.textContent = (isFloat ? (target * eased).toFixed(1) : Math.round(target * eased)) + suffix;
+    if (t < 1) requestAnimationFrame(frame);
+    else el.textContent = raw; // restaura o texto exato (evita arredondamento residual)
+  })(start);
 }
 
 // Defaults globais do Chart.js
@@ -3408,9 +3441,11 @@ function generate(){
   lbl.textContent = `${ts} · ${src}`;
   lbl.dataset.base = `${ts} · ${src}`; // guarda para o updateDateBadge não sobrescrever
 
-  // 5. Revela o filtro de data (fica escondido até o primeiro generate)
+  // 5. Revela o filtro de data e o botão de exportar (ficam escondidos até o primeiro generate)
   const df = document.getElementById('date-filter');
   if(df) df.style.display = 'flex';
+  const bp = document.getElementById('btn-print');
+  if(bp) bp.style.display = 'flex';
 
   // 6. Navega para a aba Governança (visão executiva)
   setNav('gov');
