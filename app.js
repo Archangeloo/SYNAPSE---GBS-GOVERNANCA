@@ -502,6 +502,12 @@ function setNav(id){
     if(ni) ni.classList.toggle('active', n === id);
     if(pg) pg.classList.toggle('active', n === id);
   });
+  // Anima KPIs da aba que acabou de ficar visível
+  const pg = document.getElementById('page-'+id);
+  if(pg) pg.querySelectorAll('.knum').forEach(el => {
+    delete el.dataset.an;
+    _animateNum(el);
+  });
 }
 
 /*
