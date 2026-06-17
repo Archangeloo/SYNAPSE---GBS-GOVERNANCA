@@ -3509,13 +3509,16 @@ function generate(){
     });
   }
 
-  // 3. Constrói todas as views (só as que têm dados)
-  buildGov();
-  if(App.P.proj.length) buildProj();
-  if(App.P.mel.length) buildMel();
-  if(App.P.ana.length) buildAna();
-  if(App.R.length) buildRPAChamados();
-  if(App.B.length) buildBots();
+  // 3. Constrói todas as views (try/catch por aba: erro numa não bloqueia as demais nem o redirect)
+  function construirAba(construtor) {
+    try { construtor(); } catch(erro) { console.error('[SYNAPSE] erro ao construir aba:', erro); }
+  }
+  construirAba(() => buildGov());
+  construirAba(() => { if(App.P.proj.length) buildProj(); });
+  construirAba(() => { if(App.P.mel.length) buildMel(); });
+  construirAba(() => { if(App.P.ana.length) buildAna(); });
+  construirAba(() => { if(App.R.length) buildRPAChamados(); });
+  construirAba(() => { if(App.B.length) buildBots(); });
 
   // 4. Atualiza badges de navegação e texto de status
   if(App.P.mel.length) setBadge('nb-mel', App.P.mel.length, '');
