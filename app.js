@@ -2711,7 +2711,7 @@ function renderRPAStatus(){
   const areaEntries = [];
   Object.entries(porArea).forEach(([area, n]) => {
     const up = area.toUpperCase();
-    if(AREAS_PRINCIPAIS.includes(up) || area === '(não mapeada)'){
+    if(AREAS_PRINCIPAIS_RPA.includes(up) || area === '(não mapeada)'){
       areaEntries.push([area, n]);
     } else {
       outrosArea += n; // PAM, CI, IT, ARG e quaisquer outras pequenas
