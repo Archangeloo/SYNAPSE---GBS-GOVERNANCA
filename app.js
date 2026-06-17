@@ -607,7 +607,7 @@ function showOk(type, name, wb){
 function updateBar(){
   const loadedCount = Object.values(App.loaded).filter(Boolean).length;
   document.getElementById('abar-status').innerHTML = `<strong style="color:var(--ink)">${loadedCount} de 2</strong> bases carregadas`;
-  document.getElementById('btn-gen').disabled = n === 0;
+  document.getElementById('btn-gen').disabled = loadedCount === 0;
 }
 
 
@@ -2795,7 +2795,7 @@ function buildBots(){
       return true;
     });
     const semAno = App.B.filter(b => isNaN(parseInt(b.anoPrd))).length;
-    dn = `<div class="note" style="background:var(--neu-bg);color:var(--ink3)"><i class="ti ti-calendar-stats"></i><div>
+    dateNote = `<div class="note" style="background:var(--neu-bg);color:var(--ink3)"><i class="ti ti-calendar-stats"></i><div>
       Período aplicado: <b>${B.length} bots</b> que entraram em produção entre ${yFrom||'∞'} e ${yTo||'∞'}.` +
       (semAno>0 ? ` ${semAno} bots sem ano de PRD não entram no filtro.` : '') +
       `<br><span style="font-size:10px;opacity:.6;font-style:italic">Referência de data: ano de entrada em produção (AnoPRD) — filtra por ano, não por data exata</span>
