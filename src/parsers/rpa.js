@@ -83,6 +83,7 @@ export function parseRPA() {
       processo:    String(get(r, ['Processo'])).trim() || '(sem processo)',
       problema:    String(get(r, ['Qual é o problema?'])).trim(),
       reexec:      String(get(r, ['Este robô admite reexecução?'])).trim(),
+      intext:      String(get(r, ['O problema é interno ou externo?', 'Interno ou externo?', 'Causa interna ou externa?', 'Causa interna/externa'])).trim(),
       solicitante: String(get(r, ['Nome do solicitante'])).trim(),
       // Responsáveis: campo multi-valor separado por vírgula (vários podem trabalhar no mesmo chamado)
       responsaveis: String(get(r, ['Responsáveis', 'Responsável']))

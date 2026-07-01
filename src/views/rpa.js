@@ -90,10 +90,11 @@ export function buildRPAChamados() {
     ${hbars(procList, { max: 15, lw: 300, color: 'var(--err)', fixedLabel: true })}</div>`;
 
   // ── Sub-aba: Tipos de Problema ───────────────────────────────────────────────
-  // Mostra quais tipos de problema ocorrem em cada fase do chamado.
-  // Usa barras clusterizadas: cada grupo = uma fase, cada barra = um tipo de problema.
+  // Mostra quais tipos de problema ocorrem em cada fase e em cada área.
+  // Usa barras clusterizadas: cada grupo = fase ou área, cada barra = tipo de problema.
   const porProb   = count(R, r => r.problema);
-  const porReexec = count(R.filter(r => r.reexec), r => r.reexec); // distribição de "admite reexecução?"
+  const porReexec = count(R.filter(r => r.reexec), r => r.reexec);
+  const porIntext = count(R.filter(r => r.intext), r => r.intext);
 
   // Fases do fluxo de chamados RPA (ordem lógica do processo)
   const fasesDef = [
@@ -102,6 +103,16 @@ export function buildRPAChamados() {
     { key: 'Desenvolvimento da solução', label: 'Desenvolvimento', color: '#4a90d9' },
     { key: 'Reexecução',                 label: 'Reexecução',      color: '#8f6fd0' },
     { key: 'Concluído',                  label: 'Concluído',       color: '#3fa46a' }
+  ];
+
+  // Áreas do GBS para o gráfico de problema × área
+  const areasDef = [
+    { key: 'P2P',           label: 'P2P',         color: '#4a90d9' },
+    { key: 'TAX',           label: 'TAX',         color: '#d4a93c' },
+    { key: 'H2R',           label: 'H2R',         color: '#3fa46a' },
+    { key: 'O2C',           label: 'O2C',         color: '#8f6fd0' },
+    { key: 'R2R',           label: 'R2R',         color: '#d46a6a' },
+    { key: '(não mapeada)', label: 'Não mapeada', color: '#9a9a92' }
   ];
 
   // Ordena os tipos de problema por volume total (mais frequentes primeiro)
@@ -117,11 +128,44 @@ export function buildRPAChamados() {
     return { label: f.label, color: f.color, valores };
   });
 
+  // Para cada área, conta quantos chamados de cada tipo de problema estão nela
+  const gruposArea = areasDef
+    .map(a => {
+      const sub = R.filter(r => r.area === a.key);
+      const valores = {};
+      probsOrd.forEach(pr => { valores[pr] = sub.filter(r => r.problema === pr).length; });
+      return { label: a.label, color: a.color, valores };
+    })
+    .filter(g => probsOrd.some(pr => g.valores[pr] > 0)); // omite áreas sem chamados
+
+  // Donut de "admite reexecução?"
+  const reexecDonut = donut(Object.entries(porReexec).map(([k, vv], i) => ({
+    label: k, value: vv, color: i === 0 ? 'var(--ok)' : 'var(--warn)'
+  })));
+
+  // Donut de "interno ou externo?" — só exibe se o campo existir nos dados
+  const intextEntries = Object.entries(porIntext);
+  const intextDonut = intextEntries.length
+    ? donut(intextEntries.map(([k, vv]) => ({
+        label: k, value: vv,
+        color: k.toLowerCase().includes('intern') ? 'var(--info)' : 'var(--warn)'
+      })))
+    : `<div style="font-size:12px;color:var(--ink4);font-style:italic">
+        Campo "Interno ou externo?" ainda não disponível nos dados.<br>
+        Adicione esse campo ao formulário RPA no Pipefy para habilitar esta análise.
+       </div>`;
+
   document.getElementById('rpage-prob').innerHTML =
     `<div class="card"><div class="card-title"><i class="ti ti-alert-circle"></i> Tipos de problema <span class="rt">por fase do chamado</span></div>
       ${clusteredBars(grupos, serieProb)}</div>
-    <div class="card"><div class="card-title"><i class="ti ti-refresh"></i> Admite reexecução?</div>
-      ${donut(Object.entries(porReexec).map(([k, vv], i) => ({ label: k, value: vv, color: i === 0 ? 'var(--ok)' : 'var(--warn)' })))}</div>`;
+    <div class="card"><div class="card-title"><i class="ti ti-building"></i> Tipos de problema <span class="rt">por área</span></div>
+      ${clusteredBars(gruposArea, serieProb)}</div>
+    <div class="two">
+      <div class="card"><div class="card-title"><i class="ti ti-refresh"></i> Admite reexecução?</div>
+        ${reexecDonut}</div>
+      <div class="card"><div class="card-title"><i class="ti ti-arrow-fork"></i> Causa interna ou externa?</div>
+        ${intextDonut}</div>
+    </div>`;
 
   // ── Sub-aba: Tempo de Resolução ──────────────────────────────────────────────
   // Calcula o tempo médio de cada chamado somando os dias nas fases de
@@ -165,14 +209,14 @@ export function buildRPAChamados() {
     .sort((a, b) => b[1] - a[1]);
 
   t += `<div class="card"><div class="card-title"><i class="ti ti-clock"></i> Tempo médio de resolução por bot<span class="rt">dias · bots com 3+ chamados</span></div>
-    ${hbars(procAvg, { max: 12, lw: 300, color: 'var(--warn)', fixedLabel: true })}
+    ${hbars(procAvg, { max: 12, lw: 220, color: 'var(--warn)' })}
     <div class="note" style="margin-top:14px;margin-bottom:0;background:var(--neu-bg);color:var(--ink3)"><i class="ti ti-info-circle"></i><div>
       <b>Como o tempo é calculado:</b> para cada chamado, somamos os dias que ele passou na fase de <b>Identificação do problema</b> e na de <b>Desenvolvimento da solução</b> (as fases de trabalho ativo). A barra mostra a <b>média desses dias</b> entre os chamados de cada bot.
       Só entram bots com <b>3 chamados ou mais</b>, para a média ser estatisticamente confiável — um único chamado muito longo distorceria o número. Quanto maior a barra, mais tempo aquele bot leva, em média, para ter a manutenção resolvida.</div></div></div>`;
 
   if (procUm.length) {
     t += `<div class="card"><div class="card-title"><i class="ti ti-clock-hour-4"></i> Tempo de resolução — bots com apenas 1 chamado<span class="rt">dias · ${procUm.length} bots</span></div>
-      ${hbars(procUm, { max: 30, lw: 300, color: '#5aa0a0', fixedLabel: true })}
+      ${hbars(procUm, { max: 30, lw: 220, color: '#5aa0a0' })}
       <div class="note" style="margin-top:14px;margin-bottom:0;background:var(--neu-bg);color:var(--ink3)"><i class="ti ti-info-circle"></i><div>
         Estes bots tiveram <b>um único chamado</b> no período, então o valor é o tempo <b>daquele chamado</b> (Identificação + Desenvolvimento), não uma média. Por ser uma amostra de 1, serve de referência, mas não indica um padrão do bot.</div></div></div>`;
   }

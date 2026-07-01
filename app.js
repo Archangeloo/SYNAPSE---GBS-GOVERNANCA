@@ -920,6 +920,7 @@ function parseRPA(){
       processo:   String(get(r, ['Processo'])).trim() || '(sem processo)',
       problema:   String(get(r, ['Qual é o problema?'])).trim(),
       reexec:     String(get(r, ['Este robô admite reexecução?'])).trim(),
+      intext:     String(get(r, ['O problema é interno ou externo?', 'Interno ou externo?', 'Causa interna ou externa?', 'Causa interna/externa'])).trim(),
       solicitante:String(get(r, ['Nome do solicitante'])).trim(),
       // "Responsáveis" = quem trabalha no chamado (equipe CoE de RPA), não quem abriu.
       // Pode ter vários nomes separados por vírgula; guardamos como lista para contar
@@ -1211,12 +1212,18 @@ function hbars(entries, opts = {}) {
   const col = resolveColor(opts.color || 'var(--accent)');
   const tot = opts.tot || null;
 
+  // Quebra labels no separador "  ·  " para exibir bot e área em duas linhas
+  const splitLabel = l => {
+    const parts = String(l).split(/\s+·\s+/);
+    return parts.length > 1 ? parts : l;
+  };
+
   _pendingCharts.push({
     id,
     config: {
       type: 'bar',
       data: {
-        labels: items.map(([l]) => l),
+        labels: items.map(([l]) => splitLabel(l)),
         datasets: [{
           data:            items.map(([, v]) => v),
           backgroundColor: col,
@@ -1245,7 +1252,8 @@ function hbars(entries, opts = {}) {
           y: {
             grid:   { display: false },
             border: { display: false },
-            ticks:  { color: C.ink2, font: { size: 11 } }
+            ticks:  { color: C.ink2, font: { size: 11 } },
+            afterFit(scale) { if (opts.lw) scale.width = opts.lw; }
           }
         }
       },
@@ -1275,7 +1283,7 @@ function hbars(entries, opts = {}) {
     }
   });
 
-  const height = Math.max(items.length * 36 + 20, 70);
+  const height = Math.max(items.length * (opts.lw ? 48 : 36) + 20, 70);
   const header = opts.showTotal
     ? `<div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:10px;padding-bottom:8px;border-bottom:1px solid var(--rule)">
         <span style="font-size:11px;color:var(--ink4)">${opts.totLabel || 'Total'}</span>
@@ -2059,16 +2067,22 @@ function buildGraficoEvolutivo(melhorias) {
   const mesesHist  = Object.keys(porMes).sort().filter(k => k <= mesAtual);
   if (mesesHist.length < 2) return '';
 
-  // Gera todos os meses: do início histórico até 6 meses à frente
+  // Gera todos os meses: do início histórico até outubro (prazo final)
   const avancaMes = k => {
     const [y, mo] = k.split('-').map(Number);
     return mo === 12 ? `${y + 1}-01` : `${y}-${String(mo + 1).padStart(2, '0')}`;
   };
 
+  // Prazo final = outubro do ano corrente (ou do próximo, se outubro já passou)
+  const [curY, curMo] = mesAtual.split('-').map(Number);
+  const octYear  = curMo <= 10 ? curY : curY + 1;
+  const OCT_PRAZO = `${octYear}-10`;
+
   const allMeses = [];
   let cur = mesesHist[0];
   let fimRange = mesAtual;
-  for (let i = 0; i < 6; i++) fimRange = avancaMes(fimRange); // 6 meses futuros
+  for (let i = 0; i < 6; i++) fimRange = avancaMes(fimRange);
+  if (fimRange > OCT_PRAZO) fimRange = OCT_PRAZO; // corta em outubro
 
   while (cur <= fimRange) { allMeses.push(cur); cur = avancaMes(cur); }
 
@@ -2570,6 +2584,7 @@ function buildRPAChamados(){
   // ── Sub-aba: Tipos de Problema ───────────────────────────────
   const porProb   = count(chamados, r => r.problema);
   const porReexec = count(chamados.filter(r=>r.reexec), r => r.reexec);
+  const porIntext = count(chamados.filter(r=>r.intext), r => r.intext);
   // fases (grupos), na ordem do fluxo do chamado
   const fasesDef = [
     {key:'Backlog',                    label:'Backlog',         color:'#9CA3AF'},
@@ -2578,28 +2593,58 @@ function buildRPAChamados(){
     {key:'Reexecução',                 label:'Reexecução',      color:'#4DB1B3'},
     {key:'Concluído',                  label:'Concluído',       color:'#0F5299'}
   ];
+  // áreas do GBS (grupos para o segundo gráfico)
+  const areasDef = [
+    {key:'P2P',           label:'P2P',         color:'#0195D6'},
+    {key:'TAX',           label:'TAX',         color:'#E66407'},
+    {key:'H2R',           label:'H2R',         color:'#4DB1B3'},
+    {key:'O2C',           label:'O2C',         color:'#8B6FD4'},
+    {key:'R2R',           label:'R2R',         color:'#C5284C'},
+    {key:'(não mapeada)', label:'Não mapeada', color:'#9CA3AF'}
+  ];
   // tipos de problema (séries / barras dentro de cada grupo), ordenados por volume
   const probsOrd = Object.entries(porProb).sort((a,b)=>b[1]-a[1]).map(e=>e[0]);
   const paletaProb = ['#0195D6','#E66407','#4DB1B3','#C5284C','#E83430','#0F5299','#8B6FD4'];
   const serieProb = probsOrd.map((pr,i) => ({key:pr, label:pr, color:paletaProb[i%paletaProb.length]}));
-  // monta os grupos: para cada fase, a contagem de cada tipo de problema
+  // monta os grupos por fase
   const grupos = fasesDef.map(f => {
     const sub = chamados.filter(r => r.fase===f.key);
     const valores = {};
     probsOrd.forEach(pr => { valores[pr] = sub.filter(r=>r.problema===pr).length; });
     return {label:f.label, color:f.color, valores};
   });
-  let htmlProblemas = `<div class="two">
-    <div class="card"><div class="card-title"><i class="ti ti-alert-circle"></i> Tipos de problema <span class="rt">por fase do chamado</span></div>
+  // monta os grupos por área (só áreas com pelo menos 1 chamado)
+  const gruposArea = areasDef
+    .map(a => {
+      const sub = chamados.filter(r => r.area === a.key);
+      const valores = {};
+      probsOrd.forEach(pr => { valores[pr] = sub.filter(r=>r.problema===pr).length; });
+      return {label:a.label, color:a.color, valores};
+    })
+    .filter(g => probsOrd.some(pr => g.valores[pr] > 0));
+  // donut de reexecução
+  const reexecDonut = donut(Object.entries(porReexec).map(([k,vv],i)=>({label:k,value:vv,color:i===0?'var(--ok)':'var(--warn)'})));
+  // donut de interno/externo (ou mensagem se campo ainda não existir)
+  const intextEntries = Object.entries(porIntext);
+  const intextDonut = intextEntries.length
+    ? donut(intextEntries.map(([k,vv])=>({label:k,value:vv,color:k.toLowerCase().includes('intern')?'var(--info)':'var(--warn)'})))
+    : `<div style="font-size:12px;color:var(--ink4);font-style:italic">Campo "Interno ou externo?" ainda não disponível nos dados.<br>Adicione esse campo ao formulário RPA no Pipefy para habilitar esta análise.</div>`;
+  let htmlProblemas =
+    `<div class="card"><div class="card-title"><i class="ti ti-alert-circle"></i> Tipos de problema <span class="rt">por fase do chamado</span></div>
       ${clusteredBars(grupos, serieProb)}</div>
-    <div class="card"><div class="card-title"><i class="ti ti-refresh"></i> Admite reexecução?</div>
-      ${donut(Object.entries(porReexec).map(([k,vv],i)=>({label:k,value:vv,color:i===0?'var(--ok)':'var(--warn)'})))}
-      <div class="note" style="margin-top:14px;margin-bottom:0;background:var(--neu-bg);color:var(--ink3)"><i class="ti ti-info-circle"></i><div>
-        <b>O que é reexecução?</b> Indica se o bot pode ser rodado novamente após uma falha sem risco de duplicar transações.
-        <b>Admite:</b> basta re-executar — o resultado é o mesmo.
-        <b>Não admite:</b> é preciso investigar até onde processou antes de qualquer ação (ex: evitar pagamento duplo ou lançamento duplicado no SAP).
-      </div></div></div>
-  </div>`;
+    <div class="card"><div class="card-title"><i class="ti ti-building"></i> Tipos de problema <span class="rt">por área</span></div>
+      ${clusteredBars(gruposArea, serieProb)}</div>
+    <div class="two">
+      <div class="card"><div class="card-title"><i class="ti ti-refresh"></i> Admite reexecução?</div>
+        ${reexecDonut}
+        <div class="note" style="margin-top:14px;margin-bottom:0;background:var(--neu-bg);color:var(--ink3)"><i class="ti ti-info-circle"></i><div>
+          <b>O que é reexecução?</b> Indica se o bot pode ser rodado novamente após uma falha sem risco de duplicar transações.
+          <b>Admite:</b> basta re-executar — o resultado é o mesmo.
+          <b>Não admite:</b> é preciso investigar até onde processou antes de qualquer ação (ex: evitar pagamento duplo ou lançamento duplicado no SAP).
+        </div></div></div>
+      <div class="card"><div class="card-title"><i class="ti ti-arrow-fork"></i> Causa interna ou externa?</div>
+        ${intextDonut}</div>
+    </div>`;
   document.getElementById('rpage-prob').innerHTML = htmlProblemas;
   flushCharts();
 
@@ -2633,10 +2678,10 @@ function buildRPAChamados(){
     .sort((a, b) => b[1] - a[1]);
   const notaTempoMedio = `<div class="note" style="margin-top:14px;margin-bottom:0;background:var(--neu-bg);color:var(--ink3)"><i class="ti ti-info-circle"></i><div>Soma dos dias em <b>Identificação</b> + <b>Desenvolvimento</b> dividida pelo nº de chamados do bot. Só bots com <b>3+ chamados</b> entram (evita distorção de amostra única).</div></div>`;
   const cardTempoMedio = `<div class="card"><div class="card-title"><i class="ti ti-clock"></i> Tempo médio por bot<span class="rt">dias · 3+ chamados</span></div>
-    ${hbars(procAvg,{max:12,lw:180,color:'var(--warn)',fixedLabel:true})}${notaTempoMedio}</div>`;
+    ${hbars(procAvg,{max:12,lw:200,color:'var(--warn)'})}${notaTempoMedio}</div>`;
   if(procUm.length){
     htmlTempo += `<div class="two">${cardTempoMedio}<div class="card"><div class="card-title"><i class="ti ti-clock-hour-4"></i> Bots com 1 chamado<span class="rt">dias · ${procUm.length} bots</span></div>
-      ${hbars(procUm,{max:20,lw:180,color:'#5aa0a0',fixedLabel:true})}
+      ${hbars(procUm,{max:20,lw:200,color:'#5aa0a0'})}
       <div class="note" style="margin-top:14px;margin-bottom:0;background:var(--neu-bg);color:var(--ink3)"><i class="ti ti-info-circle"></i><div>Um único chamado — não é média, serve de referência.</div></div></div></div>`;
   } else {
     htmlTempo += cardTempoMedio;
