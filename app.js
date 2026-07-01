@@ -202,26 +202,26 @@ const HOJE  = new Date(); // data atual no momento do carregamento da página
 function statusClass(s){
   // Remove prefixo numérico de ordenação, se houver.
   // Ex: "6. Encerramento" → "encerramento", "3 - Planejamento" → "planejamento"
-  const t = (s || '').toString().trim().toLowerCase().replace(/^\s*\d+\s*[.\-)]\s*/, '');
+  const normalized = (s || '').toString().trim().toLowerCase().replace(/^\s*\d+\s*[.\-)]\s*/, '');
 
-  if (['suporte pipefy', 'encaminhado ao fornecedor', 'pipefy'].includes(t))
+  if (['suporte pipefy', 'encaminhado ao fornecedor', 'pipefy'].includes(normalized))
     return 'vendor';
 
-  if (['concluído', 'concluido', 'finalizados', 'finalizado', 'tema concluído.', 'tema concluído'].includes(t))
+  if (['concluído', 'concluido', 'finalizados', 'finalizado', 'tema concluído.', 'tema concluído'].includes(normalized))
     return 'done';
 
   if (['em andamento', 'em execução', 'execução', 'execucao', 'desenvolvimento',
-       'em validação', 'em validacao', 'aguardando validação', 'aguardando validacao'].includes(t))
+       'em validação', 'em validacao', 'aguardando validação', 'aguardando validacao'].includes(normalized))
     return 'doing';
 
-  if (['encerramento'].includes(t))  return 'closing';
-  if (['monitoramento'].includes(t)) return 'monitor';
+  if (['encerramento'].includes(normalized))  return 'closing';
+  if (['monitoramento'].includes(normalized)) return 'monitor';
 
-  if (['planejamento', 'diagnóstico', 'diagnostico', 'não iniciado', 'nao iniciado', 'backlog'].includes(t))
+  if (['planejamento', 'diagnóstico', 'diagnostico', 'não iniciado', 'nao iniciado', 'backlog'].includes(normalized))
     return 'todo';
 
-  if (['bloqueado', 'pausado'].includes(t))  return 'blocked';
-  if (['cancelado'].includes(t))             return 'cancel';
+  if (['bloqueado', 'pausado'].includes(normalized))  return 'blocked';
+  if (['cancelado'].includes(normalized))             return 'cancel';
 
   return 'other';
 }
@@ -306,12 +306,12 @@ const EQUIPE_COE = [
  */
 function coeNomePadrao(resp){
   if(!resp) return null;
-  const t = resp.toString().toLowerCase()
+  const normalized = resp.toString().toLowerCase()
     .normalize('NFD').replace(/[\u0300-\u036f]/g,''); // remove acentos para comparar
   for(const m of EQUIPE_COE){
     for(const termo of m.match){
       const termoNorm = termo.normalize('NFD').replace(/[\u0300-\u036f]/g,'');
-      if(t.includes(termoNorm)) return m.nome;
+      if(normalized.includes(termoNorm)) return m.nome;
     }
   }
   return null;
@@ -324,13 +324,13 @@ function coeNomePadrao(resp){
  * Retorna null para status fora do fluxo (cancelado, bloqueado).
  */
 function projFase(statusRaw){
-  const t = (statusRaw||'').toString().trim().toLowerCase();
-  if(t.includes('diagn')) return 1;
-  if(t.includes('planej')) return 2;
-  if(t.includes('execu')) return 3;
-  if(t.includes('encerr')) return 4;
-  if(t.includes('monitor')) return 5;
-  if(t.includes('conclu')) return 5;
+  const normalized = (statusRaw||'').toString().trim().toLowerCase();
+  if(normalized.includes('diagn')) return 1;
+  if(normalized.includes('planej')) return 2;
+  if(normalized.includes('execu')) return 3;
+  if(normalized.includes('encerr')) return 4;
+  if(normalized.includes('monitor')) return 5;
+  if(normalized.includes('conclu')) return 5;
   return null;
 }
 
@@ -632,16 +632,15 @@ function findSheet(wb, frag){
  *   - número serial do Excel (ex: 45678 = dias desde 01/01/1900)
  *   - string de data (ex: "2026-04-24")
  */
-function toDate(v){
-  if(!v) return null;
-  if(v instanceof Date) return isNaN(v) ? null : v;
-  if(typeof v === 'number'){
-    // converte serial do Excel: (serial - 25569) * 86400000 ms
-    const d = new Date(Math.round((v - 25569) * 864e5));
+function toDate(rawValue){
+  if(!rawValue) return null;
+  if(rawValue instanceof Date) return isNaN(rawValue) ? null : rawValue;
+  if(typeof rawValue === 'number'){
+    const d = new Date(Math.round((rawValue - EXCEL_EPOCH_OFFSET) * 864e5));
     return isNaN(d) ? null : d;
   }
-  if(typeof v === 'string' && v.length > 4){
-    const d = new Date(v);
+  if(typeof rawValue === 'string' && rawValue.length > 4){
+    const d = new Date(rawValue);
     return isNaN(d) ? null : d;
   }
   return null;
@@ -721,7 +720,29 @@ function ehMembroEquipePipefy(nome){ return EQUIPE_PIPEFY.some(p => nome.toLower
 // Calcula quantos dias de diferença entre duas datas.
 // Positivo = data1 é mais recente que data2 (ex: hoje - prazo = dias de atraso).
 const MS_POR_DIA = 86_400_000;
+const EXCEL_EPOCH_OFFSET = 25569; // dias entre 1900-01-01 (Excel epoch) e 1970-01-01 (Unix epoch)
 function diasEntre(data1, data2){ return Math.round((data1 - data2) / MS_POR_DIA); }
+
+/*
+ * Conta quantos itens de um array têm cada código de status.
+ * Elimina o padrão repetido: arr.filter(x => x.sc === 'done').length
+ * Uso: const { done, todo: backlog, blocked } = statusCounts(arr);
+ */
+function statusCounts(arr) {
+  const codes = ['done', 'doing', 'todo', 'blocked', 'cancel', 'vendor', 'closing', 'monitor'];
+  const result = {};
+  codes.forEach(code => { result[code] = arr.filter(x => x.sc === code).length; });
+  return result;
+}
+
+/*
+ * Agrupa arr por keyFn, conta frequências e retorna pares [chave, contagem]
+ * ordenados do mais frequente ao menos frequente.
+ * Elimina o padrão repetido: Object.entries(count(arr, fn)).sort((a,b) => b[1]-a[1])
+ */
+function sortedCountEntries(arr, keyFn) {
+  return Object.entries(count(arr, keyFn)).sort((a, b) => b[1] - a[1]);
+}
 
 
 /* ============================================================
@@ -809,8 +830,8 @@ function parseGov(){
         atvAndam:   String(get(r, ['AtividadesAndamento'])).trim(),
         comentarios:String(get(r, ['Comentarios'])).trim(),
         prog: (()=>{
-          const v = get(r, ['ProgressoPct','Progresso']);
-          return typeof v === 'number' ? v : (parseFloat(v)||null);
+          const rawProg = get(r, ['ProgressoPct','Progresso']);
+          return typeof rawProg === 'number' ? rawProg : (parseFloat(rawProg)||null);
         })() // progresso 0.0 a 1.0 (ex: 0.75 = 75%)
       })).filter(p => p.titulo); // descarta linhas sem título
     } else {
@@ -821,16 +842,16 @@ function parseGov(){
       //   col4=PontoFocal(em Frente), col5=Status(em PontoFocal), col6=DataFechamento, col7=ProximosPassos
       const raw = XLSX.utils.sheet_to_json(wb.Sheets[sProj], {defval:'', header:1});
       for(let i=1; i<raw.length; i++){
-        const c = raw[i];
-        if(c[0]==='' && c[1]==='') continue;
-        if(!String(c[1]||'').trim()) continue;
+        const row = raw[i];
+        if(row[0]==='' && row[1]==='') continue;
+        if(!String(row[1]||'').trim()) continue;
         App.P.proj.push({
-          num:c[0], titulo:String(c[1]).trim(), resp:String(c[2]||'').trim(),
-          frente:String(c[3]||'').trim(), focal:String(c[4]||'').trim(),
-          statusRaw:String(c[5]||'').trim(), sc:statusClass(c[5]),
-          dtFim:toDate(c[6]), proximos:String(c[7]||'').trim(),
+          num:row[0], titulo:String(row[1]).trim(), resp:String(row[2]||'').trim(),
+          frente:String(row[3]||'').trim(), focal:String(row[4]||'').trim(),
+          statusRaw:String(row[5]||'').trim(), sc:statusClass(row[5]),
+          dtFim:toDate(row[6]), proximos:String(row[7]||'').trim(),
           equipes:'', descricao:'', atvConcl:'', atvAndam:'', comentarios:'',
-          prog: typeof c[8]==='number' ? c[8] : (parseFloat(c[8])||null)
+          prog: typeof row[8]==='number' ? row[8] : (parseFloat(row[8])||null)
         });
       }
     }
@@ -955,21 +976,21 @@ function parseRPA(){
  * chamados com o campo Processo vazio. Chamar DEPOIS de parseRPA() e parseInv().
  */
 function areaPorPalavra(proc){
-  const t = (proc||'').toLowerCase();
+  const nomeProc = (proc||'').toLowerCase();
   // P2P — pagamentos, extratos bancários, câmbio
-  if(t.includes('bank statement')) return 'P2P';
-  if(t.includes('payment run')) return 'P2P';
-  if(t.includes('payment order')) return 'P2P';
-  if(t.includes('payments receipt') || t.includes('payment receipt')) return 'P2P';
-  if(t.includes('exchange rate') || t.includes('exchange contract')) return 'P2P';
-  if(t.includes('reserve of values')) return 'P2P';
-  if(t.includes('freight')) return 'P2P';
+  if(nomeProc.includes('bank statement')) return 'P2P';
+  if(nomeProc.includes('payment run')) return 'P2P';
+  if(nomeProc.includes('payment order')) return 'P2P';
+  if(nomeProc.includes('payments receipt') || nomeProc.includes('payment receipt')) return 'P2P';
+  if(nomeProc.includes('exchange rate') || nomeProc.includes('exchange contract')) return 'P2P';
+  if(nomeProc.includes('reserve of values')) return 'P2P';
+  if(nomeProc.includes('freight')) return 'P2P';
   // TAX — impostos
-  if(t.includes('tax conciliation') || t.includes('tax checking') || t.includes('tax payment') || t.includes('indirect tax') || t.includes('direct tax')) return 'TAX';
+  if(nomeProc.includes('tax conciliation') || nomeProc.includes('tax checking') || nomeProc.includes('tax payment') || nomeProc.includes('indirect tax') || nomeProc.includes('direct tax')) return 'TAX';
   // H2R — RH / folha / benefícios
-  if(t.includes('vacation') || t.includes('payroll') || t.includes('employee') || t.includes('benefit')) return 'H2R';
+  if(nomeProc.includes('vacation') || nomeProc.includes('payroll') || nomeProc.includes('employee') || nomeProc.includes('benefit')) return 'H2R';
   // O2C — crédito / faturamento
-  if(t.includes('credit limit') || t.includes('settlement statement')) return 'O2C';
+  if(nomeProc.includes('credit limit') || nomeProc.includes('settlement statement')) return 'O2C';
   return '';
 }
 
@@ -1201,8 +1222,8 @@ function donut(data, opts = {}) {
 /*
  * hbars(entries, opts) — barras horizontais via Chart.js
  * entries: array de [label, value]
- * opts: { max, tot, color, showTotal, totLabel }
- * lw e fixedLabel são ignorados — o Chart.js gerencia o tamanho dos labels.
+ * opts: { max, tot, color, showTotal, totLabel, lw }
+ * lw: largura mínima do eixo Y (calculada automaticamente; opts.lw é usada como mínimo extra).
  */
 function hbars(entries, opts = {}) {
   const items = entries.slice(0, opts.max || 10);
@@ -1217,6 +1238,15 @@ function hbars(entries, opts = {}) {
     const parts = String(l).split(/\s+·\s+/);
     return parts.length > 1 ? parts : l;
   };
+
+  // Para labels com separador "·" (bot  ·  área): calcula o mínimo necessário para não cortar.
+  // Para outros labels: usa opts.lw exatamente, sem expansão automática.
+  const hasMultiline = items.some(([l]) => String(l).includes('·'));
+  const minLwDots = hasMultiline ? Math.ceil(Math.max(...items.map(([l]) => {
+    const parts = String(l).split(/\s+·\s+/);
+    return Math.max(...parts.map(p => p.length));
+  })) * 6.5) + 24 : 0;
+  const lw = opts.lw ? Math.max(opts.lw, minLwDots) : (minLwDots || undefined);
 
   _pendingCharts.push({
     id,
@@ -1253,7 +1283,7 @@ function hbars(entries, opts = {}) {
             grid:   { display: false },
             border: { display: false },
             ticks:  { color: C.ink2, font: { size: 11 } },
-            afterFit(scale) { if (opts.lw) scale.width = opts.lw; }
+            afterFit(scale) { if (lw) scale.width = lw; }
           }
         }
       },
@@ -1283,7 +1313,8 @@ function hbars(entries, opts = {}) {
     }
   });
 
-  const height = Math.max(items.length * (opts.lw ? 48 : 36) + 20, 70);
+  const heightPerBar = hasMultiline ? 56 : (opts.lw ? 48 : 36);
+  const height = Math.max(items.length * heightPerBar + 20, 70);
   const header = opts.showTotal
     ? `<div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:10px;padding-bottom:8px;border-bottom:1px solid var(--rule)">
         <span style="font-size:11px;color:var(--ink4)">${opts.totLabel || 'Total'}</span>
@@ -1491,10 +1522,11 @@ function chartVBars(meses, porMes, porMesV) {
 function heatmap(matrix, rowLabels, colLabels, opts={}){
   const flat = matrix.flat().filter(v => v > 0);
   const mx = flat.length ? Math.max(...flat) : 1;
+  const HEATMAP_MIN_OPACITY   = 0.12;
+  const HEATMAP_OPACITY_RANGE = 0.78; // min + range = 0.90 (intensidade máxima)
   const color = v => {
     if(!v) return 'var(--neu-bg)';
-    const t = v/mx;
-    const op = (0.12 + t * 0.78).toFixed(2); // opacidade de 12% a 90% conforme intensidade
+    const op = (HEATMAP_MIN_OPACITY + (v / mx) * HEATMAP_OPACITY_RANGE).toFixed(2);
     return `rgba(1, 149, 214, ${op})`; // azul accent Saint-Gobain
   };
   let html = '<table class="hm"><thead><tr><th class="rh"></th>'+colLabels.map(c=>`<th>${c}</th>`).join('')+'</tr></thead><tbody>';
@@ -1596,18 +1628,18 @@ function buildGov(){
   // Valida: se a frente guardada não existe nos dados atuais, reseta
   const frenteAtiva  = App.govFrente && todasFrentes.includes(App.govFrente) ? App.govFrente : '';
   if (!frenteAtiva) App.govFrente = '';
-  // Af = dados filtrados pela frente (ou todos, se sem filtro)
-  const Af = frenteAtiva ? A.filter(a => a.frente === frenteAtiva) : A;
+  const acoesFiltradas = frenteAtiva ? A.filter(a => a.frente === frenteAtiva) : A;
 
-  const total = Af.length;
-  const done = Af.filter(a => a.sc==='done').length;
-  const doing = Af.filter(a => a.sc==='doing' || a.sc==='closing').length;
-  const backlog = Af.filter(a => a.sc==='todo').length;
-  const outros = total - done - doing - backlog;
-  const nCancel = Af.filter(a=>a.sc==='cancel').length;
-  const nBlocked = Af.filter(a=>a.sc==='blocked').length;
-  const nMonitor = Af.filter(a=>a.sc==='monitor').length;
-  const nVendor = Af.filter(a=>a.sc==='vendor').length;
+  const total = acoesFiltradas.length;
+  const sc = statusCounts(acoesFiltradas);
+  const done    = sc.done;
+  const doing   = sc.doing + sc.closing;
+  const backlog = sc.todo;
+  const outros  = total - done - doing - backlog;
+  const nCancel  = sc.cancel;
+  const nBlocked = sc.blocked;
+  const nMonitor = sc.monitor;
+  const nVendor  = sc.vendor;
   // monta a descrição do que entra em "Outros" (só os que têm contagem > 0)
   const outrosDesc = [
     nCancel?`${nCancel} cancel.`:'',
@@ -1628,10 +1660,9 @@ function buildGov(){
       </div></div>`;
   }
 
-  // KPIs por fonte — calcula total e concluídas de cada uma (usa Af = dados filtrados por frente)
   const fontes = ['Projetos','Pipefy','Analytics','Chamados RPA'];
   const porFonte = fontes.map(fonte => {
-    const subAcoes = Af.filter(a => a.fonte === fonte);
+    const subAcoes = acoesFiltradas.filter(a => a.fonte === fonte);
     const subDone  = subAcoes.filter(a => a.sc === 'done').length;
     return {f: fonte, total: subAcoes.length, done: subDone};
   }).filter(x => x.total > 0);
@@ -1672,7 +1703,7 @@ function buildGov(){
   //   vermelho = cancelado · roxo = suporte/fornecedor.
   // Ordem do mais avançado/positivo para o menos. O total mostrado bate com o
   // "Total de ações CoE" porque todos os status estão contemplados.
-  const scAll = count(Af, a => a.sc);
+  const scAll = count(acoesFiltradas, a => a.sc);
   const donutDefs = [
     {label:'Concluído',       value: scAll.done    || 0,                          color:'#4DB1B3'},
     {label:'Em encerramento', value:(scAll.closing || 0) + (scAll.monitor || 0),  color:'#E66407'},
@@ -1712,7 +1743,7 @@ function buildGov(){
   const respTop = Object.entries(respCoE).sort((a,b) => b[1]-a[1]);
   const totalRespCoE = respTop.reduce((s,e)=>s+e[1],0); // base para o percentual
 
-  // "Por frente" sempre mostra o panorama completo (A, não Af) para comparação
+  // "Por frente" sempre mostra o panorama completo (A, não acoesFiltradas) para comparação
   const frCount = count(A.filter(a => a.frente), a => a.frente);
   const fonteInfo = porFonte.map(x =>
     `<span><b style="color:var(--ink2)">${x.f}</b> ${x.total} <span style="color:var(--ink4)">(${pct(x.done,x.total)}% concl.)</span></span>`
@@ -2055,19 +2086,18 @@ function projDetails(p){
  * Linha vertical vermelha tracejada marca o mês atual (divisor passado/futuro).
  * Retorna '' se não houver dados suficientes (< 3 meses com conclusões).
  */
-function buildGraficoEvolutivo(melhorias) {
+// Calcula os dados das três séries do gráfico evolutivo de melhorias.
+// Retorna null se não houver dados suficientes (< 3 concluídas ou < 2 meses históricos).
+function calcMelEvolutData(melhorias) {
   const concluidas = melhorias.filter(m => m.sc === 'done' && m.dtFim);
-  if (concluidas.length < 3) return '';
+  if (concluidas.length < 3) return null;
 
-  // Contagem de conclusões por mês
-  const porMes = {};
+  const porMes    = {};
   concluidas.forEach(m => { const k = ym(m.dtFim); porMes[k] = (porMes[k] || 0) + 1; });
+  const mesAtual  = ym(HOJE);
+  const mesesHist = Object.keys(porMes).sort().filter(k => k <= mesAtual);
+  if (mesesHist.length < 2) return null;
 
-  const mesAtual   = ym(HOJE);
-  const mesesHist  = Object.keys(porMes).sort().filter(k => k <= mesAtual);
-  if (mesesHist.length < 2) return '';
-
-  // Gera todos os meses: do início histórico até outubro (prazo final)
   const avancaMes = k => {
     const [y, mo] = k.split('-').map(Number);
     return mo === 12 ? `${y + 1}-01` : `${y}-${String(mo + 1).padStart(2, '0')}`;
@@ -2075,40 +2105,37 @@ function buildGraficoEvolutivo(melhorias) {
 
   // Prazo final = outubro do ano corrente (ou do próximo, se outubro já passou)
   const [curY, curMo] = mesAtual.split('-').map(Number);
-  const octYear  = curMo <= 10 ? curY : curY + 1;
-  const OCT_PRAZO = `${octYear}-10`;
+  const OCT_PRAZO = `${curMo <= 10 ? curY : curY + 1}-10`;
+
+  let fimRange = mesAtual;
+  for (let i = 0; i < 6; i++) fimRange = avancaMes(fimRange);
+  if (fimRange > OCT_PRAZO) fimRange = OCT_PRAZO;
 
   const allMeses = [];
   let cur = mesesHist[0];
-  let fimRange = mesAtual;
-  for (let i = 0; i < 6; i++) fimRange = avancaMes(fimRange);
-  if (fimRange > OCT_PRAZO) fimRange = OCT_PRAZO; // corta em outubro
-
   while (cur <= fimRange) { allMeses.push(cur); cur = avancaMes(cur); }
 
-  const idxAtual = allMeses.indexOf(mesAtual);
-
-  // Linha 1: Concluídas por mês (null no futuro)
-  const dataConcl = allMeses.map(m => m <= mesAtual ? (porMes[m] || 0) : null);
-
-  // Linha 2: Backlog reconstruído historicamente
-  // backlog(mês M) = itens ainda em todo hoje + itens concluídos após M
   const itemsTodoAtual = melhorias.filter(m => m.sc === 'todo').length;
-  const dataBacklog = allMeses.map(m => {
-    if (m > mesAtual) return null; // só histórico
-    const concluídasDepois = concluidas.filter(c => ym(c.dtFim) > m).length;
-    return itemsTodoAtual + concluídasDepois;
-  });
+  const mesesFuturos   = allMeses.filter(m => m >= mesAtual);
+  const prevPorMes     = mesesFuturos.length > 0 ? Math.max(1, Math.round(itemsTodoAtual / mesesFuturos.length)) : 1;
 
-  // Linha 3: Previsão — backlog atual dividido igualmente pelos meses futuros
-  const mesesFuturos = allMeses.filter(m => m >= mesAtual);
-  const prevPorMes   = mesesFuturos.length > 0 ? Math.max(1, Math.round(itemsTodoAtual / mesesFuturos.length)) : 1;
-  const dataPrevisao = allMeses.map(m => m >= mesAtual ? prevPorMes : null);
+  return {
+    labels:        allMeses.map(m => ymLabel(m)),
+    idxAtual:      allMeses.indexOf(mesAtual),
+    itemsTodoAtual,
+    mesesFuturos,
+    prevPorMes,
+    dataConcl:    allMeses.map(m => m <= mesAtual ? (porMes[m] || 0) : null),
+    dataBacklog:  allMeses.map(m => {
+      if (m > mesAtual) return null;
+      return itemsTodoAtual + concluidas.filter(c => ym(c.dtFim) > m).length;
+    }),
+    dataPrevisao: allMeses.map(m => m >= mesAtual ? prevPorMes : null),
+  };
+}
 
-  const labels = allMeses.map(m => ymLabel(m));
-  const id     = _cid('mel-evol');
-
-  // Plugin inline para exibir os valores numéricos sobre cada ponto
+// Plugins Chart.js para o gráfico evolutivo: rótulos sobre os pontos e linha do mês atual.
+function melEvolutPlugins(idxAtual) {
   const dataLabels = {
     id: 'dataLabels',
     afterDatasetsDraw(chart) {
@@ -2116,15 +2143,14 @@ function buildGraficoEvolutivo(melhorias) {
       data.datasets.forEach((dataset, i) => {
         const meta = chart.getDatasetMeta(i);
         if (meta.hidden) return;
-        // Previsão (i===2): rótulo abaixo do ponto para não colidir com Concluídas
-        const above = i !== 2;
+        const above = i !== 2; // Previsão (i===2) fica abaixo para não colidir
         meta.data.forEach((el, j) => {
           const value = dataset.data[j];
           if (value == null) return;
           ctx.save();
-          ctx.fillStyle   = dataset.borderColor;
-          ctx.font        = `bold 10px Inter, system-ui, sans-serif`;
-          ctx.textAlign   = 'center';
+          ctx.fillStyle    = dataset.borderColor;
+          ctx.font         = `bold 10px Inter, system-ui, sans-serif`;
+          ctx.textAlign    = 'center';
           ctx.textBaseline = above ? 'bottom' : 'top';
           ctx.fillText(value, el.x, el.y + (above ? -5 : 5));
           ctx.restore();
@@ -2132,8 +2158,6 @@ function buildGraficoEvolutivo(melhorias) {
       });
     }
   };
-
-  // Plugin inline para desenhar a linha vertical do mês atual
   const linhaHoje = {
     id: 'linhaHoje',
     afterDraw(chart) {
@@ -2144,13 +2168,23 @@ function buildGraficoEvolutivo(melhorias) {
       ctx.beginPath();
       ctx.setLineDash([6, 4]);
       ctx.strokeStyle = C.err;
-      ctx.lineWidth = 1.5;
+      ctx.lineWidth   = 1.5;
       ctx.moveTo(x, chartArea.top);
       ctx.lineTo(x, chartArea.bottom);
       ctx.stroke();
       ctx.restore();
     }
   };
+  return [dataLabels, linhaHoje];
+}
+
+function buildGraficoEvolutivo(melhorias) {
+  const evol = calcMelEvolutData(melhorias);
+  if (!evol) return '';
+
+  const { labels, idxAtual, itemsTodoAtual, mesesFuturos, prevPorMes,
+          dataConcl, dataBacklog, dataPrevisao } = evol;
+  const id = _cid('mel-evol');
 
   _pendingCharts.push({
     id,
@@ -2225,7 +2259,7 @@ function buildGraficoEvolutivo(melhorias) {
           }
         }
       },
-      plugins: [dataLabels, linhaHoje]
+      plugins: melEvolutPlugins(idxAtual)
     }
   });
 
@@ -2252,8 +2286,8 @@ function buildGraficoEvolutivo(melhorias) {
  */
 function overviewFrentes(melhorias) {
   const isValidacao = m => {
-    const t = (m.statusRaw || '').toLowerCase();
-    return t.includes('validação') || t.includes('validacao') || t.includes('aguardando');
+    const statusText = (m.statusRaw || '').toLowerCase();
+    return statusText.includes('validação') || statusText.includes('validacao') || statusText.includes('aguardando');
   };
 
   const COLUNAS = [
@@ -2354,9 +2388,10 @@ function buildMel(){
   document.getElementById('mel-empty').style.display  = App.P.mel.length ? 'none' : 'block';
   document.getElementById('mel-content').style.display = App.P.mel.length ? 'block' : 'none';
   if(!App.P.mel.length) return;
-  const done    = melhorias.filter(m => m.sc==='done').length;
-  const backlog = melhorias.filter(m => m.sc==='todo').length;
-  const blocked = melhorias.filter(m => m.sc==='blocked').length;
+  const sc      = statusCounts(melhorias);
+  const done    = sc.done;
+  const backlog = sc.todo;
+  const blocked = sc.blocked;
 
   let dateNote = '';
   if(App.dateRange.mode !== 'all'){
@@ -2391,14 +2426,14 @@ function buildMel(){
     <div class="card"><div class="card-title"><i class="ti ti-chart-pie"></i> Status</div>
       ${donut(['done','doing','todo','vendor','blocked','cancel'].map(k=>({label:STATUS_PT[k],value:melhorias.filter(m=>m.sc===k).length,color:STATUS_COLOR[k]})).filter(d=>d.value), {total:App.P.mel.length})}</div>
     <div class="card"><div class="card-title"><i class="ti ti-building"></i> Por frente</div>
-      ${hbars(Object.entries(count(melhorias,m=>m.frente)).sort((a,b)=>b[1]-a[1]),{max:8,lw:60,tot:melhorias.length})}</div>
+      ${hbars(sortedCountEntries(melhorias, m=>m.frente),{max:8,lw:60,tot:melhorias.length})}</div>
   </div>`;
   html += `<div class="two">
     <div class="card"><div class="card-title"><i class="ti ti-stack-2"></i> Por complexidade</div>
-      ${hbars(Object.entries(count(melhorias.filter(m=>m.complex),m=>m.complex)).sort((a,b)=>b[1]-a[1]),{max:6,lw:90})}</div>
+      ${hbars(sortedCountEntries(melhorias.filter(m=>m.complex), m=>m.complex),{max:6,lw:90})}</div>
     <div class="card"><div class="card-title"><i class="ti ti-user-code"></i> Por responsável</div>
       ${(() => {
-        const dados = Object.entries(count(melhorias.filter(m=>m.resp && ehMembroEquipePipefy(m.resp)), m=>m.resp)).sort((a,b)=>b[1]-a[1]);
+        const dados = sortedCountEntries(melhorias.filter(m=>m.resp && ehMembroEquipePipefy(m.resp)), m=>m.resp);
         return hbars(dados,{max:8,lw:130});
       })()}</div>
   </div>`;
@@ -2439,9 +2474,10 @@ function buildAna(){
   document.getElementById('ana-empty').style.display  = App.P.ana.length ? 'none' : 'block';
   document.getElementById('ana-content').style.display = App.P.ana.length ? 'block' : 'none';
   if(!App.P.ana.length) return;
-  const done  = A.filter(a => a.sc==='done').length;
-  const doing = A.filter(a => a.sc==='doing').length;
-  const todo  = A.filter(a => a.sc==='todo').length;
+  const sc   = statusCounts(A);
+  const done = sc.done;
+  const doing = sc.doing;
+  const todo  = sc.todo;
   const comData = A.filter(a => a.dtFim).length;
 
   // Nota informativa: quantas atividades têm data vs. quantas não têm
@@ -2473,11 +2509,11 @@ function buildAna(){
     <div class="card"><div class="card-title"><i class="ti ti-flag"></i> Por prioridade</div>
       ${hbars(Object.entries(prioCount).sort((a,b)=>{const na=+a[0].match(/\d+/),nb=+b[0].match(/\d+/);return na-nb;}),{max:10,lw:90})}</div>
     <div class="card"><div class="card-title"><i class="ti ti-building"></i> Por frente</div>
-      ${hbars(Object.entries(count(A.filter(a=>a.frente),a=>a.frente)).sort((a,b)=>b[1]-a[1]),{max:8,lw:60,tot:A.length})}</div>
+      ${hbars(sortedCountEntries(A.filter(a=>a.frente), a=>a.frente),{max:8,lw:60,tot:A.length})}</div>
   </div>`;
   html += `<div class="two">
     <div class="card"><div class="card-title"><i class="ti ti-user"></i> Por responsável</div>
-      ${hbars(Object.entries(count(A.filter(a=>a.resp),a=>a.resp)).sort((a,b)=>b[1]-a[1]),{max:8,lw:140})}</div>
+      ${hbars(sortedCountEntries(A.filter(a=>a.resp), a=>a.resp),{max:8,lw:140})}</div>
     ${buildHeatmap()}
   </div>`;
   document.getElementById('ana-content').innerHTML = html;
@@ -2562,30 +2598,38 @@ function buildRPAChamados(){
   // os KPIs e gráficos são renderizados por renderRPAStatus (respeita o filtro de status)
   renderRPAStatus();
 
-  // Mapa processo → área (a área já foi atribuída a cada chamado em enrichRPAComArea).
-  // Usado para exibir a área ao lado do nome do bot nos gráficos de Top Bots e Tempo médio.
+  const labelComArea = rpaLabelComArea(chamados);
+  buildRPATabTopBots(chamados, labelComArea);
+  buildRPATabProblemas(chamados);
+  buildRPATabTempo(chamados, labelComArea);
+  buildRPATabLista(chamados, total, venc);
+}
+
+// Retorna uma função que formata "Nome do bot  ·  ÁREA" para rótulos de gráfico.
+function rpaLabelComArea(chamados) {
   const areaPorProc = {};
   chamados.forEach(r => { if(r.processo && !areaPorProc[r.processo]) areaPorProc[r.processo] = r.area; });
-  // formata "Nome do bot  ·  [ÁREA]" para usar como rótulo
-  const labelComArea = proc => {
+  return proc => {
     const a = areaPorProc[proc];
     return a && a !== '(não mapeada)' ? `${proc}  ·  ${a}` : proc;
   };
+}
 
-  // ── Sub-aba: Top Bots ─────────────────────────────────────────
-  const porProcV = count(chamados, r => r.processo);
-  const procList = Object.entries(porProcV).filter(e=>e[0]!=='(sem processo)').sort((a,b)=>b[1]-a[1])
-    .map(([proc,n]) => [labelComArea(proc), n]); // adiciona a área ao rótulo
-  let htmlTopBots = `<div class="card"><div class="card-title"><i class="ti ti-trophy"></i> Top bots por nº de manutenções<span class="rt">${procList.length} processos</span></div>
-    ${hbars(procList,{max:15,lw:300,color:'var(--err)',fixedLabel:true})}</div>`;
-  document.getElementById('rpage-bots').innerHTML = htmlTopBots;
+function buildRPATabTopBots(chamados, labelComArea) {
+  const procList = sortedCountEntries(chamados, r => r.processo)
+    .filter(([proc]) => proc !== '(sem processo)')
+    .map(([proc, n]) => [labelComArea(proc), n]);
+  document.getElementById('rpage-bots').innerHTML =
+    `<div class="card"><div class="card-title"><i class="ti ti-trophy"></i> Top bots por nº de manutenções<span class="rt">${procList.length} processos</span></div>
+      ${hbars(procList,{max:15,lw:300,color:'var(--err)',fixedLabel:true})}</div>`;
   flushCharts();
+}
 
-  // ── Sub-aba: Tipos de Problema ───────────────────────────────
+function buildRPATabProblemas(chamados) {
   const porProb   = count(chamados, r => r.problema);
   const porReexec = count(chamados.filter(r=>r.reexec), r => r.reexec);
   const porIntext = count(chamados.filter(r=>r.intext), r => r.intext);
-  // fases (grupos), na ordem do fluxo do chamado
+
   const fasesDef = [
     {key:'Backlog',                    label:'Backlog',         color:'#9CA3AF'},
     {key:'Identificação do problema',  label:'Identificação',   color:'#E66407'},
@@ -2593,7 +2637,6 @@ function buildRPAChamados(){
     {key:'Reexecução',                 label:'Reexecução',      color:'#4DB1B3'},
     {key:'Concluído',                  label:'Concluído',       color:'#0F5299'}
   ];
-  // áreas do GBS (grupos para o segundo gráfico)
   const areasDef = [
     {key:'P2P',           label:'P2P',         color:'#0195D6'},
     {key:'TAX',           label:'TAX',         color:'#E66407'},
@@ -2602,18 +2645,16 @@ function buildRPAChamados(){
     {key:'R2R',           label:'R2R',         color:'#C5284C'},
     {key:'(não mapeada)', label:'Não mapeada', color:'#9CA3AF'}
   ];
-  // tipos de problema (séries / barras dentro de cada grupo), ordenados por volume
-  const probsOrd = Object.entries(porProb).sort((a,b)=>b[1]-a[1]).map(e=>e[0]);
   const paletaProb = ['#0195D6','#E66407','#4DB1B3','#C5284C','#E83430','#0F5299','#8B6FD4'];
-  const serieProb = probsOrd.map((pr,i) => ({key:pr, label:pr, color:paletaProb[i%paletaProb.length]}));
-  // monta os grupos por fase
-  const grupos = fasesDef.map(f => {
+  const probsOrd   = Object.entries(porProb).sort((a,b)=>b[1]-a[1]).map(e=>e[0]);
+  const serieProb  = probsOrd.map((pr,i) => ({key:pr, label:pr, color:paletaProb[i%paletaProb.length]}));
+
+  const gruposProb = fasesDef.map(f => {
     const sub = chamados.filter(r => r.fase===f.key);
     const valores = {};
     probsOrd.forEach(pr => { valores[pr] = sub.filter(r=>r.problema===pr).length; });
     return {label:f.label, color:f.color, valores};
   });
-  // monta os grupos por área (só áreas com pelo menos 1 chamado)
   const gruposArea = areasDef
     .map(a => {
       const sub = chamados.filter(r => r.area === a.key);
@@ -2622,16 +2663,16 @@ function buildRPAChamados(){
       return {label:a.label, color:a.color, valores};
     })
     .filter(g => probsOrd.some(pr => g.valores[pr] > 0));
-  // donut de reexecução
+
   const reexecDonut = donut(Object.entries(porReexec).map(([k,vv],i)=>({label:k,value:vv,color:i===0?'var(--ok)':'var(--warn)'})));
-  // donut de interno/externo (ou mensagem se campo ainda não existir)
   const intextEntries = Object.entries(porIntext);
   const intextDonut = intextEntries.length
     ? donut(intextEntries.map(([k,vv])=>({label:k,value:vv,color:k.toLowerCase().includes('intern')?'var(--info)':'var(--warn)'})))
     : `<div style="font-size:12px;color:var(--ink4);font-style:italic">Campo "Interno ou externo?" ainda não disponível nos dados.<br>Adicione esse campo ao formulário RPA no Pipefy para habilitar esta análise.</div>`;
-  let htmlProblemas =
+
+  document.getElementById('rpage-prob').innerHTML =
     `<div class="card"><div class="card-title"><i class="ti ti-alert-circle"></i> Tipos de problema <span class="rt">por fase do chamado</span></div>
-      ${clusteredBars(grupos, serieProb)}</div>
+      ${clusteredBars(gruposProb, serieProb)}</div>
     <div class="card"><div class="card-title"><i class="ti ti-building"></i> Tipos de problema <span class="rt">por área</span></div>
       ${clusteredBars(gruposArea, serieProb)}</div>
     <div class="two">
@@ -2645,18 +2686,10 @@ function buildRPAChamados(){
       <div class="card"><div class="card-title"><i class="ti ti-arrow-fork"></i> Causa interna ou externa?</div>
         ${intextDonut}</div>
     </div>`;
-  document.getElementById('rpage-prob').innerHTML = htmlProblemas;
   flushCharts();
+}
 
-  // ── Sub-aba: Tempo de Resolução ──────────────────────────────
-  const avg = avgField;
-  let htmlTempo = `<div class="krow">
-    <div class="kpi">${kpiIcon('clock')}<div class="knum sm">${avg(chamados,'tIdent')}</div><div class="klbl">Média dias · Identificação</div></div>
-    <div class="kpi">${kpiIcon('clock')}<div class="knum sm">${avg(chamados,'tDesenv')}</div><div class="klbl">Média dias · Desenvolvimento</div></div>
-    <div class="kpi">${kpiIcon('clock')}<div class="knum sm">${avg(chamados,'tReexec')}</div><div class="klbl">Média dias · Reexecução</div></div>
-    <div class="kpi">${kpiIcon('chartbar')}<div class="knum sm">${chamados.filter(r=>r.tIdent!=null||r.tDesenv!=null).length}</div><div class="klbl">Chamados com tempo medido</div></div>
-  </div>`;
-  // tempo médio por bot: acumula soma de dias e contagem por processo
+function buildRPATabTempo(chamados, labelComArea) {
   const tempoPorProcesso = {};
   chamados.forEach(r => {
     const diasAtivos = (r.tIdent || 0) + (r.tDesenv || 0);
@@ -2666,37 +2699,44 @@ function buildRPAChamados(){
       tempoPorProcesso[r.processo].contagem += 1;
     }
   });
-  // só bots com 3+ chamados para ter significância estatística
   const procAvg = Object.entries(tempoPorProcesso)
-    .filter(([proc, dados]) => proc !== '(sem processo)' && dados.contagem >= 3)
-    .map(([proc, dados]) => [labelComArea(proc), +(dados.soma / dados.contagem).toFixed(1)])
+    .filter(([proc, d]) => proc !== '(sem processo)' && d.contagem >= 3)
+    .map(([proc, d]) => [labelComArea(proc), +(d.soma / d.contagem).toFixed(1)])
     .sort((a, b) => b[1] - a[1]);
-  // bots com apenas 1 chamado: mostramos o tempo daquele único chamado (não é média)
   const procUm = Object.entries(tempoPorProcesso)
-    .filter(([proc, dados]) => proc !== '(sem processo)' && dados.contagem === 1)
-    .map(([proc, dados]) => [labelComArea(proc), +dados.soma.toFixed(1)])
+    .filter(([proc, d]) => proc !== '(sem processo)' && d.contagem === 1)
+    .map(([proc, d]) => [labelComArea(proc), +d.soma.toFixed(1)])
     .sort((a, b) => b[1] - a[1]);
+
   const notaTempoMedio = `<div class="note" style="margin-top:14px;margin-bottom:0;background:var(--neu-bg);color:var(--ink3)"><i class="ti ti-info-circle"></i><div>Soma dos dias em <b>Identificação</b> + <b>Desenvolvimento</b> dividida pelo nº de chamados do bot. Só bots com <b>3+ chamados</b> entram (evita distorção de amostra única).</div></div>`;
   const cardTempoMedio = `<div class="card"><div class="card-title"><i class="ti ti-clock"></i> Tempo médio por bot<span class="rt">dias · 3+ chamados</span></div>
     ${hbars(procAvg,{max:12,lw:200,color:'var(--warn)'})}${notaTempoMedio}</div>`;
-  if(procUm.length){
-    htmlTempo += `<div class="two">${cardTempoMedio}<div class="card"><div class="card-title"><i class="ti ti-clock-hour-4"></i> Bots com 1 chamado<span class="rt">dias · ${procUm.length} bots</span></div>
+
+  let html = `<div class="krow">
+    <div class="kpi">${kpiIcon('clock')}<div class="knum sm">${avgField(chamados,'tIdent')}</div><div class="klbl">Média dias · Identificação</div></div>
+    <div class="kpi">${kpiIcon('clock')}<div class="knum sm">${avgField(chamados,'tDesenv')}</div><div class="klbl">Média dias · Desenvolvimento</div></div>
+    <div class="kpi">${kpiIcon('clock')}<div class="knum sm">${avgField(chamados,'tReexec')}</div><div class="klbl">Média dias · Reexecução</div></div>
+    <div class="kpi">${kpiIcon('chartbar')}<div class="knum sm">${chamados.filter(r=>r.tIdent!=null||r.tDesenv!=null).length}</div><div class="klbl">Chamados com tempo medido</div></div>
+  </div>`;
+  if (procUm.length) {
+    html += `<div class="two">${cardTempoMedio}<div class="card"><div class="card-title"><i class="ti ti-clock-hour-4"></i> Bots com 1 chamado<span class="rt">dias · ${procUm.length} bots</span></div>
       ${hbars(procUm,{max:20,lw:200,color:'#5aa0a0'})}
       <div class="note" style="margin-top:14px;margin-bottom:0;background:var(--neu-bg);color:var(--ink3)"><i class="ti ti-info-circle"></i><div>Um único chamado — não é média, serve de referência.</div></div></div></div>`;
   } else {
-    htmlTempo += cardTempoMedio;
+    html += cardTempoMedio;
   }
-  document.getElementById('rpage-tempo').innerHTML = htmlTempo;
+  document.getElementById('rpage-tempo').innerHTML = html;
   flushCharts();
+}
 
-  // ── Sub-aba: Lista de Chamados ───────────────────────────────
-  let htmlLista = `<div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
-    <input type="text" id="rsearch" placeholder="Buscar por código, processo, solicitante..." oninput="renderRPALista()" style="flex:1;max-width:360px">
-    <span style="font-size:11px;color:var(--ink4)" id="rlista-count">${total} chamados</span></div>
+function buildRPATabLista(chamados, total, venc) {
+  document.getElementById('rpage-lista').innerHTML =
+    `<div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
+      <input type="text" id="rsearch" placeholder="Buscar por código, processo, solicitante..." oninput="renderRPALista()" style="flex:1;max-width:360px">
+      <span style="font-size:11px;color:var(--ink4)" id="rlista-count">${total} chamados</span></div>
     <div class="card np"><div style="overflow-x:auto"><table class="tbl" style="margin:0">
     <thead><tr><th style="padding-left:20px">Código</th><th>Processo</th><th>Problema</th><th>Fase</th><th>Mês</th><th style="padding-right:20px">Status</th></tr></thead>
     <tbody id="rlista-body"></tbody></table></div></div>`;
-  document.getElementById('rpage-lista').innerHTML = htmlLista;
   renderRPALista();
   setBadge('nb-rpa', venc>0 ? venc+' venc' : total, venc>0?'warn':'');
 }
@@ -2893,7 +2933,7 @@ function buildBots(){
         <b>3 — Média:</b> processo recorrente; falha tem impacto moderado e contornável.<br>
         <b>4 — Baixa:</b> processo de apoio; falha tem baixo impacto e pode esperar.</div></div></div>
     <div class="card"><div class="card-title"><i class="ti ti-repeat"></i> Por frequência</div>
-      ${hbars(Object.entries(count(prdBots.filter(b=>b.freq),b=>b.freq)).sort((a,b)=>b[1]-a[1]),{max:6,lw:80})}</div>
+      ${hbars(sortedCountEntries(prdBots.filter(b=>b.freq), b=>b.freq),{max:6,lw:80})}</div>
   </div>`;
 
   // Cruzamento inventário × chamados (só se o relatório de RPA estiver carregado)
@@ -3231,9 +3271,10 @@ function analiseGov(){
   const tot = A.length;
   if(!tot) return [];
   const ins = [];
-  const done = A.filter(a=>a.sc==='done').length;
-  const doing = A.filter(a=>a.sc==='doing'||a.sc==='closing').length;
-  const backlog = A.filter(a=>a.sc==='todo').length;
+  const sc      = statusCounts(A);
+  const done    = sc.done;
+  const doing   = sc.doing + sc.closing;
+  const backlog = sc.todo;
   const taxa = pct(done,tot);
 
   // 1. Leitura geral da conclusão
@@ -3340,9 +3381,10 @@ function analiseMel(){
   const tot = melhorias.length;
   if(!tot) return [];
   const ins = [];
-  const done    = melhorias.filter(m=>m.sc==='done').length;
-  const backlog = melhorias.filter(m=>m.sc==='todo').length;
-  const blocked = melhorias.filter(m=>m.sc==='blocked').length;
+  const sc      = statusCounts(melhorias);
+  const done    = sc.done;
+  const backlog = sc.todo;
+  const blocked = sc.blocked;
 
   ins.push({tipo: pct(done,tot)>=60?'pos':'neu', ico:'%',
     texto:`<b>${pct(done,tot)}% das ${tot} melhorias concluídas</b> (${done}). Backlog: ${backlog}.`});
