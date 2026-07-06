@@ -1,7 +1,7 @@
 import { App } from '../state.js';
 import { findSheet, get } from '../utils/helpers.js';
 import { toDate } from '../utils/date.js';
-import { statusClass } from '../utils/classify.js';
+import { statusClass, statusClassMel } from '../utils/classify.js';
 
 // ─── MÓDULO: parsers/gov.js ──────────────────────────────────────────────────
 // Parser da Base Governança (arquivo Excel principal do CoE).
@@ -37,7 +37,7 @@ export function parseGov() {
         fluxo:     get(r, ['NomeFluxo']),
         atividade: get(r, ['Atividade']),
         statusRaw: String(get(r, ['Status'])).trim(),
-        sc:        statusClass(get(r, ['Status'])),
+        sc:        statusClassMel(get(r, ['Status'])), // Planejamento conta como 'doing' aqui
         resp:      String(get(r, ['Responsavel'])).trim().replace(/​/g, ''),
         champion:  String(get(r, ['Champion'])).trim(),
         complex:   String(get(r, ['Complexidade'])).trim(),

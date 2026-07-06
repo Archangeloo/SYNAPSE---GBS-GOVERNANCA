@@ -55,6 +55,18 @@ export function statusClass(s) {
   return 'other';
 }
 
+// ─── statusClass específico de Melhorias (Pipefy_Melhorias) ──────────────────
+// Ali "Planejamento" já é item retirado do backlog (trabalho ativo), então é
+// contado junto de "doing" — alimenta a coluna "Dev + Planej." do Overview e
+// o KPI "Backlog" da aba Melhorias.
+// Não usar em Projetos/Analytics: lá "Planejamento" é fase 2 do fluxo
+// (Diagnóstico→Planejamento→Execução...) e deve continuar em 'todo'.
+export function statusClassMel(s) {
+  const t = (s || '').toString().trim().toLowerCase().replace(/^\s*\d+\s*[.\-)]\s*/, '');
+  if (t === 'planejamento') return 'doing';
+  return statusClass(s);
+}
+
 // ─── Equipe CoE ───────────────────────────────────────────────────────────────
 // Recebe o nome bruto do responsável (como vem da planilha) e verifica se é
 // um membro da equipe CoE. Se sim, retorna o nome padronizado para exibição.

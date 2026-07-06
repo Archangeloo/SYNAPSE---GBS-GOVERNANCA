@@ -226,6 +226,20 @@ function statusClass(s){
   return 'other';
 }
 
+/*
+ * statusClass específico de Melhorias (Pipefy_Melhorias).
+ * Ali "Planejamento" já é item retirado do backlog (trabalho ativo), então
+ * é contado junto de "doing" — é o que alimenta a coluna "Dev + Planej." do
+ * Overview e o KPI "Backlog" da aba Melhorias.
+ * Não usar em Projetos/Analytics: lá "Planejamento" é fase 2 do fluxo
+ * (Diagnóstico→Planejamento→Execução...) e deve continuar em 'todo'.
+ */
+function statusClassMel(s){
+  const normalized = (s || '').toString().trim().toLowerCase().replace(/^\s*\d+\s*[.\-)]\s*/, '');
+  if (normalized === 'planejamento') return 'doing';
+  return statusClass(s);
+}
+
 // Rótulos em português para exibição na interface
 const STATUS_PT = {
   done:    'Concluído',
@@ -783,7 +797,7 @@ function parseGov(){
     fluxo:    get(r, ['NomeFluxo']),                    // nome do fluxo do processo
     atividade:get(r, ['Atividade']),                    // descrição da melhoria
     statusRaw:String(get(r, ['Status'])).trim(),        // status original (texto da planilha)
-    sc:       statusClass(get(r, ['Status'])),          // status normalizado (código interno)
+    sc:       statusClassMel(get(r, ['Status'])),       // status normalizado (Planejamento conta como 'doing' aqui)
     resp:     String(get(r, ['Responsavel'])).trim().replace(/​/g,''), // nome do responsável
     champion: String(get(r, ['Champion'])).trim(),
     complex:  String(get(r, ['Complexidade'])).trim(),
