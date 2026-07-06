@@ -180,27 +180,27 @@ const DOW   = ['Seg','Ter','Qua','Qui','Sex','Sáb','Dom'];
 const HOJE  = new Date(); // data atual no momento do carregamento da página
 
 /*
- * Converte o texto bruto de status (vindo da planilha) em um código interno.
- * Isso normaliza variações de digitação ("Concluido" vs "Concluído"), sinônimos
- * e os status específicos do GBS (Encerramento, Monitoramento).
+ * Converts the raw status text (from the spreadsheet) into an internal code.
+ * This normalizes spelling variants ("Concluido" vs "Concluído"), synonyms,
+ * and GBS-specific statuses (Encerramento, Monitoramento).
  *
- * Fluxo de Projetos GBS:
+ * GBS Project flow:
  *   Diagnóstico → Planejamento → Execução → Encerramento → Monitoramento
- *   (Nenhum desses é "done" — "done" só aparece quando um projeto fechar de verdade)
+ *   (none of these is "done" — "done" only appears once a project truly closes)
  *
- * Mapeamento para código interno:
- *   done    = concluído de fato (não existe ainda nos projetos)
- *   doing   = em andamento / em desenvolvimento
- *   closing = em processo de encerramento (pode estar atrasado se prazo venceu)
- *   monitor = entregue, em monitoramento pós go-live (não conta como atrasado)
- *   todo    = não iniciado / backlog / planejamento
- *   blocked = bloqueado / pausado
- *   cancel  = cancelado
- *   vendor  = encaminhado ao suporte da Pipefy (fornecedor externo)
- *   other   = qualquer valor não reconhecido
+ * Mapping to internal code:
+ *   done    = actually completed (doesn't exist yet for projects)
+ *   doing   = in progress / in development
+ *   closing = in the closing process (can be overdue if the deadline passed)
+ *   monitor = delivered, in post go-live monitoring (does not count as overdue)
+ *   todo    = not started / backlog / planning
+ *   blocked = blocked / paused
+ *   cancel  = cancelled
+ *   vendor  = forwarded to Pipefy support (external vendor)
+ *   other   = any unrecognized value
  */
 function statusClass(s){
-  // Remove prefixo numérico de ordenação, se houver.
+  // Removes the numeric ordering prefix, if any.
   // Ex: "6. Encerramento" → "encerramento", "3 - Planejamento" → "planejamento"
   const normalized = (s || '').toString().trim().toLowerCase().replace(/^\s*\d+\s*[.\-)]\s*/, '');
 
@@ -227,20 +227,21 @@ function statusClass(s){
 }
 
 /*
- * statusClass específico de Melhorias (Pipefy_Melhorias).
- * Ali "Planejamento" já é item retirado do backlog (trabalho ativo), então
- * é contado junto de "doing" — é o que alimenta a coluna "Dev + Planej." do
- * Overview e o KPI "Backlog" da aba Melhorias.
- * Não usar em Projetos/Analytics: lá "Planejamento" é fase 2 do fluxo
- * (Diagnóstico→Planejamento→Execução...) e deve continuar em 'todo'.
+ * statusClass specific to Improvements (Pipefy_Melhorias).
+ * There, "Planejamento" is already an item pulled out of the backlog (active
+ * work), so it's counted together with "doing" — this is what feeds the
+ * "Dev + Planej." column of the Overview and the "Backlog" KPI on the
+ * Improvements tab.
+ * Do not use for Projects/Analytics: there "Planejamento" is phase 2 of the
+ * flow (Diagnóstico→Planejamento→Execução...) and must stay 'todo'.
  */
-function statusClassMel(s){
+function improvementStatusClass(s){
   const normalized = (s || '').toString().trim().toLowerCase().replace(/^\s*\d+\s*[.\-)]\s*/, '');
   if (normalized === 'planejamento') return 'doing';
   return statusClass(s);
 }
 
-// Rótulos em português para exibição na interface
+// Portuguese labels for display in the interface
 const STATUS_PT = {
   done:    'Concluído',
   doing:   'Em andamento',
@@ -253,7 +254,7 @@ const STATUS_PT = {
   other:   'Outro'
 };
 
-// Classe CSS do badge de cada status (ver CSS: .badge.ok, .badge.info, etc.)
+// CSS badge class for each status (see CSS: .badge.ok, .badge.info, etc.)
 const STATUS_BADGE = {
   done:    'ok',
   doing:   'info',
@@ -266,78 +267,79 @@ const STATUS_BADGE = {
   other:   'neu'
 };
 
-// Cor pura para gráficos — paleta Saint-Gobain
+// Solid color for charts — Saint-Gobain palette
 const STATUS_COLOR = {
-  done:    '#4DB1B3',  // teal        — concluído
-  doing:   '#0195D6',  // azul vivo   — em andamento
-  closing: '#E66407',  // laranja     — em encerramento
-  monitor: '#0F5299',  // azul marca  — monitoramento
-  todo:    '#9CA3AF',  // cinza       — não iniciado
-  blocked: '#E83430',  // vermelho    — bloqueado
-  cancel:  '#C5284C',  // rosa-verm.  — cancelado
-  vendor:  '#8B6FD4',  // roxo        — suporte Pipefy
-  other:   '#9CA3AF'   // cinza
+  done:    '#4DB1B3',  // teal        — done
+  doing:   '#0195D6',  // bright blue — in progress
+  closing: '#E66407',  // orange      — closing
+  monitor: '#0F5299',  // brand blue  — monitoring
+  todo:    '#9CA3AF',  // gray        — not started
+  blocked: '#E83430',  // red         — blocked
+  cancel:  '#C5284C',  // pink-red    — cancelled
+  vendor:  '#8B6FD4',  // purple      — Pipefy support
+  other:   '#9CA3AF'   // gray
 };
 
 /*
- * EQUIPE_COE — membros da equipe do CoE, organizados pela frente em que atuam.
- * Usado APENAS na aba Governança para filtrar "Ações abertas por responsável"
- * (mostra só a equipe interna; quem não é CoE não aparece nesse gráfico).
+ * COE_TEAM — CoE team members, organized by the area they work in.
+ * Used ONLY on the Governance tab to filter "Open actions by owner"
+ * (shows only the internal team; non-CoE people don't appear on that chart).
  *
- * Cada item tem um 'match' = lista de termos distintivos para reconhecer a
- * pessoa nos dados, tolerando variações de escrita. Usamos sobrenomes/termos
- * únicos de propósito, para NÃO confundir homônimos de primeiro nome
- * (ex: "Gustavo" pegaria "Matheus Gustavo Germano", que não é CoE; por isso
- * usamos "archangelo"). O 'nome' é o rótulo exibido no gráfico.
+ * Each entry has a 'match' list of distinctive terms to recognize the
+ * person in the data, tolerating spelling variations. We deliberately use
+ * surnames/unique terms to AVOID confusing first-name homonyms
+ * (ex: "Gustavo" would also match "Matheus Gustavo Germano", who is not
+ * CoE; that's why we use "archangelo"). 'name' is the label shown on the chart.
  */
-const EQUIPE_COE = [
-  // --- Projetos ---
-  { nome:'Gabriel Hirata',    match:['gabriel hirata','hirata'] },
-  { nome:'Maiara',            match:['maiara'] },
-  { nome:'Vinícius Milagres', match:['milagres','vinícius marchi','vinicius marchi'] },
-  { nome:'Isabelly Vidal',    match:['isabelly'] },
-  { nome:'Daniel Torres',     match:['daniel torres'] },
-  { nome:'Adely Canizal',     match:['adely'] },
+const COE_TEAM = [
+  // --- Projects ---
+  { name:'Gabriel Hirata',    match:['gabriel hirata','hirata'] },
+  { name:'Maiara',            match:['maiara'] },
+  { name:'Vinícius Milagres', match:['milagres','vinícius marchi','vinicius marchi'] },
+  { name:'Isabelly Vidal',    match:['isabelly'] },
+  { name:'Daniel Torres',     match:['daniel torres'] },
+  { name:'Adely Canizal',     match:['adely'] },
   // --- RPA ---
-  { nome:'Lucas Oliveira',    match:['lucas oliveira','lucas alvarenga','alvarenga'] },
-  { nome:'Caio Pucci',        match:['caio pucci','pucci'] },
-  { nome:'Francisco Prestes', match:['francisco prestes','prestes'] },
-  { nome:'Fernando Sanches',  match:['fernando sanches','sanches'] },
-  { nome:'Igor Henrique',     match:['igor henrique'] },
-  { nome:'Esteban Menendez',  match:['esteban'] },
-  { nome:'Jesus Axel',        match:['axel'] },
+  { name:'Lucas Oliveira',    match:['lucas oliveira','lucas alvarenga','alvarenga'] },
+  { name:'Caio Pucci',        match:['caio pucci','pucci'] },
+  { name:'Francisco Prestes', match:['francisco prestes','prestes'] },
+  { name:'Fernando Sanches',  match:['fernando sanches','sanches'] },
+  { name:'Igor Henrique',     match:['igor henrique'] },
+  { name:'Esteban Menendez',  match:['esteban'] },
+  { name:'Jesus Axel',        match:['axel'] },
   // --- Pipefy ---
-  { nome:'Gustavo Archangelo',match:['archangelo'] },
-  { nome:'Vinícius Domingues',match:['vinícius domingues','vinicius domingues'] },
-  { nome:'Felipe Cordeiro',   match:['felipe cordeiro','cordeiro'] },
-  { nome:'William Maciel',    match:['william maciel','willian maciel','souza maciel'] }
+  { name:'Gustavo Archangelo',match:['archangelo'] },
+  { name:'Vinícius Domingues',match:['vinícius domingues','vinicius domingues'] },
+  { name:'Felipe Cordeiro',   match:['felipe cordeiro','cordeiro'] },
+  { name:'William Maciel',    match:['william maciel','willian maciel','souza maciel'] }
 ];
 
 /*
- * coeNomePadrao(resp) — recebe o nome do responsável como está nos dados e,
- * se for da equipe CoE, retorna o nome padronizado (rótulo). Senão, retorna null.
- * Usa os termos 'match' de cada membro (case-insensitive, sem acento).
+ * getStandardCoeName(resp) — takes the responsible person's name as it
+ * appears in the data and, if they are a CoE team member, returns the
+ * standardized name (label). Otherwise returns null.
+ * Uses each member's 'match' terms (case-insensitive, accent-insensitive).
  */
-function coeNomePadrao(resp){
+function getStandardCoeName(resp){
   if(!resp) return null;
   const normalized = resp.toString().toLowerCase()
-    .normalize('NFD').replace(/[\u0300-\u036f]/g,''); // remove acentos para comparar
-  for(const m of EQUIPE_COE){
-    for(const termo of m.match){
-      const termoNorm = termo.normalize('NFD').replace(/[\u0300-\u036f]/g,'');
-      if(normalized.includes(termoNorm)) return m.nome;
+    .normalize('NFD').replace(/[\u0300-\u036f]/g,''); // strip accents for comparison
+  for(const member of COE_TEAM){
+    for(const term of member.match){
+      const termNorm = term.normalize('NFD').replace(/[\u0300-\u036f]/g,'');
+      if(normalized.includes(termNorm)) return member.name;
     }
   }
   return null;
 }
 
 /*
- * Número da fase no ciclo de vida de um Projeto GBS.
- * Quanto maior o número, mais perto do término.
- * Fluxo: Diagnóstico(1) → Planejamento(2) → Execução(3) → Encerramento(4) → Monitoramento(5)
- * Retorna null para status fora do fluxo (cancelado, bloqueado).
+ * Phase number in the lifecycle of a GBS Project.
+ * The higher the number, the closer to completion.
+ * Flow: Diagnóstico(1) → Planejamento(2) → Execução(3) → Encerramento(4) → Monitoramento(5)
+ * Returns null for statuses outside the flow (cancelled, blocked).
  */
-function projFase(statusRaw){
+function getProjectPhase(statusRaw){
   const normalized = (statusRaw||'').toString().trim().toLowerCase();
   if(normalized.includes('diagn')) return 1;
   if(normalized.includes('planej')) return 2;
@@ -349,59 +351,59 @@ function projFase(statusRaw){
 }
 
 /*
- * projAtrasado(p) — true se o projeto está com prazo vencido e ainda não foi
- * entregue/cancelado. Considera-se "não atrasável" quem está concluído,
- * em monitoramento (pós go-live) ou cancelado.
+ * isProjectOverdue(p) — true if the project has a past-due deadline and
+ * hasn't been delivered/cancelled yet. Considered "not overdue-eligible":
+ * completed, in monitoring (post go-live), or cancelled projects.
  */
-function projAtrasado(p){
+function isProjectOverdue(p){
   return !!(p.dtFim && p.dtFim < HOJE && p.sc!=='done' && p.sc!=='cancel' && p.sc!=='monitor');
 }
 
 /*
- * projRisco(p) — score de risco automático (0 a 100) de um projeto.
- * Combina três fatores objetivos, sem precisar de campo manual na planilha:
- *   1) ATRASO (peso maior): dias de prazo vencido. Quanto mais atrasado, maior.
- *   2) FASE: projetos em fases iniciais (Diagnóstico/Planejamento) com prazo
- *      apertado são mais arriscados que os já em Encerramento.
- *   3) PROXIMIDADE DO PRAZO: prazo chegando (mesmo sem atraso) eleva o risco.
- * Projetos concluídos/cancelados/monitoramento têm risco 0 (não estão "em jogo").
- * Retorna { score, nivel, motivos[] } — nivel ∈ {alto, medio, baixo}.
+ * getProjectRisk(p) — automatic risk score (0 to 100) for a project.
+ * Combines three objective factors, with no manual field needed in the spreadsheet:
+ *   1) DELAY (heaviest weight): days past the deadline. The more overdue, the higher.
+ *   2) PHASE: projects in early phases (Diagnóstico/Planejamento) with a tight
+ *      deadline are riskier than ones already in Encerramento.
+ *   3) DEADLINE PROXIMITY: an approaching deadline (even without a delay) raises risk.
+ * Completed/cancelled/monitoring projects have risk 0 (no longer "in play").
+ * Returns { score, level, reasons[] } — level ∈ {high, medium, low}.
  */
-function projRisco(p){
+function getProjectRisk(p){
   if(p.sc==='done' || p.sc==='cancel' || p.sc==='monitor'){
-    return { score:0, nivel:'baixo', motivos:[] };
+    return { score:0, level:'low', reasons:[] };
   }
   let score = 0;
-  const motivos = [];
-  const fase = projFase(p.statusRaw) || 2;
+  const reasons = [];
+  const phase = getProjectPhase(p.statusRaw) || 2;
 
-  // 1) Atraso — o fator mais forte. Atraso relevante já leva a projeto a risco alto.
+  // 1) Delay — the strongest factor. A meaningful delay alone already pushes to high risk.
   if(p.dtFim){
-    const dias = diasEntre(HOJE, p.dtFim);
-    if(dias > 0){
-      // 15 pontos de base + ~1/dia, saturando em 70; ~40 dias já cruza o limite de "alto"
-      score += Math.min(70, 15 + dias*1.2);
-      motivos.push(`${dias} ${dias===1?'dia':'dias'} de atraso`);
+    const days = diasEntre(HOJE, p.dtFim);
+    if(days > 0){
+      // 15 base points + ~1/day, capping at 70; ~40 days already crosses the "high" threshold
+      score += Math.min(70, 15 + days*1.2);
+      reasons.push(`${days} ${days===1?'dia':'dias'} de atraso`);
     } else {
-      // 2) Proximidade do prazo (ainda não venceu)
-      const faltam = -dias;
-      if(faltam <= 15){ score += 18; motivos.push(`prazo em ${faltam} ${faltam===1?'dia':'dias'}`); }
-      else if(faltam <= 30){ score += 10; motivos.push('prazo próximo'); }
+      // 2) Deadline proximity (not yet overdue)
+      const daysLeft = -days;
+      if(daysLeft <= 15){ score += 18; reasons.push(`prazo em ${daysLeft} ${daysLeft===1?'dia':'dias'}`); }
+      else if(daysLeft <= 30){ score += 10; reasons.push('prazo próximo'); }
     }
   } else {
-    // sem prazo definido em projeto ativo = risco de falta de controle
-    score += 14; motivos.push('sem prazo definido');
+    // no deadline set on an active project = lack-of-control risk
+    score += 14; reasons.push('sem prazo definido');
   }
 
-  // 3) Fase — peso por estágio (fases iniciais = mais caminho pela frente = mais risco)
-  if(p.sc==='blocked'){ score += 30; motivos.push('bloqueado'); }
-  const pesoFase = {1:18, 2:14, 3:9, 4:4, 5:0}[fase] || 9;
-  score += pesoFase;
-  if(fase<=2 && p.sc!=='blocked') motivos.push(`fase inicial (${p.statusRaw})`);
+  // 3) Phase — weight by stage (earlier phases = more road ahead = more risk)
+  if(p.sc==='blocked'){ score += 30; reasons.push('bloqueado'); }
+  const phaseWeight = {1:18, 2:14, 3:9, 4:4, 5:0}[phase] || 9;
+  score += phaseWeight;
+  if(phase<=2 && p.sc!=='blocked') reasons.push(`fase inicial (${p.statusRaw})`);
 
   score = Math.min(100, Math.round(score));
-  const nivel = score>=55 ? 'alto' : (score>=30 ? 'medio' : 'baixo');
-  return { score, nivel, motivos };
+  const level = score>=55 ? 'high' : (score>=30 ? 'medium' : 'low');
+  return { score, level, reasons };
 }
 
 
@@ -797,7 +799,7 @@ function parseGov(){
     fluxo:    get(r, ['NomeFluxo']),                    // nome do fluxo do processo
     atividade:get(r, ['Atividade']),                    // descrição da melhoria
     statusRaw:String(get(r, ['Status'])).trim(),        // status original (texto da planilha)
-    sc:       statusClassMel(get(r, ['Status'])),       // status normalizado (Planejamento conta como 'doing' aqui)
+    sc:       improvementStatusClass(get(r, ['Status'])), // status normalizado (Planejamento conta como 'doing' aqui)
     resp:     String(get(r, ['Responsavel'])).trim().replace(/​/g,''), // nome do responsável
     champion: String(get(r, ['Champion'])).trim(),
     complex:  String(get(r, ['Complexidade'])).trim(),
@@ -1737,7 +1739,7 @@ function buildGov(){
   ].filter(Boolean).join(' · ');
 
   // Total de ações por responsável da equipe CoE (TODAS — abertas, concluídas, canceladas).
-  // Mostra SÓ a equipe CoE (ver EQUIPE_COE), somando pelo nome padronizado.
+  // Mostra SÓ a equipe CoE (ver COE_TEAM), somando pelo nome padronizado.
   // IMPORTANTE: cada fonte tem seu campo de responsável:
   //   - Projetos/Pipefy/Analytics: campo 'resp' (1 responsável por item)
   //   - Chamados RPA: campo 'responsaveis' (lista — quem trabalha no chamado, não o
@@ -1745,7 +1747,7 @@ function buildGov(){
   // Respeita o filtro de período de cada fonte (applyDate).
   const respCoE = {};
   const addResp = nomeRaw => {
-    const nome = coeNomePadrao(nomeRaw);
+    const nome = getStandardCoeName(nomeRaw);
     if(nome) respCoE[nome] = (respCoE[nome]||0) + 1;
   };
   // Quando frente ativa: filtra cada fonte pela frente; RPA não tem frente → fica fora
@@ -1892,8 +1894,8 @@ function buildProj(){
   const doing   = P.filter(p => p.sc==='doing').length;    // em execução
   // Encerramento + Monitoramento agrupados (ambos = projeto entregue / em fase final)
   const finalizando = P.filter(p => p.sc==='closing' || p.sc==='monitor').length;
-  const atrasados = P.filter(projAtrasado);                // prazo vencido e não entregue
-  const criticos = P.filter(p => projRisco(p).nivel==='alto').length; // risco alto
+  const atrasados = P.filter(isProjectOverdue);                // prazo vencido e não entregue
+  const criticos = P.filter(p => getProjectRisk(p).level==='high').length; // risco alto
 
   const dnProj = App.dateRange.mode !== 'all'
     ? `<div class="note" style="background:var(--neu-bg);color:var(--ink3)"><i class="ti ti-calendar-stats"></i><div>
@@ -1985,12 +1987,12 @@ function renderProjList(){
     (!filterPessoa || p.resp===filterPessoa) &&
     (!filterStatus || p.statusRaw===filterStatus) &&
     (!filterFrente || p.frente===filterFrente) &&
-    (!chips.atraso || projAtrasado(p)) &&
-    (!chips.risco  || projRisco(p).nivel==='alto')
+    (!chips.atraso || isProjectOverdue(p)) &&
+    (!chips.risco  || getProjectRisk(p).level==='high')
   );
   // ordena por score de risco (mais crítico primeiro); empate vai pelo mais avançado
   vis.sort((a,b) => {
-    const scoreA = projRisco(a).score, scoreB = projRisco(b).score;
+    const scoreA = getProjectRisk(a).score, scoreB = getProjectRisk(b).score;
     if(scoreB !== scoreA) return scoreB - scoreA;
     return (b.prog||0) - (a.prog||0);
   });
@@ -1999,8 +2001,8 @@ function renderProjList(){
   if(!App.projOpen) App.projOpen = new Set();
   let itensProjeto = vis.map(p => {
     const badgeClass  = STATUS_BADGE[p.sc];
-    const estaAtrasado = projAtrasado(p);
-    const risco        = projRisco(p); // { score, nivel, motivos }
+    const estaAtrasado = isProjectOverdue(p);
+    const risco        = getProjectRisk(p); // { score, level, reasons }
     const key          = String(p.num||p.titulo); // chave única para o estado aberto/fechado
     const open         = App.projOpen.has(key);
     // indicador de status: bolinha colorida em CSS puro (não depende de fonte de ícone)
@@ -2010,9 +2012,9 @@ function renderProjList(){
     };
     const corStatus = COR_STATUS[p.sc] || COR_STATUS.other;
     // badge de risco (só para nível médio/alto, para não poluir os de baixo risco)
-    const riscoBadge = risco.nivel==='alto'
-      ? `<span class="badge red" title="${risco.motivos.join(' · ')}">risco alto</span>`
-      : (risco.nivel==='medio' ? `<span class="badge warn" title="${risco.motivos.join(' · ')}">risco médio</span>` : '');
+    const riscoBadge = risco.level==='high'
+      ? `<span class="badge red" title="${risco.reasons.join(' · ')}">risco alto</span>`
+      : (risco.level==='medium' ? `<span class="badge warn" title="${risco.reasons.join(' · ')}">risco médio</span>` : '');
     return `<div class="proj-row ${open?'open':''}" data-k="${key.replace(/"/g,'')}">
       <div class="icard" onclick="toggleProj('${key.replace(/'/g,"\\'").replace(/"/g,'&quot;')}')" style="cursor:pointer">
         <div class="iico" style="background:${estaAtrasado?'var(--err-bg)':'var(--neu-bg)'}">
@@ -2074,7 +2076,7 @@ function projDetails(p){
   const fmt = txt => String(txt||'').trim().replace(/\n/g,'<br>');
   const blocks = [];
   if(p.resp)        blocks.push({lbl:'Responsável',             val:p.resp});
-  if(p.dtFim)       blocks.push({lbl:'Prazo de conclusão',      val:`${p.dtFim.toLocaleDateString('pt-BR')}${projAtrasado(p)?' &nbsp;<span style="color:var(--err)">⚠ prazo vencido</span>':''}`});
+  if(p.dtFim)       blocks.push({lbl:'Prazo de conclusão',      val:`${p.dtFim.toLocaleDateString('pt-BR')}${isProjectOverdue(p)?' &nbsp;<span style="color:var(--err)">⚠ prazo vencido</span>':''}`});
   if(p.descricao)   blocks.push({lbl:'Descrição',              val:fmt(p.descricao)});
   if(p.equipes)     blocks.push({lbl:'Equipes envolvidas',     val:fmt(p.equipes)});
   if(p.focal)       blocks.push({lbl:'Ponto focal',            val:p.focal});
@@ -2453,9 +2455,332 @@ function buildMel(){
   </div>`;
   html += buildGraficoEvolutivo(melhorias);
   html += overviewFrentes(melhorias);
+  html += '<div id="mel-atividades"></div>';
   document.getElementById('mel-content').innerHTML = html;
   flushCharts();
   setBadge('nb-mel', melhorias.length, '');
+  renderizarSecaoAtividadesMelhorias();
+}
+
+
+/* ============================================================
+   MELHORIAS — REGISTRO MANUAL DE ATIVIDADES
+   ============================================================
+   Card "Atividades" no final da aba Pipefy Melhorias.
+
+   Diferente do resto da aba (que vem inteiramente da planilha), esses
+   registros são criados e mantidos manualmente pela equipe dentro do
+   próprio site. Eles existem porque o acompanhamento apresentado à
+   diretoria é organizado por tema/iniciativa (ex: "Anticipos v1",
+   "Miscelaneas v1"), e esses temas não têm correspondência 1:1 com as
+   linhas da planilha Pipefy_Melhorias — por isso não dá para calcular
+   essa tabela a partir de App.P.mel, como as demais seções da aba.
+
+   PERSISTÊNCIA:
+   Os registros são salvos no localStorage do navegador (chave
+   CHAVE_ARMAZENAMENTO_ATIVIDADES_MELHORIAS), não em nenhuma planilha e
+   não em um servidor — de acordo com a arquitetura 100% local do
+   SYNAPSE (ver README). Isso significa:
+     - Sobrevivem a recarregar a página e a gerar o dashboard de novo
+       com uma planilha diferente (não dependem do Excel carregado).
+     - Ficam restritos a este navegador/computador — não aparecem para
+       quem abrir o site em outra máquina.
+     - São apagados se o usuário limpar os dados de navegação do site.
+
+   Exporta (indiretamente, via window — ver final do arquivo):
+     renderizarSecaoAtividadesMelhorias() — chamada por buildMel()
+     abrirFormularioDeAtividade(identificador?)
+     fecharFormularioDeAtividade()
+     fecharFormularioDeAtividadeAoClicarFora(evento)
+     salvarFormularioDeAtividade(evento)
+     confirmarExclusaoDeAtividade(identificador)
+   ============================================================ */
+
+const CHAVE_ARMAZENAMENTO_ATIVIDADES_MELHORIAS = 'synapse.melhorias.atividades';
+
+/*
+ * Um registro da tabela "Atividades" da aba Pipefy Melhorias.
+ *
+ * @typedef {Object} RegistroDeAtividade
+ * @property {string} id            identificador único do registro
+ * @property {string} tema          nome do tema/iniciativa (ex: "Anticipos v1")
+ * @property {string} atividade     etapa atual (ex: "Em desenvolvimento")
+ * @property {string} observacao    anotações livres sobre o andamento
+ * @property {string} responsavel   pessoa ou equipe responsável
+ */
+
+/*
+ * carregarAtividadesMelhorias()
+ * Lê do localStorage a lista de registros salvos. Retorna um array vazio
+ * tanto se nunca houve nada salvo quanto se o conteúdo salvo estiver
+ * corrompido — nesse segundo caso o erro é só avisado no console, sem
+ * interromper o carregamento do dashboard.
+ */
+function carregarAtividadesMelhorias() {
+  const conteudoSalvo = localStorage.getItem(CHAVE_ARMAZENAMENTO_ATIVIDADES_MELHORIAS);
+  if (!conteudoSalvo) return [];
+
+  try {
+    const registrosSalvos = JSON.parse(conteudoSalvo);
+    return Array.isArray(registrosSalvos) ? registrosSalvos : [];
+  } catch (erroDeLeitura) {
+    console.warn('Não foi possível ler as atividades salvas de Melhorias:', erroDeLeitura);
+    return [];
+  }
+}
+
+/*
+ * salvarAtividadesMelhorias(registrosDeAtividade)
+ * Grava a lista completa de registros no localStorage. Não existe
+ * atualização parcial: toda operação de criar/editar/excluir relê a lista
+ * inteira, altera o que precisa e grava tudo de volta.
+ */
+function salvarAtividadesMelhorias(registrosDeAtividade) {
+  localStorage.setItem(
+    CHAVE_ARMAZENAMENTO_ATIVIDADES_MELHORIAS,
+    JSON.stringify(registrosDeAtividade)
+  );
+}
+
+/*
+ * gerarIdentificadorDeAtividade()
+ * Usa crypto.randomUUID() quando disponível. Como fallback (navegadores
+ * muito antigos ou contexto sem HTTPS), gera um identificador a partir do
+ * timestamp atual + um número aleatório — suficiente aqui porque esses
+ * registros nunca saem do navegador do próprio usuário.
+ */
+function gerarIdentificadorDeAtividade() {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID();
+  }
+  return `atividade-${Date.now()}-${Math.floor(Math.random() * 100000)}`;
+}
+
+/*
+ * escaparTextoParaHtml(texto)
+ * Os campos desta tabela são texto livre digitado pelo usuário (em
+ * especial "Observação"). Sem escapar, caracteres como < e > quebrariam o
+ * HTML da tabela ao renderizar. A troca por um elemento temporário é o
+ * jeito padrão do navegador de fazer esse escape corretamente.
+ */
+function escaparTextoParaHtml(texto) {
+  const elementoTemporario = document.createElement('div');
+  elementoTemporario.textContent = texto || '';
+  return elementoTemporario.innerHTML;
+}
+
+/*
+ * adicionarAtividadeMelhoria(dadosDoFormulario)
+ * Cria um novo registro a partir dos dados do formulário e o acrescenta
+ * à lista persistida.
+ */
+function adicionarAtividadeMelhoria(dadosDoFormulario) {
+  const registros = carregarAtividadesMelhorias();
+  registros.push({ id: gerarIdentificadorDeAtividade(), ...dadosDoFormulario });
+  salvarAtividadesMelhorias(registros);
+}
+
+/*
+ * atualizarAtividadeMelhoria(identificador, dadosDoFormulario)
+ * Substitui os campos de um registro existente pelos novos valores do
+ * formulário. Não faz nada se o identificador não for encontrado (registro
+ * pode ter sido excluído em outra aba do navegador, por exemplo).
+ */
+function atualizarAtividadeMelhoria(identificador, dadosDoFormulario) {
+  const registros = carregarAtividadesMelhorias();
+  const indiceDoRegistro = registros.findIndex(registro => registro.id === identificador);
+  if (indiceDoRegistro === -1) return;
+
+  registros[indiceDoRegistro] = { ...registros[indiceDoRegistro], ...dadosDoFormulario };
+  salvarAtividadesMelhorias(registros);
+}
+
+/*
+ * excluirAtividadeMelhoria(identificador)
+ * Remove definitivamente um registro da lista persistida.
+ */
+function excluirAtividadeMelhoria(identificador) {
+  const registrosRestantes = carregarAtividadesMelhorias()
+    .filter(registro => registro.id !== identificador);
+  salvarAtividadesMelhorias(registrosRestantes);
+}
+
+/*
+ * construirLinhaDaTabelaDeAtividade(registro)
+ * Gera uma linha <tr> da tabela de atividades, com os botões de editar e
+ * excluir na última coluna.
+ */
+function construirLinhaDaTabelaDeAtividade(registro) {
+  return `<tr>
+    <td>${escaparTextoParaHtml(registro.tema)}</td>
+    <td>${escaparTextoParaHtml(registro.atividade)}</td>
+    <td style="white-space:pre-wrap">${escaparTextoParaHtml(registro.observacao)}</td>
+    <td>${escaparTextoParaHtml(registro.responsavel)}</td>
+    <td style="text-align:right;white-space:nowrap">
+      <button type="button" class="icon-button" title="Editar atividade" onclick="abrirFormularioDeAtividade('${registro.id}')"><i class="ti ti-pencil"></i></button>
+      <button type="button" class="icon-button icon-button-perigo" title="Excluir atividade" onclick="confirmarExclusaoDeAtividade('${registro.id}')"><i class="ti ti-trash"></i></button>
+    </td>
+  </tr>`;
+}
+
+/*
+ * construirFormularioDeAtividade()
+ * Monta o modal (oculto por padrão) usado tanto para criar quanto para
+ * editar um registro. O mesmo formulário serve para os dois casos: o
+ * campo oculto "campo-atividade-id" fica vazio ao criar e preenchido ao
+ * editar — é esse valor que salvarFormularioDeAtividade() usa para decidir
+ * entre adicionar ou atualizar.
+ */
+function construirFormularioDeAtividade() {
+  return `<div class="modal-fundo oculto" id="fundo-formulario-atividade" onclick="fecharFormularioDeAtividadeAoClicarFora(event)">
+    <div class="modal-caixa">
+      <div class="modal-cabecalho">
+        <span class="modal-titulo" id="titulo-formulario-atividade">Adicionar atividade</span>
+        <button type="button" class="modal-botao-fechar" onclick="fecharFormularioDeAtividade()" aria-label="Fechar">×</button>
+      </div>
+      <form id="formulario-atividade" onsubmit="salvarFormularioDeAtividade(event)">
+        <input type="hidden" id="campo-atividade-id">
+        <label class="modal-campo">
+          <span>Tema</span>
+          <input type="text" id="campo-atividade-tema" placeholder="Ex: Anticipos v1" required maxlength="120">
+        </label>
+        <label class="modal-campo">
+          <span>Atividade</span>
+          <input type="text" id="campo-atividade-etapa" placeholder="Ex: Em desenvolvimento" required maxlength="120">
+        </label>
+        <label class="modal-campo">
+          <span>Observação</span>
+          <textarea id="campo-atividade-observacao" rows="4" placeholder="Anotações sobre o andamento, pendências, próximos passos..." maxlength="600"></textarea>
+        </label>
+        <label class="modal-campo">
+          <span>Responsável</span>
+          <input type="text" id="campo-atividade-responsavel" placeholder="Ex: Equipe de Projetos Saint Gobain / P2P" required maxlength="120">
+        </label>
+        <div class="modal-rodape">
+          <button type="button" class="btn" onclick="fecharFormularioDeAtividade()">Cancelar</button>
+          <button type="submit" class="btn primary">Salvar</button>
+        </div>
+      </form>
+    </div>
+  </div>`;
+}
+
+/*
+ * construirSecaoAtividadesMelhorias()
+ * Monta o card "Atividades" inteiro: título, botão de adicionar, tabela
+ * (ou mensagem de lista vazia) e o modal de criação/edição.
+ */
+function construirSecaoAtividadesMelhorias() {
+  const registros = carregarAtividadesMelhorias();
+
+  const corpoDaTabela = registros.length
+    ? `<table class="tbl"><thead><tr>
+         <th>Tema</th><th>Atividade</th><th>Observação</th><th>Responsável</th><th></th>
+       </tr></thead>
+       <tbody>${registros.map(construirLinhaDaTabelaDeAtividade).join('')}</tbody></table>`
+    : `<div class="empty" style="padding:32px 20px"><i class="ti ti-clipboard-list"></i>Nenhuma atividade registrada ainda.</div>`;
+
+  return `<div class="card">
+    <div class="card-title">
+      <i class="ti ti-clipboard-list"></i> Atividades
+      <span class="rt">registro manual, salvo neste navegador</span>
+    </div>
+    <div style="margin-bottom:14px">
+      <button type="button" class="btn primary" onclick="abrirFormularioDeAtividade()"><i class="ti ti-plus"></i> Adicionar atividade</button>
+    </div>
+    ${corpoDaTabela}
+  </div>
+  ${construirFormularioDeAtividade()}`;
+}
+
+/*
+ * renderizarSecaoAtividadesMelhorias()
+ * Recria apenas o conteúdo do container #mel-atividades. Chamada por
+ * buildMel() ao montar a aba, e de novo depois de qualquer
+ * adicionar/editar/excluir — sem precisar recalcular os KPIs e gráficos
+ * do resto da aba Melhorias.
+ */
+function renderizarSecaoAtividadesMelhorias() {
+  const container = document.getElementById('mel-atividades');
+  if (container) container.innerHTML = construirSecaoAtividadesMelhorias();
+}
+
+/*
+ * abrirFormularioDeAtividade(identificador)
+ * Sem argumento, abre o modal em branco (modo criação). Com o
+ * identificador de um registro existente, abre o modal preenchido com os
+ * valores atuais (modo edição).
+ */
+function abrirFormularioDeAtividade(identificador) {
+  const registroExistente = identificador
+    ? carregarAtividadesMelhorias().find(registro => registro.id === identificador)
+    : null;
+
+  document.getElementById('titulo-formulario-atividade').textContent =
+    registroExistente ? 'Editar atividade' : 'Adicionar atividade';
+  document.getElementById('campo-atividade-id').value         = registroExistente ? registroExistente.id : '';
+  document.getElementById('campo-atividade-tema').value        = registroExistente ? registroExistente.tema : '';
+  document.getElementById('campo-atividade-etapa').value       = registroExistente ? registroExistente.atividade : '';
+  document.getElementById('campo-atividade-observacao').value  = registroExistente ? registroExistente.observacao : '';
+  document.getElementById('campo-atividade-responsavel').value = registroExistente ? registroExistente.responsavel : '';
+
+  document.getElementById('fundo-formulario-atividade').classList.remove('oculto');
+}
+
+/*
+ * fecharFormularioDeAtividade()
+ * Apenas esconde o modal — os dados digitados são descartados, já que
+ * nada é salvo antes do envio do formulário.
+ */
+function fecharFormularioDeAtividade() {
+  document.getElementById('fundo-formulario-atividade').classList.add('oculto');
+}
+
+/*
+ * fecharFormularioDeAtividadeAoClicarFora(evento)
+ * O modal ocupa a tela toda com um fundo escurecido (#fundo-formulario-atividade)
+ * por trás da caixa branca. Clicar nesse fundo fecha o modal; clicar dentro
+ * da caixa (ou nos campos) não deve fechar — daí a checagem do alvo do clique.
+ */
+function fecharFormularioDeAtividadeAoClicarFora(evento) {
+  if (evento.target.id === 'fundo-formulario-atividade') fecharFormularioDeAtividade();
+}
+
+/*
+ * salvarFormularioDeAtividade(evento)
+ * Handler de submit do formulário do modal. Decide entre criar ou
+ * atualizar com base no campo oculto "campo-atividade-id": vazio significa
+ * um registro novo; preenchido significa edição de um registro existente.
+ */
+function salvarFormularioDeAtividade(evento) {
+  evento.preventDefault();
+
+  const identificador = document.getElementById('campo-atividade-id').value;
+  const dadosDoFormulario = {
+    tema:        document.getElementById('campo-atividade-tema').value.trim(),
+    atividade:   document.getElementById('campo-atividade-etapa').value.trim(),
+    observacao:  document.getElementById('campo-atividade-observacao').value.trim(),
+    responsavel: document.getElementById('campo-atividade-responsavel').value.trim()
+  };
+
+  if (identificador) atualizarAtividadeMelhoria(identificador, dadosDoFormulario);
+  else adicionarAtividadeMelhoria(dadosDoFormulario);
+
+  fecharFormularioDeAtividade();
+  renderizarSecaoAtividadesMelhorias();
+}
+
+/*
+ * confirmarExclusaoDeAtividade(identificador)
+ * Pede confirmação nativa do navegador antes de excluir. Não há lixeira
+ * nem "desfazer" para estes registros — por isso a confirmação explícita.
+ */
+function confirmarExclusaoDeAtividade(identificador) {
+  const usuarioConfirmou = window.confirm('Excluir esta atividade? Essa ação não pode ser desfeita.');
+  if (!usuarioConfirmou) return;
+
+  excluirAtividadeMelhoria(identificador);
+  renderizarSecaoAtividadesMelhorias();
 }
 
 
@@ -3308,7 +3633,7 @@ function analiseGov(){
   // 3. Concentração de ações abertas por responsável (só equipe CoE, igual ao gráfico)
   const abertasPorResp = {};
   A.filter(a=>a.resp && a.sc!=='done' && a.sc!=='cancel').forEach(a=>{
-    const nome = coeNomePadrao(a.resp);
+    const nome = getStandardCoeName(a.resp);
     if(nome) abertasPorResp[nome] = (abertasPorResp[nome]||0)+1;
   });
   const totalAbertas = Object.values(abertasPorResp).reduce((s,v)=>s+v,0);
@@ -3338,7 +3663,7 @@ function analiseProj(){
   const ins = [];
   const exec = P.filter(p=>p.sc==='doing').length;
   const fin = P.filter(p=>p.sc==='closing'||p.sc==='monitor').length;
-  const atrasados = P.filter(projAtrasado);
+  const atrasados = P.filter(isProjectOverdue);
 
   // 1. Situação geral
   ins.push({tipo:'neu', ico:'≡',
@@ -3349,7 +3674,7 @@ function analiseProj(){
     const comDias = atrasados.map(p => ({
       titulo: p.titulo,
       dias: diasEntre(HOJE, p.dtFim),
-      fase: projFase(p.statusRaw), statusRaw: p.statusRaw
+      fase: getProjectPhase(p.statusRaw), statusRaw: p.statusRaw
     })).sort((a,b)=>b.dias-a.dias);
     const lista = comDias.map(p => `<b>${p.titulo}</b> (${p.dias}d, ${p.statusRaw})`).join('; ');
     ins.push({tipo:'neg', ico:'!',
@@ -3359,12 +3684,13 @@ function analiseProj(){
   }
 
   // 3. Projeto mais crítico pelo score de risco automático
-  const comRisco = P.map(p => ({p, r:projRisco(p)})).filter(x=>x.r.score>0).sort((a,b)=>b.r.score-a.r.score);
+  const comRisco = P.map(p => ({p, r:getProjectRisk(p)})).filter(x=>x.r.score>0).sort((a,b)=>b.r.score-a.r.score);
   if(comRisco.length){
     const top = comRisco[0];
-    ins.push({tipo: top.r.nivel==='alto'?'neg':'warn', ico:'▲',
-      texto:`Projeto mais crítico: <b>${top.p.titulo}</b> (risco ${top.r.nivel}, score ${top.r.score}) — ${top.r.motivos.join(', ')}.`});
-    const altos = comRisco.filter(x=>x.r.nivel==='alto').length;
+    const nivelPt = {high:'alto', medium:'médio', low:'baixo'}[top.r.level];
+    ins.push({tipo: top.r.level==='high'?'neg':'warn', ico:'▲',
+      texto:`Projeto mais crítico: <b>${top.p.titulo}</b> (risco ${nivelPt}, score ${top.r.score}) — ${top.r.reasons.join(', ')}.`});
+    const altos = comRisco.filter(x=>x.r.level==='high').length;
     if(altos>1){
       ins.push({tipo:'warn', ico:'▲',
         texto:`<b>${altos} projetos</b> estão em risco alto e merecem atenção prioritária.`});

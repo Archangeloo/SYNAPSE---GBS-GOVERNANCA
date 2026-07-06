@@ -704,8 +704,32 @@ body {
   cursor: not-allowed;
 }
 
+/* Botões de ação dentro de uma linha de tabela (ex: editar/excluir atividade) */
+.icon-button {
+  border: 1px solid var(--rule2);
+  background: var(--surface);
+  color: var(--ink3);
+  cursor: pointer;
+  padding: 4px 7px;
+  border-radius: var(--r);
+  font-size: 13px;
+  line-height: 1;
+  transition: background 0.12s, color 0.12s, border-color 0.12s;
+}
+
+.icon-button:hover {
+  background: var(--paper);
+  color: var(--ink);
+}
+
+.icon-button-perigo:hover {
+  background: var(--err-bg);
+  color: var(--err);
+}
+
 select,
-input[type="text"] {
+input[type="text"],
+textarea {
   font-family: 'Inter', sans-serif;
   font-size: 12px;
   padding: 5px 9px;
@@ -713,6 +737,11 @@ input[type="text"] {
   border: 1px solid var(--rule2);
   background: var(--surface);
   color: var(--ink);
+}
+
+textarea {
+  resize: vertical;
+  line-height: 1.5;
 }
 
 
@@ -1665,6 +1694,91 @@ input[type="text"] {
 }
 
 
+/* ── Modal (formulário de atividade — Pipefy Melhorias) ──── */
+
+.modal-fundo {
+  position: fixed;
+  inset: 0;
+  background: rgba(17, 24, 39, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  z-index: 200;
+}
+
+.modal-fundo.oculto {
+  display: none;
+}
+
+.modal-caixa {
+  background: var(--surface);
+  border-radius: var(--r2);
+  padding: 22px;
+  width: 440px;
+  max-width: 100%;
+  max-height: 88vh;
+  overflow-y: auto;
+  box-shadow: 0 12px 40px rgba(17, 24, 39, 0.25);
+}
+
+.modal-cabecalho {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 18px;
+}
+
+.modal-titulo {
+  font-family: 'Syne', sans-serif;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.modal-botao-fechar {
+  border: none;
+  background: transparent;
+  font-size: 20px;
+  line-height: 1;
+  color: var(--ink4);
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: var(--r);
+}
+
+.modal-botao-fechar:hover {
+  background: var(--paper);
+  color: var(--ink);
+}
+
+.modal-campo {
+  display: block;
+  margin-bottom: 14px;
+}
+
+.modal-campo span {
+  display: block;
+  font-size: 11px;
+  color: var(--ink4);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-bottom: 5px;
+}
+
+.modal-campo input[type="text"],
+.modal-campo textarea {
+  width: 100%;
+}
+
+.modal-rodape {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+
 /* ── Impressão / Exportar PDF ────────────────────────────── */
 
 @media print {
@@ -1672,6 +1786,7 @@ input[type="text"] {
   #bg-canvas, .topbar, .nav, #btn-top,
   .ai-bar, .ai-panel, .filters, .up-grid,
   .btn, .df-chip, .df-input, .df-clear, .df-divider,
+  .icon-button, .modal-fundo,
   .proj-row .iright > span:last-child { display: none !important; }
 
   /* Mostra só a aba ativa */
