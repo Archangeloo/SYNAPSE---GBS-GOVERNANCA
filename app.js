@@ -27,9 +27,9 @@ const App = {
 
   // Dados normalizados após parsing (arrays de objetos simples)
   P: {
-    mel: [],   // Pipefy_Melhorias — melhorias e ajustes do Pipefy
-    proj: [],  // Projetos — portfólio de projetos da área
-    ana: []    // Analytics — atividades de Analytics
+    improvements: [], // Pipefy_Melhorias — melhorias e ajustes do Pipefy
+    proj: [],         // Projetos — portfólio de projetos da área
+    ana: []           // Analytics — atividades de Analytics
   },
   R: [],       // Chamados RPA — chamados de manutenção dos bots
   B: [],       // Inventário de Bots — catálogo de automações (sem filtro de data; usa AnoPRD)
@@ -379,7 +379,7 @@ function getProjectRisk(p){
 
   // 1) Delay — the strongest factor. A meaningful delay alone already pushes to high risk.
   if(p.dtFim){
-    const days = diasEntre(HOJE, p.dtFim);
+    const days = daysBetween(HOJE, p.dtFim);
     if(days > 0){
       // 15 base points + ~1/day, capping at 70; ~40 days already crosses the "high" threshold
       score += Math.min(70, 15 + days*1.2);
@@ -479,7 +479,7 @@ function getProjectRisk(p){
      tIdent:        número de dias na fase Identificação (pode ser null)
      tDesenv:       número de dias na fase Desenvolvimento (pode ser null)
      tReexec:       número de dias na fase Reexecução (pode ser null)
-     area:          área do bot (enriquecido por enrichRPAComArea, pode ser null)
+     area:          área do bot (enriquecido por enrichRPAWithArea, pode ser null)
    }
 
    ── App.B[]  (Inventário de Bots) ───────────────────────────
@@ -504,12 +504,12 @@ function getProjectRisk(p){
 
 
 /* ============================================================
-   NAVEGAÇÃO
+   NAVIGATION
    ============================================================ */
 
 /*
- * Alterna entre as abas principais do dashboard.
- * Funciona togglando a classe 'active' no item de nav e na section correspondente.
+ * Switches between the dashboard's main tabs.
+ * Works by toggling the 'active' class on the nav item and the matching section.
  */
 function setNav(id){
   ['upload','gov','proj','mel','rpa','ana'].forEach(n => {
@@ -518,7 +518,7 @@ function setNav(id){
     if(ni) ni.classList.toggle('active', n === id);
     if(pg) pg.classList.toggle('active', n === id);
   });
-  // Anima KPIs da aba que acabou de ficar visível
+  // Animates the KPIs of the tab that just became visible
   const pg = document.getElementById('page-'+id);
   if(pg) pg.querySelectorAll('.knum').forEach(el => {
     delete el.dataset.an;
@@ -527,8 +527,8 @@ function setNav(id){
 }
 
 /*
- * Alterna entre as sub-abas da aba RPA & Bots
- * (Visão geral, Top bots, Tipos de problema, Tempo de resolução, Chamados, Inventário de bots)
+ * Switches between the RPA & Bots tab's sub-tabs
+ * (Overview, Top bots, Problem types, Resolution time, Tickets, Bot inventory)
  */
 function rpaPage(id){
   document.querySelectorAll('#page-rpa .pip-sub-page').forEach(p => p.classList.remove('active'));
@@ -541,10 +541,10 @@ function rpaPage(id){
 
 
 /* ============================================================
-   UPLOAD DE ARQUIVOS
+   FILE UPLOAD
    ============================================================ */
 
-// Drag & drop: eventos de arrastar sobre a zona (over), sair (leave), soltar (drop)
+// Drag & drop: drag-over (over), drag-leave (leave), drop events
 function dzO(e,id){ e.preventDefault(); document.getElementById(id).classList.add('over'); }
 function dzL(id){ document.getElementById(id).classList.remove('over'); }
 function dzD(e,t){
@@ -554,14 +554,14 @@ function dzD(e,t){
   if(f) readFile(f, t);
 }
 
-// Handler do input file (clique no botão de seleção de arquivo)
+// File input handler (click on the file selection button)
 function hf(i,t){ if(i.files[0]) readFile(i.files[0], t); }
 
 /*
- * Lê um arquivo Excel (.xlsx) do disco usando FileReader.
- * Usa a biblioteca SheetJS (XLSX) para parsear o binário.
- * cellDates:true faz o SheetJS retornar objetos Date nativos (não serial do Excel).
- * Após leitura, armazena o workbook em App.gov ou App.rpa conforme o tipo.
+ * Reads an Excel (.xlsx) file from disk using FileReader.
+ * Uses the SheetJS (XLSX) library to parse the binary.
+ * cellDates:true makes SheetJS return native Date objects (not Excel serials).
+ * After reading, stores the workbook in App.gov or App.rpa depending on the type.
  */
 function readFile(file, type){
   const reader = new FileReader();
@@ -577,9 +577,9 @@ function readFile(file, type){
 }
 
 /*
- * Atualiza a UI do card de upload após leitura bem-sucedida.
- * Para a base de governança, verifica quais abas esperadas foram encontradas
- * e exibe badges verdes/amarelos para cada uma.
+ * Updates the upload card's UI after a successful read.
+ * For the governance base, checks which expected tabs were found
+ * and shows green/yellow badges for each one.
  */
 function showOk(type, name, wb){
   document.getElementById('ok-'+type).classList.add('show');
@@ -590,12 +590,12 @@ function showOk(type, name, wb){
   if(type === 'gov'){
     const found = wb.SheetNames;
     const want = ['Pipefy_Melhorias','Projetos','Analytics','Inventario_RPA'];
-    // mostra abas encontradas
+    // shows the tabs found
     let html = '<b>Abas lidas:</b> ' + want.map(w => {
       const ok = found.some(f => f.toLowerCase().replace(/[_ ]/g,'').includes(w.toLowerCase().replace(/[_ ]/g,'')));
       return `<span class="badge ${ok?'ok':'warn'}" style="margin:2px">${w}${ok?'':' (?)'}</span>`;
     }).join('');
-    // diagnóstico de colunas da aba Pipefy_Melhorias — ajuda a identificar o nome correto da coluna de data
+    // Pipefy_Melhorias column diagnostics — helps identify the correct date column name
     const sMel = found.find(f => f.toLowerCase().replace(/[_ ]/g,'').includes('pipefymelhorias') || f.toLowerCase().replace(/[_ ]/g,'').includes('melhorias'));
     if(sMel){
       const rows = XLSX.utils.sheet_to_json(wb.Sheets[sMel], {defval:''});
@@ -610,7 +610,7 @@ function showOk(type, name, wb){
     }
     tg.innerHTML = html;
   } else {
-    // para o relatório de RPA, mostra nome da aba e total de chamados
+    // for the RPA report, shows the tab name and total tickets
     const sheet    = wb.Sheets[wb.SheetNames[0]];
     const rowCount = XLSX.utils.sheet_to_json(sheet, {defval:''}).length;
     tg.innerHTML = `<b>Aba lida:</b> <span class="badge ok" style="margin:2px">${wb.SheetNames[0]} · ${rowCount} chamados</span>`;
@@ -618,7 +618,7 @@ function showOk(type, name, wb){
 }
 
 /*
- * Atualiza o contador "X de 2 bases carregadas" e habilita/desabilita o botão "Gerar dashboard".
+ * Updates the "X de 2 bases carregadas" counter and enables/disables the "Gerar dashboard" button.
  */
 function updateBar(){
   const loadedCount = Object.values(App.loaded).filter(Boolean).length;
@@ -628,13 +628,13 @@ function updateBar(){
 
 
 /* ============================================================
-   FUNÇÕES AUXILIARES (HELPERS)
+   HELPER FUNCTIONS
    ============================================================ */
 
 /*
- * Busca uma aba num workbook por fragmento de nome.
- * Insensível a maiúsculas, underlines e espaços.
- * Ex: findSheet(wb, 'melhorias') encontra 'Pipefy_Melhorias'.
+ * Looks up a sheet in a workbook by a name fragment.
+ * Case-insensitive, and ignores underscores and spaces.
+ * Ex: findSheet(wb, 'melhorias') finds 'Pipefy_Melhorias'.
  */
 function findSheet(wb, frag){
   const fragNorm = frag.toLowerCase().replace(/[_ ]/g,'');
@@ -642,11 +642,11 @@ function findSheet(wb, frag){
 }
 
 /*
- * Converte qualquer tipo de valor para Date (ou null se inválido).
- * Necessário porque o Excel pode guardar datas como:
- *   - objeto Date (quando cellDates:true e o SheetJS consegue parsear)
- *   - número serial do Excel (ex: 45678 = dias desde 01/01/1900)
- *   - string de data (ex: "2026-04-24")
+ * Converts any value type to a Date (or null if invalid).
+ * Needed because Excel can store dates as:
+ *   - a Date object (when cellDates:true and SheetJS manages to parse it)
+ *   - an Excel serial number (ex: 45678 = days since 1900-01-01)
+ *   - a date string (ex: "2026-04-24")
  */
 function toDate(rawValue){
   if(!rawValue) return null;
@@ -662,10 +662,10 @@ function toDate(rawValue){
   return null;
 }
 
-// Formata Date para string "YYYY-MM" (usada como chave de agrupamento mensal)
+// Formats a Date as a "YYYY-MM" string (used as the monthly grouping key)
 function ym(d){ return d ? `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}` : ''; }
 
-// Converte "YYYY-MM" em rótulo legível "Mmm/AA" (ex: "2026-04" → "Abr/26")
+// Converts "YYYY-MM" into a readable "Mmm/AA" label (ex: "2026-04" → "Abr/26")
 function ymLabel(m){
   if(!m) return '';
   const partes = m.split('-');
@@ -673,10 +673,10 @@ function ymLabel(m){
 }
 
 /*
- * Busca o valor de uma coluna numa linha do SheetJS, aceitando múltiplos
- * nomes possíveis (pois o nome da coluna pode variar entre versões da planilha).
- * A comparação é insensível a maiúsculas e espaços extras.
- * Retorna '' se nenhuma das chaves for encontrada.
+ * Looks up a column's value in a SheetJS row, accepting multiple
+ * possible names (since the column name can vary between spreadsheet versions).
+ * The comparison is case-insensitive and ignores extra spaces.
+ * Returns '' if none of the keys are found.
  */
 function get(row, keys){
   const rk = Object.keys(row);
@@ -692,9 +692,9 @@ function get(row, keys){
 }
 
 /*
- * Conta a frequência de um valor em um array de objetos.
- * fn: função que extrai a chave a contar (ex: r => r.frente)
- * Retorna: { 'P2P': 42, 'O2C': 33, ... }
+ * Counts the frequency of a value across an array of objects.
+ * fn: function that extracts the key to count (ex: r => r.frente)
+ * Returns: { 'P2P': 42, 'O2C': 33, ... }
  */
 function count(arr, fn){
   const freq = {};
@@ -702,47 +702,47 @@ function count(arr, fn){
   return freq;
 }
 
-// Calcula percentual arredondado. Retorna 0 se divisor=0 (nunca divide por zero).
+// Calculates a rounded percentage. Returns 0 if the divisor is 0 (never divides by zero).
 function pct(a, b){ return b ? Math.round(a/b*100) : 0; }
 
-// Converte um Date para string "YYYY-MM-DD" (formato ISO, usado em inputs de data).
-// Definida aqui para evitar a lambda `iso = d => ...` duplicada em setQuickRange e generate().
+// Converts a Date to a "YYYY-MM-DD" string (ISO format, used in date inputs).
+// Defined here to avoid the duplicated `iso = d => ...` lambda in setQuickRange and generate().
 function toIsoDate(d){ return d.toISOString().slice(0, 10); }
 
-// Calcula a média de um campo numérico de um array, ignorando nulls.
-// Retorna o valor como string com 1 decimal, ou '—' se não houver dados.
-// Extraída de buildRPAChamados() para uso em outros módulos de análise.
+// Calculates the average of a numeric field across an array, ignoring nulls.
+// Returns the value as a string with 1 decimal, or '—' if there's no data.
+// Extracted from buildRPATickets() for reuse in other analysis modules.
 function avgField(arr, campo){
   const valores = arr.filter(r => r[campo] != null).map(r => r[campo]);
   return valores.length ? (valores.reduce((soma, v) => soma + v, 0) / valores.length).toFixed(1) : '—';
 }
 
-// Normaliza o nome de um bot ou processo para comparação aproximada (match fuzzy).
-// Remove prefixos entre colchetes (ex: "[P2P]"), converte para minúsculas e
-// elimina tudo que não seja letra ou número.
-// Usada em enrichRPAComArea(), buildBotsCruzamento() e analiseBots().
+// Normalizes a bot or process name for approximate (fuzzy) comparison.
+// Strips bracketed prefixes (ex: "[P2P]"), lowercases, and
+// removes anything that isn't a letter or digit.
+// Used in enrichRPAWithArea(), buildBotsCruzamento() and analyzeBots().
 function normBotName(s){ return s.toLowerCase().replace(/^\[.*?\]/, '').replace(/[^a-z0-9]/g, ''); }
 
-// Áreas de negócio principais do GBS — usadas para filtrar gráficos de RPA e bots.
-// Áreas secundárias do inventário (PAM, CI, IT, ARG, MEX etc.) são agrupadas em "Outros"
-// para não poluir os gráficos com fatias de baixo volume.
-const AREAS_PRINCIPAIS_RPA = ['P2P', 'TAX', 'H2R', 'O2C', 'R2R'];
+// Main GBS business areas — used to filter RPA and bot charts.
+// Secondary inventory areas (PAM, CI, IT, ARG, MEX etc.) are grouped into "Outros"
+// to avoid cluttering the charts with low-volume slices.
+const MAIN_RPA_AREAS = ['P2P', 'TAX', 'H2R', 'O2C', 'R2R'];
 
-// Equipe responsável pelo desenvolvimento de melhorias Pipefy (não inclui solicitantes/champions).
-// Usada em buildMel() para filtrar o gráfico "Por responsável".
-const EQUIPE_PIPEFY = ['willian', 'vinícius', 'vinicius', 'felipe', 'gustavo', 'caio'];
-function ehMembroEquipePipefy(nome){ return EQUIPE_PIPEFY.some(p => nome.toLowerCase().includes(p)); }
+// Team responsible for developing Pipefy improvements (excludes requesters/champions).
+// Used in buildImprovements() to filter the "Por responsável" chart.
+const PIPEFY_TEAM = ['willian', 'vinícius', 'vinicius', 'felipe', 'gustavo', 'caio'];
+function isPipefyTeamMember(nome){ return PIPEFY_TEAM.some(p => nome.toLowerCase().includes(p)); }
 
-// Calcula quantos dias de diferença entre duas datas.
-// Positivo = data1 é mais recente que data2 (ex: hoje - prazo = dias de atraso).
-const MS_POR_DIA = 86_400_000;
-const EXCEL_EPOCH_OFFSET = 25569; // dias entre 1900-01-01 (Excel epoch) e 1970-01-01 (Unix epoch)
-function diasEntre(data1, data2){ return Math.round((data1 - data2) / MS_POR_DIA); }
+// Calculates the number of days between two dates.
+// Positive = date1 is more recent than date2 (ex: today - deadline = days overdue).
+const MS_PER_DAY = 86_400_000;
+const EXCEL_EPOCH_OFFSET = 25569; // days between 1900-01-01 (Excel epoch) and 1970-01-01 (Unix epoch)
+function daysBetween(data1, data2){ return Math.round((data1 - data2) / MS_PER_DAY); }
 
 /*
- * Conta quantos itens de um array têm cada código de status.
- * Elimina o padrão repetido: arr.filter(x => x.sc === 'done').length
- * Uso: const { done, todo: backlog, blocked } = statusCounts(arr);
+ * Counts how many items in an array have each status code.
+ * Eliminates the repeated pattern: arr.filter(x => x.sc === 'done').length
+ * Usage: const { done, todo: backlog, blocked } = statusCounts(arr);
  */
 function statusCounts(arr) {
   const codes = ['done', 'doing', 'todo', 'blocked', 'cancel', 'vendor', 'closing', 'monitor'];
@@ -752,9 +752,9 @@ function statusCounts(arr) {
 }
 
 /*
- * Agrupa arr por keyFn, conta frequências e retorna pares [chave, contagem]
- * ordenados do mais frequente ao menos frequente.
- * Elimina o padrão repetido: Object.entries(count(arr, fn)).sort((a,b) => b[1]-a[1])
+ * Groups arr by keyFn, counts frequencies, and returns [key, count] pairs
+ * sorted from most to least frequent.
+ * Eliminates the repeated pattern: Object.entries(count(arr, fn)).sort((a,b) => b[1]-a[1])
  */
 function sortedCountEntries(arr, keyFn) {
   return Object.entries(count(arr, keyFn)).sort((a, b) => b[1] - a[1]);
@@ -762,56 +762,56 @@ function sortedCountEntries(arr, keyFn) {
 
 
 /* ============================================================
-   PARSERS — LEITURA E NORMALIZAÇÃO DAS PLANILHAS
+   PARSERS — SPREADSHEET READING AND NORMALIZATION
    ============================================================
-   Cada parser lê uma aba do Excel e transforma as linhas em
-   objetos JavaScript com nomes de campo padronizados.
-   Isso desacopla o resto do código dos nomes de coluna da planilha.
+   Each parser reads an Excel tab and turns the rows into
+   JavaScript objects with standardized field names.
+   This decouples the rest of the code from the spreadsheet's column names.
    ============================================================ */
 
 /*
- * parseGov() — parser da Base Governança (arquivo Excel principal).
+ * parseGov() — parser for the Governance Base (main Excel file).
  *
- * Lê:     App.gov (workbook SheetJS carregado pelo usuário)
- * Escreve: App.P.mel  → melhorias Pipefy normalizadas
- *          App.P.proj → projetos normalizados
- *          App.P.ana  → atividades de Analytics normalizadas
- * Chamada por: generate()
+ * Reads:  App.gov (workbook loaded by the user via SheetJS)
+ * Writes: App.P.improvements → normalized Pipefy improvements
+ *          App.P.proj → normalized projects
+ *          App.P.ana  → normalized Analytics activities
+ * Called by: generate()
  *
- * TOLERÂNCIA A VARIAÇÕES:
- *   - Nomes de aba: busca por fragmento, insensível a maiúsculas e underlines
- *   - Nomes de coluna: cada campo tenta múltiplos nomes alternativos (ver get())
- *   - Layout de Projetos: detecta automaticamente se o cabeçalho está correto
- *     ou embaralhado (layout antigo), e lê por posição como fallback
+ * TOLERANCE FOR VARIATIONS:
+ *   - Tab names: fragment search, case-insensitive and underline-insensitive
+ *   - Column names: each field tries multiple alternative names (see get())
+ *   - Projects layout: automatically detects whether the header is correct
+ *     or shuffled (old layout), and reads by position as a fallback
  *
- * Para adicionar um novo campo: adicione o nome da coluna no array do get()
- * e mapeie para o campo normalizado no objeto retornado pelo .map().
+ * To add a new field: add the column name to the array in get()
+ * and map it to the normalized field in the object returned by .map().
  */
 function parseGov(){
   const wb = App.gov;
 
   /* --- Pipefy_Melhorias --- */
-  // Busca a aba pelo nome (flexível: aceita "pipefymelhorias" ou "melhorias")
+  // Looks up the tab by name (flexible: accepts "pipefymelhorias" or "melhorias")
   const sMel = findSheet(wb,'pipefymelhorias') || findSheet(wb,'melhorias');
-  App.P.mel = sMel ? XLSX.utils.sheet_to_json(wb.Sheets[sMel], {defval:''}).map(r => ({
+  App.P.improvements = sMel ? XLSX.utils.sheet_to_json(wb.Sheets[sMel], {defval:''}).map(r => ({
     num:      get(r, ['Numero']),
-    frente:   String(get(r, ['Gerencia'])).trim(),      // frente/gerência (P2P, O2C, etc.)
-    fluxo:    get(r, ['NomeFluxo']),                    // nome do fluxo do processo
-    atividade:get(r, ['Atividade']),                    // descrição da melhoria
-    statusRaw:String(get(r, ['Status'])).trim(),        // status original (texto da planilha)
-    sc:       improvementStatusClass(get(r, ['Status'])), // status normalizado (Planejamento conta como 'doing' aqui)
-    resp:     String(get(r, ['Responsavel'])).trim().replace(/​/g,''), // nome do responsável
+    frente:   String(get(r, ['Gerencia'])).trim(),      // business area (P2P, O2C, etc.)
+    fluxo:    get(r, ['NomeFluxo']),                    // process flow name
+    atividade:get(r, ['Atividade']),                    // improvement description
+    statusRaw:String(get(r, ['Status'])).trim(),        // original status (spreadsheet text)
+    sc:       improvementStatusClass(get(r, ['Status'])), // normalized status ("Planejamento" counts as 'doing' here)
+    resp:     String(get(r, ['Responsavel'])).trim().replace(/​/g,''), // owner's name
     champion: String(get(r, ['Champion'])).trim(),
     complex:  String(get(r, ['Complexidade'])).trim(),
     tipo:     String(get(r, ['TipoMelhoriaAjuste'])).trim(),
-    // FILTRO DE PERÍODO — uma coluna por campo, sem fallback:
+    // PERIOD FILTER — one column per field, no fallback:
     //   dtInicio → DataInicioDesenvolvimento
     //   dtFim    → DataRealEstimadaConclusaoValidacaoChampion
-    // Sem nenhuma das duas = backlog não iniciado → incluído sempre (ver buildMel).
+    // Neither one filled in = not-started backlog → always included (see buildImprovements).
     dtInicio: toDate(get(r, ['DataInicioDesenvolvimento'])),
     dtFim:    toDate(get(r, ['DataRealEstimadaConclusaoValidacaoChampion'])),
     horas:    get(r, ['QtdHorasEstimadas'])
-  })).filter(r => r.num !== '' || r.atividade) : []; // descarta linhas totalmente vazias
+  })).filter(r => r.num !== '' || r.atividade) : []; // discards fully empty rows
 
   /* --- Projetos --- */
   const sProj = findSheet(wb,'projetos');
@@ -819,27 +819,27 @@ function parseGov(){
   if(sProj){
     const rows = XLSX.utils.sheet_to_json(wb.Sheets[sProj], {defval:''});
 
-    // DETECÇÃO DE VERSÃO: verifica se o header está correto ou embaralhado.
-    // Pega as 5 primeiras linhas e testa se 'Status' contém valores reconhecíveis.
-    // Se não reconhece nenhum status, assume que a base está no layout antigo (colunas embaralhadas).
+    // VERSION DETECTION: checks whether the header is correct or shuffled.
+    // Takes the first 5 rows and tests whether 'Status' contains recognizable values.
+    // If no status is recognized, assumes the base is in the old layout (shuffled columns).
     const sample = rows.slice(0,5);
     const headerLooksRight = sample.some(r => statusClass(get(r,['Status'])) !== 'other');
 
     if(headerLooksRight){
-      // LAYOUT NOVO (base Universal): campos bem definidos
+      // NEW LAYOUT (Universal base): well-defined fields
       App.P.proj = rows.map(r => ({
         num:        get(r, ['Numero']),
         titulo:     String(get(r, ['Titulo'])).trim(),
         resp:       String(get(r, ['Responsavel'])).trim(),
-        // AreaCliente é o nome novo do campo; 'Frente' é o fallback para a base antiga
+        // AreaCliente is the new field name; 'Frente' is the fallback for the old base
         frente:     String(get(r, ['AreaCliente','Frente'])).trim(),
         focal:      String(get(r, ['PontoFocal'])).trim(),
         statusRaw:  String(get(r, ['Status'])).trim(),
         sc:         statusClass(get(r, ['Status'])),
-        // FILTRO DE PERÍODO — referência: PrazoConclusão (não há data de início na planilha)
+        // PERIOD FILTER — reference: PrazoConclusão (there's no start date in the spreadsheet)
         dtFim:      toDate(get(r, ['PrazoConclusão','PrazoConclusao','DataFechamento'])),
         proximos:   String(get(r, ['ProximosPassos'])).trim(),
-        // Campos ricos — preenchidos na planilha Universal, aparecem ao expandir o projeto na lista
+        // Rich fields — filled in on the Universal spreadsheet, shown when expanding a project in the list
         equipes:    String(get(r, ['EquipesEnvolvidas'])).trim(),
         descricao:  String(get(r, ['DescricaoProjeto'])).trim(),
         atvConcl:   String(get(r, ['AtividadesConcluidas'])).trim(),
@@ -848,14 +848,14 @@ function parseGov(){
         prog: (()=>{
           const rawProg = get(r, ['ProgressoPct','Progresso']);
           return typeof rawProg === 'number' ? rawProg : (parseFloat(rawProg)||null);
-        })() // progresso 0.0 a 1.0 (ex: 0.75 = 75%)
-      })).filter(p => p.titulo); // descarta linhas sem título
+        })() // progress 0.0 to 1.0 (ex: 0.75 = 75%)
+      })).filter(p => p.titulo); // discards rows without a title
     } else {
-      // LAYOUT ANTIGO EMBARALHADO: os cabeçalhos não batem com o conteúdo das colunas.
-      // Nesse caso lemos por posição (índice da coluna), não pelo nome do cabeçalho.
-      // Mapeamento descoberto via inspeção direta da planilha original:
-      //   col0=Numero, col1=Titulo, col2=Responsavel(estava em Status), col3=Frente(em Responsavel),
-      //   col4=PontoFocal(em Frente), col5=Status(em PontoFocal), col6=DataFechamento, col7=ProximosPassos
+      // OLD SHUFFLED LAYOUT: the headers don't match the columns' actual content.
+      // In this case we read by position (column index), not by header name.
+      // Mapping discovered via direct inspection of the original spreadsheet:
+      //   col0=Numero, col1=Titulo, col2=Responsavel(was in Status), col3=Frente(in Responsavel),
+      //   col4=PontoFocal(in Frente), col5=Status(in PontoFocal), col6=DataFechamento, col7=ProximosPassos
       const raw = XLSX.utils.sheet_to_json(wb.Sheets[sProj], {defval:'', header:1});
       for(let i=1; i<raw.length; i++){
         const row = raw[i];
@@ -881,54 +881,54 @@ function parseGov(){
     statusRaw:String(get(r, ['Status'])).trim(),
     sc:       statusClass(get(r, ['Status'])),
     prioRaw:  String(get(r, ['Prioridade'])).trim(),
-    // extrai só o número da prioridade (ex: "Prioridade 2" → 2)
+    // extracts just the priority number (ex: "Prioridade 2" → 2)
     prio:     (()=>{ const m = String(get(r,['Prioridade'])).match(/\d+/); return m ? +m[0] : null; })(),
     frente:   String(get(r, ['Frente'])).trim(),
     resp:     String(get(r, ['Responsavel'])).trim(),
-    // dtInicio = DataAbertura (início); dtFim = DataFechamento (conclusão da validação)
-    // Com dtInicio definido, applyDate usa activeInRange — inclui atividades em curso no período.
+    // dtInicio = DataAbertura (start); dtFim = DataFechamento (validation completion)
+    // With dtInicio set, applyDate uses activeInRange — includes activities in progress during the period.
     dtInicio: toDate(get(r, ['DataAbertura'])),
     dtFim:    toDate(get(r, ['DataFechamento']))
-  })).filter(r => r.titulo) : []; // descarta linhas sem título (ex: linhas fantasma da origem)
+  })).filter(r => r.titulo) : []; // discards rows without a title (ex: phantom rows from the source)
 }
 
 /*
- * parseRPA() — processa o relatório de chamados de manutenção RPA (export do Pipefy).
- * ROBUSTO: procura a aba correta entre todas (pode não ser a primeira), valida se tem
- * as colunas esperadas, e descarta linhas-lixo (sem qualquer identificador real).
- * Se o arquivo não parecer um relatório de chamados, registra um aviso em App.rpaWarn
- * e deixa App.R vazio (em vez de gerar centenas de linhas-lixo).
+ * parseRPA() — processes the RPA maintenance ticket report (Pipefy export).
+ * ROBUST: looks for the right tab among all of them (may not be the first), validates
+ * that it has the expected columns, and discards junk rows (with no real identifier).
+ * If the file doesn't look like a ticket report, logs a warning in App.rpaWarn
+ * and leaves App.R empty (instead of generating hundreds of junk rows).
  */
 /*
- * parseRPA() — parser do relatório de chamados de manutenção RPA.
+ * parseRPA() — parser for the RPA maintenance ticket report.
  *
- * Lê:     App.rpa (workbook SheetJS carregado pelo usuário)
- * Escreve: App.R → chamados RPA normalizados
- * Chamada por: generate()
+ * Reads:  App.rpa (workbook loaded by the user via SheetJS)
+ * Writes: App.R → normalized RPA tickets
+ * Called by: generate()
  *
- * DETECÇÃO AUTOMÁTICA DE ABA:
- *   Testa cada aba do arquivo e escolhe a que tem colunas típicas de chamados
- *   (Código, Processo, Fase…). Se nenhuma aba parecer um relatório de chamados,
- *   registra App.rpaWarn e deixa App.R vazio — evita gerar lixo na tela.
+ * AUTOMATIC TAB DETECTION:
+ *   Tests every tab in the file and picks the one with columns typical of tickets
+ *   (Código, Processo, Fase…). If no tab looks like a ticket report,
+ *   logs App.rpaWarn and leaves App.R empty — avoids generating junk on screen.
  *
- * CAMPOS CALCULADOS:
- *   - mes:    string "YYYY-MM" derivada de criado, para agrupamento mensal
- *   - vencido: true se a fase não é "Concluído" e criado > 30 dias atrás
- *   - tIdent / tDesenv / tReexec: dias em cada fase (calculados a partir de
- *     colunas de data de entrada/saída de fase, se disponíveis)
- *   - area: preenchido posteriormente por enrichRPAComArea() via match com App.B
+ * COMPUTED FIELDS:
+ *   - mes:    "YYYY-MM" string derived from criado, for monthly grouping
+ *   - vencido: true if the phase isn't "Concluído" and criado is > 30 days ago
+ *   - tIdent / tDesenv / tReexec: days in each phase (calculated from
+ *     phase entry/exit date columns, if available)
+ *   - area: filled in later by enrichRPAWithArea() via matching against App.B
  */
 function parseRPA(){
   const wb = App.rpa;
   App.rpaWarn = '';
-  // Procura a aba que parece ser de chamados: precisa ter colunas características.
-  // Testa cada aba e escolhe a que tem mais "cara" de relatório de chamados.
+  // Looks for the tab that looks like it holds tickets: it needs to have characteristic columns.
+  // Tests each tab and picks the one that looks most like a ticket report.
   let melhorAba = null, melhorScore = -1;
   wb.SheetNames.forEach(sn => {
     const sample = XLSX.utils.sheet_to_json(wb.Sheets[sn], {defval:''}).slice(0,3);
     if(!sample.length) return;
     const cols = Object.keys(sample[0]).map(c => c.trim().toLowerCase());
-    // colunas que identificam um relatório de chamados do Pipefy
+    // columns that identify a Pipefy ticket report
     let score = 0;
     if(cols.some(c=>c==='código'||c==='codigo')) score++;
     if(cols.some(c=>c==='fase atual')) score++;
@@ -938,7 +938,7 @@ function parseRPA(){
     if(score > melhorScore){ melhorScore = score; melhorAba = sn; }
   });
 
-  // precisa bater pelo menos 2 colunas características para ser considerado válido
+  // needs to match at least 2 characteristic columns to be considered valid
   if(melhorScore < 2){
     App.R = [];
     App.rpaWarn = 'O arquivo carregado no campo "Chamados RPA" não parece ser um relatório de chamados de manutenção (faltam colunas como Código, Fase atual, Processo). Verifique se subiu o arquivo certo.';
@@ -959,41 +959,41 @@ function parseRPA(){
       reexec:     String(get(r, ['Este robô admite reexecução?'])).trim(),
       intext:     String(get(r, ['O problema é interno ou externo?', 'Interno ou externo?', 'Causa interna ou externa?', 'Causa interna/externa'])).trim(),
       solicitante:String(get(r, ['Nome do solicitante'])).trim(),
-      // "Responsáveis" = quem trabalha no chamado (equipe CoE de RPA), não quem abriu.
-      // Pode ter vários nomes separados por vírgula; guardamos como lista para contar
-      // cada responsável individualmente.
+      // "Responsáveis" = who works the ticket (RPA CoE team), not who opened it.
+      // Can have several names separated by commas; we store it as a list so we
+      // can count each owner individually.
       responsaveis: String(get(r, ['Responsáveis','Responsável']))
         .split(',').map(s=>s.trim()).filter(Boolean),
       criado,
-      dtInicio: criado,                            // Criado em → início do intervalo
-      dtFim:    toDate(get(r, ['Finalizado em'])), // Finalizado em → fim do intervalo
+      dtInicio: criado,                            // Criado em → start of the interval
+      dtFim:    toDate(get(r, ['Finalizado em'])), // Finalizado em → end of the interval
       mes: ym(criado),
       dow: criado ? (criado.getDay() + 6) % 7 : -1,
-      finalizado: toDate(get(r, ['Finalizado em'])), // alias para display
+      finalizado: toDate(get(r, ['Finalizado em'])), // alias for display
       vencido:    venc,
       tIdent:  parseFloat(get(r, ['Tempo total na fase Identificação do problema (dias)']))||null,
       tDesenv: parseFloat(get(r, ['Tempo total na fase Desenvolvimento da solução (dias)']))||null,
       tReexec: parseFloat(get(r, ['Tempo total na fase Reexecução (dias)']))||null
     };
-  // FILTRO DE LIXO: mantém só linhas que têm um código real (chamados sempre têm código).
-  // Isso evita contar linhas vazias ou de rodapé que algumas exportações incluem.
+  // JUNK FILTER: keeps only rows that have a real code (tickets always have a code).
+  // This avoids counting blank rows or footer rows that some exports include.
   }).filter(r => r.cod);
 }
 
 /*
- * enrichRPAComArea() — associa a cada chamado RPA a área (P2P, O2C, etc.).
- * Os chamados não têm campo de área, só o nome do Processo. Usa duas camadas:
- *   1ª) Cruzamento com o Inventário de Bots: match aproximado de nomes
- *       (um contém o outro, após normalização) para herdar a área do bot.
- *   2ª) Se o cruzamento falhar, regras por palavra-chave (areaPorPalavra):
+ * enrichRPAWithArea() — assigns each RPA ticket its area (P2P, O2C, etc.).
+ * Tickets have no area field, only the Processo name. Uses two layers:
+ *   1st) Cross-reference with the Bot Inventory: approximate name match
+ *       (one contains the other, after normalization) to inherit the bot's area.
+ *   2nd) If the cross-reference fails, keyword rules (areaByKeyword):
  *       ex. "Bank Statements"/"Payment Run" → P2P, "Tax ..." → TAX, etc.
- *       Isso recupera processos cujo nome no Pipefy difere do inventário.
- * O que não casar em nenhuma das duas fica '(não mapeada)' — tipicamente
- * chamados com o campo Processo vazio. Chamar DEPOIS de parseRPA() e parseInv().
+ *       This recovers processes whose name in Pipefy differs from the inventory.
+ * Whatever doesn't match either layer gets '(não mapeada)' — typically
+ * tickets with an empty Processo field. Call AFTER parseRPA() and parseInv().
  */
-function areaPorPalavra(proc){
+function areaByKeyword(proc){
   const nomeProc = (proc||'').toLowerCase();
-  // P2P — pagamentos, extratos bancários, câmbio
+  // P2P — payments, bank statements, exchange
   if(nomeProc.includes('bank statement')) return 'P2P';
   if(nomeProc.includes('payment run')) return 'P2P';
   if(nomeProc.includes('payment order')) return 'P2P';
@@ -1001,37 +1001,37 @@ function areaPorPalavra(proc){
   if(nomeProc.includes('exchange rate') || nomeProc.includes('exchange contract')) return 'P2P';
   if(nomeProc.includes('reserve of values')) return 'P2P';
   if(nomeProc.includes('freight')) return 'P2P';
-  // TAX — impostos
+  // TAX — taxes
   if(nomeProc.includes('tax conciliation') || nomeProc.includes('tax checking') || nomeProc.includes('tax payment') || nomeProc.includes('indirect tax') || nomeProc.includes('direct tax')) return 'TAX';
-  // H2R — RH / folha / benefícios
+  // H2R — HR / payroll / benefits
   if(nomeProc.includes('vacation') || nomeProc.includes('payroll') || nomeProc.includes('employee') || nomeProc.includes('benefit')) return 'H2R';
-  // O2C — crédito / faturamento
+  // O2C — credit / billing
   if(nomeProc.includes('credit limit') || nomeProc.includes('settlement statement')) return 'O2C';
   return '';
 }
 
-function enrichRPAComArea(){
+function enrichRPAWithArea(){
   if(!App.R.length) return;
   const botAreas = App.B.filter(b=>b.nome && b.area).map(b => ({nomeNorm: normBotName(b.nome), area:b.area}));
   App.R.forEach(r => {
     const procNorm = normBotName(r.processo);
     let area = '';
-    // 1ª camada: cruzamento com o inventário de bots
+    // 1st layer: cross-reference with the bot inventory
     if(procNorm && botAreas.length){
       const hit = botAreas.find(b => b.nomeNorm && (b.nomeNorm.includes(procNorm) || procNorm.includes(b.nomeNorm)));
       if(hit) area = hit.area;
     }
-    // 2ª camada: regras por palavra-chave (recupera nomes que diferem do inventário)
-    if(!area) area = areaPorPalavra(r.processo);
+    // 2nd layer: keyword rules (recovers names that differ from the inventory)
+    if(!area) area = areaByKeyword(r.processo);
     r.area = area || '(não mapeada)';
   });
 }
 
 /*
- * parseInv() — processa a aba Inventario_RPA da base de governança.
- * Essa aba é o catálogo de todos os bots (automações RPA) da área.
- * FILTRO DE DATA DIFERENTE: aqui o filtro usa o AnoPRD (ano que o bot entrou em produção),
- * não uma data de ação. Implementado diretamente em buildBots().
+ * parseInv() — processes the Inventario_RPA tab of the governance base.
+ * This tab is the catalog of all the area's bots (RPA automations).
+ * DIFFERENT DATE FILTER: here the filter uses AnoPRD (the year the bot went live),
+ * not an action date. Implemented directly in buildBots().
  */
 function parseInv(){
   const wb = App.gov;
@@ -1044,14 +1044,14 @@ function parseInv(){
     perimetro:   String(get(r, ['Perimetro','PERIMETRO','Perímetro'])).trim(),
     area:        String(get(r, ['Area','AREA','Área'])).trim(),
     status:      String(get(r, ['Status','STATUS'])).trim().toUpperCase(), // PRD/DEV/BACKLOG/CANCELADO
-    anoPrd:      get(r, ['AnoPRD','ANO PRD']), // ano de entrada em produção
+    anoPrd:      get(r, ['AnoPRD','ANO PRD']), // year the bot went live
     desc:        String(get(r, ['Descricao','DESCRIÇÃO'])).trim(),
     dev:         String(get(r, ['Desenvolvedor','DESENVOLVEDOR'])).trim(),
     suporte:     String(get(r, ['Suporte','SUPORTE / SUSTENTAÇÃO'])).trim(),
     criticidade: (()=>{ const v = get(r,['Criticidade','CRITICIDADE']); const n = parseInt(v); return isNaN(n)?null:n; })(),
     freq:        String(get(r, ['Frequencia','FREQUENCIA','Frequência'])).trim().toLowerCase(),
-    fte:         parseFloat(get(r, ['FTE']))||0,               // FTEs economizados por esse bot
-    vol:         parseFloat(get(r, ['VolumetriaMensal','VOLUMETRIA MENSAL']))||0, // transações/mês
+    fte:         parseFloat(get(r, ['FTE']))||0,               // FTEs saved by this bot
+    vol:         parseFloat(get(r, ['VolumetriaMensal','VOLUMETRIA MENSAL']))||0, // transactions/month
     nBots:       parseFloat(get(r, ['NumeroBots','NUMERO DE BOTS']))||0,
     areaCliente: String(get(r, ['AreaCliente','AREA CLIENTE'])).trim(),
     sap:         String(get(r, ['SAP'])).trim()
@@ -1060,30 +1060,30 @@ function parseInv(){
 
 
 /* ============================================================
-   GRÁFICOS — Chart.js
+   CHARTS — Chart.js
    ============================================================
-   Padrão de uso:
-     1. Funções de gráfico retornam um <canvas id="..."> como
-        parte da string HTML e registram o config em _pendingCharts.
-     2. Após cada injeção via innerHTML, flushCharts() instancia
-        todos os gráficos pendentes.
-     3. Instâncias anteriores são destruídas antes de recriar
-        (evita o erro "Canvas already in use").
+   Usage pattern:
+     1. Chart functions return a <canvas id="..."> as part of the
+        HTML string and register the config in _pendingCharts.
+     2. After each innerHTML injection, flushCharts() instantiates
+        all pending charts.
+     3. Previous instances are destroyed before recreating
+        (avoids the "Canvas already in use" error).
    ============================================================ */
 
-// Fila de configurações aguardando inicialização após injeção de HTML
+// Queue of configs waiting to be initialized after HTML injection
 let _pendingCharts = [];
 
-// Instâncias Chart.js ativas, indexadas pelo id do canvas
+// Active Chart.js instances, indexed by canvas id
 const _chartInstances = {};
 
-// Contador para IDs únicos de canvas por ciclo de render
+// Counter for unique canvas ids per render cycle
 let _chartSeq = 0;
 function _cid(prefix) { return `ch-${prefix}-${++_chartSeq}`; }
 
 /*
- * flushCharts() — instancia todos os gráficos pendentes.
- * Chamar logo após cada atribuição de innerHTML.
+ * flushCharts() — instantiates all pending charts.
+ * Call right after every innerHTML assignment.
  */
 function flushCharts() {
   _pendingCharts.forEach(({ id, config }) => {
@@ -1098,7 +1098,7 @@ function flushCharts() {
   });
   _pendingCharts = [];
 
-  // Anima KPIs recém-renderizados (atributo data-an evita re-animar)
+  // Animates freshly rendered KPIs (the data-an attribute avoids re-animating)
   document.querySelectorAll('.knum:not([data-an])').forEach(el => {
     el.dataset.an = '1';
     _animateNum(el);
@@ -1106,10 +1106,10 @@ function flushCharts() {
 }
 
 /*
- * _animateNum(el) — conta o número de 0 até o valor exibido em ~850ms.
- * Extrai o número do texto (int ou float), anima com cubic ease-out
- * e restaura o texto original exato ao final.
- * Valores menores que 2 são ignorados (0 e 1 não precisam de animação).
+ * _animateNum(el) — counts the number from 0 up to the displayed value over ~850ms.
+ * Extracts the number from the text (int or float), animates with a cubic
+ * ease-out, and restores the exact original text at the end.
+ * Values smaller than 2 are skipped (0 and 1 don't need animating).
  */
 function _animateNum(el) {
   const raw = el.textContent.trim();
@@ -1125,29 +1125,29 @@ function _animateNum(el) {
 
   (function frame(now) {
     const t     = Math.min((now - start) / duration, 1);
-    const eased = 1 - Math.pow(1 - t, 3); // cubic ease-out: começa rápido, desacelera
+    const eased = 1 - Math.pow(1 - t, 3); // cubic ease-out: starts fast, decelerates
     el.textContent = (isFloat ? (target * eased).toFixed(1) : Math.round(target * eased)) + suffix;
     if (t < 1) requestAnimationFrame(frame);
-    else el.textContent = raw; // restaura o texto exato (evita arredondamento residual)
+    else el.textContent = raw; // restores the exact text (avoids residual rounding)
   })(start);
 }
 
-// Defaults globais do Chart.js
+// Global Chart.js defaults
 Chart.defaults.font.family = "'Inter', system-ui, sans-serif";
 Chart.defaults.font.size   = 11;
 Chart.defaults.color       = '#6B7280';
 
 
-// Paleta Saint-Gobain em hex (CSS vars não funcionam dentro do Chart.js)
+// Saint-Gobain palette in hex (CSS vars don't work inside Chart.js)
 const C = {
-  brand:  '#0F5299',  // azul escuro
-  accent: '#0195D6',  // azul vivo
+  brand:  '#0F5299',  // dark blue
+  accent: '#0195D6',  // bright blue
   teal:   '#4DB1B3',  // teal
-  orange: '#E66407',  // laranja
-  red:    '#E83430',  // vermelho
-  ok:     '#0d8f91',  // teal escuro (texto ok)
-  warn:   '#C55800',  // laranja escuro (texto warn)
-  err:    '#C5284C',  // rosa-vermelho
+  orange: '#E66407',  // orange
+  red:    '#E83430',  // red
+  ok:     '#0d8f91',  // dark teal (ok text)
+  warn:   '#C55800',  // dark orange (warn text)
+  err:    '#C5284C',  // pink-red
   ink:    '#111827',
   ink2:   '#374151',
   ink3:   '#6B7280',
@@ -1155,7 +1155,7 @@ const C = {
   rule:   'rgba(15,82,153,0.07)',
 };
 
-// Resolve variáveis CSS do tema para hex — necessário para passar cores ao Chart.js
+// Resolves theme CSS variables to hex — needed to pass colors to Chart.js
 function resolveColor(c) {
   const map = {
     'var(--brand)':  C.brand,
@@ -1174,13 +1174,13 @@ function resolveColor(c) {
 }
 
 /*
- * donut(data, opts) — gráfico de rosca via Chart.js
- * data: array de { label, value, color }
+ * donut(data, opts) — donut chart via Chart.js
+ * data: array of { label, value, color }
  */
 function donut(data, opts = {}) {
   const filtered   = data.filter(d => d.value > 0);
   const total      = filtered.reduce((s, d) => s + d.value, 0);
-  const totalLabel = opts.total != null ? opts.total : total; // total exibido no centro (pode ser sobrescrito)
+  const totalLabel = opts.total != null ? opts.total : total; // total shown in the center (can be overridden)
   if (!total) return '<div style="font-size:12px;color:var(--ink4)">Sem dados</div>';
 
   const id = _cid('donut');
@@ -1236,10 +1236,10 @@ function donut(data, opts = {}) {
 }
 
 /*
- * hbars(entries, opts) — barras horizontais via Chart.js
- * entries: array de [label, value]
+ * hbars(entries, opts) — horizontal bars via Chart.js
+ * entries: array of [label, value]
  * opts: { max, tot, color, showTotal, totLabel, lw }
- * lw: largura mínima do eixo Y (calculada automaticamente; opts.lw é usada como mínimo extra).
+ * lw: minimum Y-axis width (calculated automatically; opts.lw is used as an extra minimum).
  */
 function hbars(entries, opts = {}) {
   const items = entries.slice(0, opts.max || 10);
@@ -1249,14 +1249,14 @@ function hbars(entries, opts = {}) {
   const col = resolveColor(opts.color || 'var(--accent)');
   const tot = opts.tot || null;
 
-  // Quebra labels no separador "  ·  " para exibir bot e área em duas linhas
+  // Splits labels on the "  ·  " separator to show bot and area on two lines
   const splitLabel = l => {
     const parts = String(l).split(/\s+·\s+/);
     return parts.length > 1 ? parts : l;
   };
 
-  // Para labels com separador "·" (bot  ·  área): calcula o mínimo necessário para não cortar.
-  // Para outros labels: usa opts.lw exatamente, sem expansão automática.
+  // For labels with a "·" separator (bot  ·  area): computes the minimum needed to avoid clipping.
+  // For other labels: uses opts.lw exactly, with no automatic expansion.
   const hasMultiline = items.some(([l]) => String(l).includes('·'));
   const minLwDots = hasMultiline ? Math.ceil(Math.max(...items.map(([l]) => {
     const parts = String(l).split(/\s+·\s+/);
@@ -1313,8 +1313,8 @@ function hbars(entries, opts = {}) {
           ctx.font         = `500 11px 'Inter', system-ui, sans-serif`;
           ctx.textAlign    = 'left';
           ctx.textBaseline = 'middle';
-          // Todos os labels ficam alinhados na mesma coluna X (logo após a barra mais longa)
-          // evita que labels de barras curtas fiquem no meio do gráfico
+          // All labels stay aligned in the same X column (right after the longest bar)
+          // avoids labels of short bars ending up in the middle of the chart
           const xBase = chartArea.right + 6;
           data.datasets[0].data.forEach((value, i) => {
             const bar   = meta.data[i];
@@ -1343,24 +1343,24 @@ function hbars(entries, opts = {}) {
 
 
 /*
- * clusteredBars(groups, series) — gráfico de barras clusterizado (agrupado).
- * Cada GRUPO (ex: uma fase) vira um bloco com um título; dentro dele há uma
- * BARRA fina para cada série (ex: tipo de problema), com a cor da série.
- * Todas as barras compartilham a mesma escala (maxVal global) para comparação.
- * groups: array de { label, color, valores: {serieKey: n} }
- * series: array ordenado de { key, label, color }
- * Barras com valor 0 são omitidas dentro do grupo, para não poluir.
+ * clusteredBars(groups, series) — clustered (grouped) bar chart.
+ * Each GROUP (ex: a phase) becomes a block with a title; inside it there's a
+ * thin BAR for each series (ex: problem type), colored by the series.
+ * All bars share the same scale (global maxVal) for comparison.
+ * groups: array of { label, color, valores: {serieKey: n} }
+ * series: ordered array of { key, label, color }
+ * Bars with a value of 0 are omitted within the group, to avoid clutter.
  */
 function clusteredBars(groups, series){
   if(!groups.length) return '<div style="font-size:12px;color:var(--ink4)">Sem dados</div>';
-  // escala global: maior valor entre todas as barras de todos os grupos
+  // global scale: largest value across all bars of all groups
   let maxVal = 1;
   groups.forEach(g => series.forEach(s => { maxVal = Math.max(maxVal, g.valores[s.key]||0); }));
   const corpo = groups.map(g => {
     const totGrupo = series.reduce((acc,s)=>acc+(g.valores[s.key]||0),0);
     const barras = series.map(s => {
       const n = g.valores[s.key]||0;
-      if(!n) return ''; // omite séries zeradas dentro do grupo
+      if(!n) return ''; // omits zeroed-out series within the group
       const w = Math.round(n/maxVal*100);
       return `<div class="clu-bar-row">
         <span class="clu-bar-lbl" title="${String(s.label).replace(/"/g,'')}">${s.label}</span>
@@ -1380,13 +1380,13 @@ function clusteredBars(groups, series){
 }
 
 /*
- * lineChart(points, opts) — gráfico de linha via Chart.js
- * points: array de { label, value }
+ * lineChart(points, opts) — line chart via Chart.js
+ * points: array of { label, value }
  * opts: { pctAxis, max, min, fmt }
  *
- * NOTA: o gráfico plota apenas meses até o mês atual.
- * Se o último ponto está em abril/26, é porque não há conclusões
- * mais recentes na planilha — avança automaticamente ao atualizar a base.
+ * NOTE: the chart only plots months up to the current one.
+ * If the last point is in Apr/26, it's because there are no more
+ * recent completions in the spreadsheet — it advances automatically once the base is updated.
  */
 function lineChart(points, opts = {}) {
   if (points.length < 2)
@@ -1453,10 +1453,10 @@ function lineChart(points, opts = {}) {
 }
 
 /*
- * chartVBars(meses, porMes, porMesV) — barras verticais empilhadas de volume mensal.
- * Dois datasets: chamados normais (azul brand) e vencidos (vermelho), empilhados.
- * meses: array de chaves "YYYY-MM" ordenadas
- * porMes / porMesV: objetos { "YYYY-MM": count }
+ * chartVBars(meses, porMes, porMesV) — stacked vertical bars of monthly volume.
+ * Two datasets: normal tickets (brand blue) and overdue (red), stacked.
+ * meses: array of ordered "YYYY-MM" keys
+ * porMes / porMesV: objects { "YYYY-MM": count }
  */
 function chartVBars(meses, porMes, porMesV) {
   const id      = _cid('vbar');
@@ -1529,21 +1529,21 @@ function chartVBars(meses, porMes, porMesV) {
 }
 
 /*
- * heatmap(matrix, rowLabels, colLabels) — tabela de calor
- * matrix[r][c] = valor numérico
- * A intensidade da cor vai de quase branco (valor baixo) a vermelho (valor máximo).
- * Usa rgba() com opacidade variável (compatível com qualquer navegador).
- * Valores zero ficam com fundo neutro (sem cor de calor).
+ * heatmap(matrix, rowLabels, colLabels) — heat map table
+ * matrix[r][c] = numeric value
+ * Color intensity goes from near-white (low value) to red (max value).
+ * Uses rgba() with variable opacity (works in any browser).
+ * Zero values get a neutral background (no heat color).
  */
 function heatmap(matrix, rowLabels, colLabels, opts={}){
   const flat = matrix.flat().filter(v => v > 0);
   const mx = flat.length ? Math.max(...flat) : 1;
   const HEATMAP_MIN_OPACITY   = 0.12;
-  const HEATMAP_OPACITY_RANGE = 0.78; // min + range = 0.90 (intensidade máxima)
+  const HEATMAP_OPACITY_RANGE = 0.78; // min + range = 0.90 (maximum intensity)
   const color = v => {
     if(!v) return 'var(--neu-bg)';
     const op = (HEATMAP_MIN_OPACITY + (v / mx) * HEATMAP_OPACITY_RANGE).toFixed(2);
-    return `rgba(1, 149, 214, ${op})`; // azul accent Saint-Gobain
+    return `rgba(1, 149, 214, ${op})`; // Saint-Gobain accent blue
   };
   let html = '<table class="hm"><thead><tr><th class="rh"></th>'+colLabels.map(c=>`<th>${c}</th>`).join('')+'</tr></thead><tbody>';
   matrix.forEach((row,r) => {
@@ -1557,34 +1557,34 @@ function heatmap(matrix, rowLabels, colLabels, opts={}){
 
 
 /* ============================================================
-   VIEW: GOVERNANÇA (executiva)
+   VIEW: GOVERNANCE (executive)
    ============================================================
-   A aba Governança é a visão unificada de todas as fontes.
-   Ela combina Projetos + Pipefy Melhorias + Analytics + Chamados RPA
-   num único conjunto de KPIs e gráficos.
+   The Governance tab is the unified view of all sources.
+   It combines Projects + Pipefy Improvements + Analytics + RPA Tickets
+   into a single set of KPIs and charts.
    ============================================================ */
 
 /*
- * allActions() — unifica as 4 fontes num único array de "ações".
- * Cada ação tem: fonte, sc (status normalizado), frente, responsável,
- * dtFim (data de referência para filtros e gráficos) e campos específicos.
+ * allActions() — merges the 4 sources into a single "actions" array.
+ * Each action has: source, sc (normalized status), frente, owner,
+ * dtFim (reference date for filters and charts) and source-specific fields.
  *
- * Para Chamados RPA:
- *   - sc é derivado da fase atual (contém "conclu" → done, senão → doing)
- *   - dtFim = data de finalização do chamado
- *   - criado = data de abertura (usada como fallback no refDate)
- *   - vencido = flag booleana do Pipefy
+ * For RPA Tickets:
+ *   - sc is derived from the current phase (contains "conclu" → done, else → doing)
+ *   - dtFim = ticket completion date
+ *   - criado = opening date (used as a refDate fallback)
+ *   - vencido = boolean flag from Pipefy
  */
 function allActions(){
   const out = [];
-  App.P.proj.forEach(p => out.push({fonte:'Projetos', sc:p.sc, frente:p.frente, resp:p.resp, dtFim:p.dtFim, prog:p.prog, prio:null}));
-  App.P.mel.forEach(m => out.push({fonte:'Pipefy', sc:m.sc, frente:m.frente, resp:m.resp, dtInicio:m.dtInicio, dtFim:m.dtFim, prog:null, prio:null}));
-  App.P.ana.forEach(a => out.push({fonte:'Analytics', sc:a.sc, frente:a.frente, resp:a.resp, dtInicio:a.dtInicio, dtFim:a.dtFim, prog:null, prio:a.prio}));
+  App.P.proj.forEach(p => out.push({source:'Projetos', sc:p.sc, frente:p.frente, resp:p.resp, dtFim:p.dtFim, prog:p.prog, prio:null}));
+  App.P.improvements.forEach(m => out.push({source:'Pipefy', sc:m.sc, frente:m.frente, resp:m.resp, dtInicio:m.dtInicio, dtFim:m.dtFim, prog:null, prio:null}));
+  App.P.ana.forEach(a => out.push({source:'Analytics', sc:a.sc, frente:a.frente, resp:a.resp, dtInicio:a.dtInicio, dtFim:a.dtFim, prog:null, prio:a.prio}));
   App.R.forEach(r => out.push({
-    fonte:'Chamados RPA',
+    source:'Chamados RPA',
     sc: r.fase.toLowerCase().includes('conclu') ? 'done' : 'doing',
-    // frente = área principal do bot (P2P, O2C, R2R, TAX, H2R), resolvida por enrichRPAComArea()
-    // Áreas secundárias do inventário (Arg, CI, IT, PAM…) não são frentes de negócio → null
+    // frente = bot's main business area (P2P, O2C, R2R, TAX, H2R), resolved by enrichRPAWithArea()
+    // Secondary inventory areas (Arg, CI, IT, PAM…) are not business areas → null
     frente: ['P2P','O2C','R2R','TAX','H2R'].includes(r.area) ? r.area : null,
     resp:r.solicitante,
     dtInicio:r.criado, dtFim:r.dtFim, criado:r.criado,
@@ -1593,45 +1593,45 @@ function allActions(){
   return out;
 }
 
-// Versão filtrada: aplica o filtro global de data antes de retornar
+// Filtered version: applies the global date filter before returning
 function allActionsFiltered(){
   return applyDate(allActions());
 }
 
 /*
- * isLate(a) — determina se uma ação está atrasada.
- * Retorna: true (atrasada), false (não atrasada), null (sem base para calcular)
+ * isLate(a) — determines whether an action is overdue.
+ * Returns: true (overdue), false (not overdue), null (no basis to calculate)
  *
- * Regras por fonte:
- *   Chamados RPA: atrasado se vencido=true E não concluído
- *   Projetos: atrasado se prazo passou E não está concluído/cancelado/monitoramento
- *   Pipefy/Analytics: retorna null (sem prazo preenchido na base → não entra no cálculo)
+ * Rules per source:
+ *   RPA Tickets: overdue if vencido=true AND not completed
+ *   Projects: overdue if the deadline passed AND not completed/cancelled/monitoring
+ *   Pipefy/Analytics: returns null (no deadline field in the base → excluded from the calc)
  *
- * A distinção null vs false é importante: null significa "não sei",
- * não "não está atrasado". Isso evita que fontes sem prazo puxem o % para baixo.
+ * The null vs false distinction matters: null means "unknown",
+ * not "not overdue". This keeps sources without a deadline from dragging the % down.
  */
 function isLate(a){
-  if(a.fonte === 'Chamados RPA') return a.vencido && a.sc !== 'done';
-  if(a.fonte === 'Projetos' && a.dtFim) return a.dtFim < HOJE && a.sc !== 'done' && a.sc !== 'cancel' && a.sc !== 'monitor';
+  if(a.source === 'Chamados RPA') return a.vencido && a.sc !== 'done';
+  if(a.source === 'Projetos' && a.dtFim) return a.dtFim < HOJE && a.sc !== 'done' && a.sc !== 'cancel' && a.sc !== 'monitor';
   return null;
 }
 
 /*
- * buildGov() — Painel de Controle (visão executiva).
+ * buildGovernance() — Control Panel (executive view).
  *
- * Lê:     App.P.mel, App.P.proj, App.P.ana, App.R (todas as fontes)
- * Escreve: #gov-content
- * Chama:  allActionsFiltered(), buildHeatmap(), buildEvolucao(), flushCharts()
- * Chamada por: generate() e renderAll() (quando filtro de data muda)
+ * Reads:  App.P.improvements, App.P.proj, App.P.ana, App.R (all sources)
+ * Writes: #gov-content
+ * Calls:  allActionsFiltered(), buildHeatmap(), flushCharts()
+ * Called by: generate() and renderAll() (when the date filter changes)
  *
- * Produz:
- *  - KPIs de composição: Concluídas / Em andamento / Backlog / Outros
- *  - Donut de status unificado com segmento "Impedimentos"
- *  - Barras por responsável (equipe CoE) e por frente
- *  - Heatmap de prioridade × frente (Analytics)
- *  - Gráfico de evolução do % concluído mês a mês
+ * Produces:
+ *  - Composition KPIs: Completed / In progress / Backlog / Other
+ *  - Unified status donut with an "Impediments" segment
+ *  - Bars by owner (CoE team) and by area
+ *  - Priority × area heatmap (Analytics)
+ *  - Line chart of % completed over time
  */
-function buildGov(){
+function buildGovernance(){
   const any = App.loaded.gov || App.loaded.rpa;
   document.getElementById('gov-empty').style.display = any ? 'none' : 'block';
   document.getElementById('gov-content').style.display = any ? 'block' : 'none';
@@ -1639,9 +1639,9 @@ function buildGov(){
 
   const {kept:A, noDate} = allActionsFiltered();
 
-  // Frentes disponíveis (só itens com frente definida — RPA chamados não têm frente)
+  // Available areas (only items with an area defined — RPA tickets have no area)
   const todasFrentes = [...new Set(A.filter(a => a.frente).map(a => a.frente))].sort();
-  // Valida: se a frente guardada não existe nos dados atuais, reseta
+  // Validate: if the stored area no longer exists in the current data, reset it
   const frenteAtiva  = App.govFrente && todasFrentes.includes(App.govFrente) ? App.govFrente : '';
   if (!frenteAtiva) App.govFrente = '';
   const acoesFiltradas = frenteAtiva ? A.filter(a => a.frente === frenteAtiva) : A;
@@ -1656,7 +1656,7 @@ function buildGov(){
   const nBlocked = sc.blocked;
   const nMonitor = sc.monitor;
   const nVendor  = sc.vendor;
-  // monta a descrição do que entra em "Outros" (só os que têm contagem > 0)
+  // builds the description of what goes into "Other" (only categories with count > 0)
   const outrosDesc = [
     nCancel?`${nCancel} cancel.`:'',
     nBlocked?`${nBlocked} bloq.`:'',
@@ -1664,7 +1664,7 @@ function buildGov(){
     nVendor?`${nVendor} suporte`:''
   ].filter(Boolean).join(' · ');
 
-  // Aviso de filtro ativo — mostra período, total de ações no recorte, e quantas ficaram de fora
+  // Active-filter notice — shows the period, total actions in range, and how many were excluded
   let dateNote = '';
   if(App.dateRange.mode !== 'all'){
     const fmt = d => d ? d.toLocaleDateString('pt-BR') : '∞';
@@ -1676,14 +1676,14 @@ function buildGov(){
       </div></div>`;
   }
 
-  const fontes = ['Projetos','Pipefy','Analytics','Chamados RPA'];
-  const porFonte = fontes.map(fonte => {
-    const subAcoes = acoesFiltradas.filter(a => a.fonte === fonte);
+  const sources = ['Projetos','Pipefy','Analytics','Chamados RPA'];
+  const bySource = sources.map(source => {
+    const subAcoes = acoesFiltradas.filter(a => a.source === source);
     const subDone  = subAcoes.filter(a => a.sc === 'done').length;
-    return {f: fonte, total: subAcoes.length, done: subDone};
+    return {f: source, total: subAcoes.length, done: subDone};
   }).filter(x => x.total > 0);
 
-  // Chips de filtro por frente — sem onclick inline, listeners adicionados após innerHTML
+  // Area filter chips — no inline onclick, listeners added after innerHTML
   const frenteChips = todasFrentes.length > 1
     ? `<div class="filters" id="gov-frente-chips" style="margin-bottom:16px">
         <span style="font-size:11px;color:var(--ink4);text-transform:uppercase;letter-spacing:.04em">Frente</span>
@@ -1694,13 +1694,13 @@ function buildGov(){
       </div>` : '';
 
 
-  // KPIs de composição
+  // Composition KPIs
   let html = `<div class="sh">Painel de Controle — visão executiva</div>
   ${frenteChips}${dateNote}
   ${aiBar('gov')}
   <div class="krow k5">
     <div class="kpi il">${kpiIcon('list')}<div class="knum">${total}</div><div class="klbl">Total de ações CoE</div>
-      <div class="ksub">${fontes.filter(f=>A.some(a=>a.fonte===f)).length} fontes integradas</div></div>
+      <div class="ksub">${sources.filter(f=>A.some(a=>a.source===f)).length} fontes integradas</div></div>
     <div class="kpi gl">${kpiIcon('check')}<div class="knum">${pct(done,total)}%</div><div class="klbl">Concluídas</div>
       <div class="ksub">${done} de ${total}</div></div>
     <div class="kpi">${kpiIcon('clock')}<div class="knum">${pct(doing,total)}%</div><div class="klbl">Em andamento</div>
@@ -1712,13 +1712,13 @@ function buildGov(){
   </div>`;
 
 
-  // Donut de status — unifica Encerramento + Monitoramento numa fatia só
-  // ("Em encerramento" = fase final / entregue) e usa uma paleta com lógica:
-  //   verde escuro = concluído · verde claro = em encerramento (fase final) ·
-  //   azul = em andamento · cinza = não iniciado · âmbar = bloqueado ·
-  //   vermelho = cancelado · roxo = suporte/fornecedor.
-  // Ordem do mais avançado/positivo para o menos. O total mostrado bate com o
-  // "Total de ações CoE" porque todos os status estão contemplados.
+  // Status donut — merges Encerramento + Monitoramento into a single slice
+  // ("Em encerramento" = final phase / delivered) and uses a deliberate palette:
+  //   dark green = done · light green = closing (final phase) ·
+  //   blue = in progress · gray = not started · amber = blocked ·
+  //   red = cancelled · purple = vendor support.
+  // Ordered from most advanced/positive to least. The total shown matches
+  // "Total de ações CoE" because every status is included.
   const scAll = count(acoesFiltradas, a => a.sc);
   const donutDefs = [
     {label:'Concluído',       value: scAll.done    || 0,                          color:'#4DB1B3'},
@@ -1730,7 +1730,7 @@ function buildGov(){
   ];
   const donutData = donutDefs.filter(d => d.value > 0);
 
-  // Detalha o que compõe "Impedimentos" (só exibe categorias com valor > 0)
+  // Details what makes up "Impedimentos" (only shows categories with a value > 0)
   const impedimentosDesc = [
     scAll.blocked ? `${scAll.blocked} bloqueado${scAll.blocked > 1 ? 's' : ''}` : '',
     scAll.cancel  ? `${scAll.cancel} cancelado${scAll.cancel  > 1 ? 's' : ''}` : '',
@@ -1738,30 +1738,30 @@ function buildGov(){
     scAll.other   ? `${scAll.other} outro${scAll.other > 1 ? 's' : ''}`         : '',
   ].filter(Boolean).join(' · ');
 
-  // Total de ações por responsável da equipe CoE (TODAS — abertas, concluídas, canceladas).
-  // Mostra SÓ a equipe CoE (ver COE_TEAM), somando pelo nome padronizado.
-  // IMPORTANTE: cada fonte tem seu campo de responsável:
-  //   - Projetos/Pipefy/Analytics: campo 'resp' (1 responsável por item)
-  //   - Chamados RPA: campo 'responsaveis' (lista — quem trabalha no chamado, não o
-  //     solicitante; um chamado pode ter vários responsáveis, conta para cada um).
-  // Respeita o filtro de período de cada fonte (applyDate).
+  // Total actions per CoE team owner (ALL — open, completed, cancelled).
+  // Shows ONLY the CoE team (see COE_TEAM), summed by standardized name.
+  // IMPORTANT: each source has its own owner field:
+  //   - Projetos/Pipefy/Analytics: 'resp' field (1 owner per item)
+  //   - RPA Tickets: 'responsaveis' field (list — who works the ticket, not the
+  //     requester; a ticket can have several owners, each one counts).
+  // Respects each source's period filter (applyDate).
   const respCoE = {};
   const addResp = nomeRaw => {
     const nome = getStandardCoeName(nomeRaw);
     if(nome) respCoE[nome] = (respCoE[nome]||0) + 1;
   };
-  // Quando frente ativa: filtra cada fonte pela frente; RPA não tem frente → fica fora
+  // When an area filter is active: filters each source by area; RPA has no area → excluded
   applyDate(App.P.proj).kept.filter(p => !frenteAtiva || p.frente === frenteAtiva).forEach(p => addResp(p.resp));
-  applyDate(App.P.mel).kept.filter(m => !frenteAtiva || m.frente === frenteAtiva).forEach(m => addResp(m.resp));
+  applyDate(App.P.improvements).kept.filter(m => !frenteAtiva || m.frente === frenteAtiva).forEach(m => addResp(m.resp));
   applyDate(App.P.ana).kept.filter(a => !frenteAtiva || a.frente === frenteAtiva).forEach(a => addResp(a.resp));
-  // RPA: inclui sempre (sem filtro) ou quando a área do bot bate com a frente ativa
+  // RPA: always included (no filter), or when the bot's area matches the active area
   applyDate(App.R).kept.filter(r => !frenteAtiva || r.area === frenteAtiva).forEach(r => (r.responsaveis||[]).forEach(addResp));
   const respTop = Object.entries(respCoE).sort((a,b) => b[1]-a[1]);
-  const totalRespCoE = respTop.reduce((s,e)=>s+e[1],0); // base para o percentual
+  const totalRespCoE = respTop.reduce((s,e)=>s+e[1],0); // base for the percentage
 
-  // "Por frente" sempre mostra o panorama completo (A, não acoesFiltradas) para comparação
+  // "By area" always shows the full picture (A, not acoesFiltradas) for comparison
   const frCount = count(A.filter(a => a.frente), a => a.frente);
-  const fonteInfo = porFonte.map(x =>
+  const fonteInfo = bySource.map(x =>
     `<span><b style="color:var(--ink2)">${x.f}</b> ${x.total} <span style="color:var(--ink4)">(${pct(x.done,x.total)}% concl.)</span></span>`
   ).join(' &thinsp;·&thinsp; ');
   html += `<div class="g3">
@@ -1777,23 +1777,23 @@ function buildGov(){
       ${hbars(Object.entries(frCount).sort((a,b)=>b[1]-a[1]), {max:8, lw:60, tot:Object.values(frCount).reduce((s,v)=>s+v,0)})}</div>
   </div>`;
 
-  // Rodapé de diagnóstico — mostra de onde vem cada número (auditoria).
-  // Ajuda a identificar rapidamente se alguma fonte está com contagem inesperada.
+  // Diagnostic footer — shows where each number comes from (audit trail).
+  // Helps quickly spot if any source has an unexpected count.
   const diag = [
-    `Pipefy: ${App.P.mel.length}`,
+    `Pipefy: ${App.P.improvements.length}`,
     `Projetos: ${App.P.proj.length}`,
     `Analytics: ${App.P.ana.length}`,
     `Chamados RPA: ${App.R.length}`,
     `Bots: ${App.B.length}`
   ].join(' · ');
   html += `<div style="font-size:10px;color:var(--ink4);margin-top:18px;padding-top:12px;border-top:1px solid var(--rule)">
-    Contagem por fonte (total sem filtro de data): ${diag}. Total combinado: ${App.P.mel.length+App.P.proj.length+App.P.ana.length+App.R.length} ações.</div>`;
+    Contagem por fonte (total sem filtro de data): ${diag}. Total combinado: ${App.P.improvements.length+App.P.proj.length+App.P.ana.length+App.R.length} ações.</div>`;
 
   document.getElementById('gov-content').innerHTML = html;
 
-  // Listeners dos chips de frente — sem onclick inline, zero risco de escape
+  // Area chip listeners — no inline onclick, zero escaping risk
   document.querySelectorAll('[data-gf]').forEach(btn => {
-    btn.addEventListener('click', () => { App.govFrente = btn.dataset.gf; buildGov(); });
+    btn.addEventListener('click', () => { App.govFrente = btn.dataset.gf; buildGovernance(); });
   });
 
   flushCharts();
@@ -1801,10 +1801,10 @@ function buildGov(){
 
 
 /*
- * buildHeatmap() — heatmap de ações Analytics abertas por prioridade × frente.
- * Linhas = prioridades 1 a 4. Colunas = frentes/áreas.
- * Células com mais ações abertas ficam mais vermelhas.
- * Só é exibido se houver dados de Analytics com prioridade preenchida.
+ * buildHeatmap() — heatmap of open Analytics actions by priority × area.
+ * Rows = priorities 1 to 4. Columns = areas.
+ * Cells with more open actions turn more red.
+ * Only shown if there is Analytics data with priority filled in.
  */
 function buildHeatmap(){
   const {kept:anaF} = applyDate(App.P.ana);
@@ -1821,31 +1821,36 @@ function buildHeatmap(){
     <div style="overflow-x:auto">${heatmap(matrix, prios.map(p=>`Prioridade ${p}`), frentes)}</div></div>`;
 }
 
+// TODO: revisar — buildEvolutionChart() não é chamada em nenhum lugar do
+// código atual (nem por buildGovernance, apesar do que dizia o comentário
+// antigo). Pode ser código morto; confirmar com o time antes de remover.
 /*
- * buildEvolucao(A) — gráfico de linha: % concluído acumulado mês a mês.
+ * buildEvolutionChart(A) — line chart: cumulative % completed, month by month.
  *
- * COMO FUNCIONA:
- *   1. Filtra só ações que têm dtFim preenchida (sem data, não dá pra posicionar no tempo)
- *   2. Filtra só meses ATÉ o mês atual (evita plotar meses futuros com zero conclusões,
- *      o que achataria a curva artificialmente e causaria o bug visual do gráfico "parado")
- *   3. Para cada mês, conta quantas ações têm sc='done' e dtFim naquele mês
- *   4. Acumula progressivamente: cada ponto mostra o total de concluídas até aquele mês
- *   5. Divide pelo total de ações com data (denominador fixo) para obter o percentual
+ * HOW IT WORKS:
+ *   1. Filters to only actions with dtFim set (without a date, it can't be placed in time)
+ *   2. Filters to only months UP TO the current month (avoids plotting future months
+ *      with zero completions, which would artificially flatten the curve and cause
+ *      the "stuck" chart visual bug)
+ *   3. For each month, counts how many actions have sc='done' and dtFim in that month
+ *   4. Accumulates progressively: each point shows the total completed up to that month
+ *   5. Divides by the total actions with a date (fixed denominator) to get the percentage
  *
- * POR QUE O GRÁFICO PODE PARAR ANTES DE HOJE:
- *   Se a última conclusão registrada na planilha foi em abril/26, o último ponto será abril/26.
- *   O gráfico avança automaticamente quando a base é atualizada com conclusões mais recentes.
+ * WHY THE CHART MIGHT STOP BEFORE TODAY:
+ *   If the latest completion recorded in the spreadsheet was in Apr/26, the last point
+ *   will be Apr/26. The chart advances automatically once the base is updated with
+ *   more recent completions.
  */
-function buildEvolucao(A){
+function buildEvolutionChart(A){
   const comData = A.filter(a => a.dtFim);
-  if(comData.length < 3) return ''; // insuficiente para um gráfico útil
+  if(comData.length < 3) return ''; // not enough for a useful chart
   const mesAtual = ym(HOJE);
-  // exclui datas futuras (prazo de projetos ainda não entregues)
+  // excludes future dates (deadlines of projects not yet delivered)
   const passadas = comData.filter(a => ym(a.dtFim) <= mesAtual);
   if(passadas.length < 3) return '';
   const meses = [...new Set(passadas.map(a => ym(a.dtFim)))].sort().filter(m => m <= mesAtual);
   if(meses.length < 2) return '';
-  const denom = passadas.length; // denominador: total de ações com data no período
+  const denom = passadas.length; // denominator: total actions with a date in the period
   let acum = 0;
   const pts = meses.map(m => {
     acum += passadas.filter(a => a.sc==='done' && ym(a.dtFim)===m).length;
@@ -1860,30 +1865,30 @@ function buildEvolucao(A){
 
 
 /* ============================================================
-   VIEW: PROJETOS
+   VIEW: PROJECTS
    ============================================================
-   Apresenta o portfólio de projetos da área com:
-   - KPIs pelo fluxo real do GBS (Diagnóstico→Planejamento→Execução→Encerramento→Monitoramento)
-   - Donut por status, barras por frente/área cliente
-   - Lista com filtros (busca, responsável, status, frente)
-   - Expand inline ao clicar: revela campos ricos da planilha (descrição, equipes, etc.)
+   Presents the area's project portfolio with:
+   - KPIs following the real GBS flow (Diagnóstico→Planejamento→Execução→Encerramento→Monitoramento)
+   - Status donut, bars by area/client area
+   - Filterable list (search, owner, status, area)
+   - Inline expand on click: reveals rich spreadsheet fields (description, teams, etc.)
    ============================================================ */
 
 /*
- * buildProj() — aba Projetos.
+ * buildProjects() — Projects tab.
  *
- * Lê:     App.P.proj
- * Escreve: #proj-content  (estrutura + filtros)
- *          #proj-list      (lista de itens, via renderProjList())
- * Chamada por: generate() e renderAll()
+ * Reads:  App.P.proj
+ * Writes: #proj-content  (structure + filters)
+ *          #proj-list      (item list, via renderProjectList())
+ * Called by: generate() and renderAll()
  *
- * Produz:
- *  - KPIs: total, em execução, fase final, atrasados, risco alto
- *  - Donut por status e barras por frente/área cliente
- *  - Lista filtrável com expand inline (detalhes do projeto)
- *  - Score de risco automático 0–100 por projeto
+ * Produces:
+ *  - KPIs: total, in execution, final phase, overdue, high risk
+ *  - Status donut and bars by area/client area
+ *  - Filterable list with inline expand (project details)
+ *  - Automatic 0-100 risk score per project
  */
-function buildProj(){
+function buildProjects(){
   const {kept:P, noDate} = applyDate(App.P.proj);
   document.getElementById('proj-empty').style.display = (P.length||noDate) ? 'none' : 'block';
   document.getElementById('proj-content').style.display = (P.length||noDate) ? 'block' : 'none';
@@ -1947,34 +1952,34 @@ function buildProj(){
   // Monta os selects de filtro dinamicamente a partir dos valores presentes nos dados
   const pessoas = [...new Set(P.map(p => p.resp).filter(Boolean))].sort();
   html += `<div class="filters" style="margin-top:4px">
-    <input type="text" id="proj-q" placeholder="Buscar projeto, responsável, frente..." oninput="renderProjList()" style="flex:1;max-width:280px">
-    <button class="chip" id="proj-chip-atraso" onclick="toggleProjChip('atraso')">⚠ Só atrasados</button>
-    <button class="chip" id="proj-chip-risco" onclick="toggleProjChip('risco')">Risco alto</button>
+    <input type="text" id="proj-q" placeholder="Buscar projeto, responsável, frente..." oninput="renderProjectList()" style="flex:1;max-width:280px">
+    <button class="chip" id="proj-chip-atraso" onclick="toggleProjectChip('atraso')">⚠ Só atrasados</button>
+    <button class="chip" id="proj-chip-risco" onclick="toggleProjectChip('risco')">Risco alto</button>
     <label>Responsável</label>
-    <select id="proj-fp" onchange="renderProjList()"><option value="">Todos</option>
+    <select id="proj-fp" onchange="renderProjectList()"><option value="">Todos</option>
       ${pessoas.map(p=>`<option>${p}</option>`).join('')}</select>
     <label>Status</label>
-    <select id="proj-fs" onchange="renderProjList()"><option value="">Todos</option>
+    <select id="proj-fs" onchange="renderProjectList()"><option value="">Todos</option>
       ${[...new Set(P.map(p=>p.statusRaw).filter(Boolean))].sort().map(s=>`<option>${s}</option>`).join('')}</select>
     <label>Frente</label>
-    <select id="proj-ff" onchange="renderProjList()"><option value="">Todas</option>
+    <select id="proj-ff" onchange="renderProjectList()"><option value="">Todas</option>
       ${[...new Set(P.map(p=>p.frente).filter(Boolean))].sort().map(f=>`<option>${f}</option>`).join('')}</select>
     <span style="font-size:11px;color:var(--ink4);margin-left:auto" id="proj-count"></span>
   </div>`;
   html += `<div class="card np"><div class="ilist" id="proj-list" style="border:none;border-radius:0"></div></div>`;
   document.getElementById('proj-content').innerHTML = html;
   flushCharts();
-  renderProjList();
+  renderProjectList();
   setBadge('nb-proj', P.length+' proj', '');
 }
 
 /*
- * renderProjList() — renderiza a lista filtrada de projetos.
- * Chamado por buildProj() e sempre que um filtro muda (busca, responsável, status, frente).
- * Aplica o filtro de data global + os filtros locais da aba.
- * Mantém o estado de projetos expandidos (App.projOpen) entre re-renderizações.
+ * renderProjectList() — renders the filtered list of projects.
+ * Called by buildProjects() and whenever a filter changes (search, owner, status, area).
+ * Applies the global date filter + the tab's local filters.
+ * Keeps the expanded-projects state (App.projOpen) across re-renders.
  */
-function renderProjList(){
+function renderProjectList(){
   const {kept: projetos} = applyDate(App.P.proj);
   const textoBusca       = (document.getElementById('proj-q')?.value||'').toLowerCase();
   const filterPessoa     = document.getElementById('proj-fp')?.value||'';
@@ -2016,7 +2021,7 @@ function renderProjList(){
       ? `<span class="badge red" title="${risco.reasons.join(' · ')}">risco alto</span>`
       : (risco.level==='medium' ? `<span class="badge warn" title="${risco.reasons.join(' · ')}">risco médio</span>` : '');
     return `<div class="proj-row ${open?'open':''}" data-k="${key.replace(/"/g,'')}">
-      <div class="icard" onclick="toggleProj('${key.replace(/'/g,"\\'").replace(/"/g,'&quot;')}')" style="cursor:pointer">
+      <div class="icard" onclick="toggleProject('${key.replace(/'/g,"\\'").replace(/"/g,'&quot;')}')" style="cursor:pointer">
         <div class="iico" style="background:${estaAtrasado?'var(--err-bg)':'var(--neu-bg)'}">
           <span style="width:11px;height:11px;border-radius:50%;background:${corStatus};display:block"></span>
         </div>
@@ -2033,7 +2038,7 @@ function renderProjList(){
           <span style="color:var(--ink4);font-size:11px;margin-left:4px;transition:transform .15s;transform:rotate(${open?'90deg':'0deg'})">▶</span>
         </div>
       </div>
-      ${open ? projDetails(p) : ''}
+      ${open ? projectDetails(p) : ''}
     </div>`;
   }).join('');
   const el = document.getElementById('proj-list');
@@ -2041,38 +2046,38 @@ function renderProjList(){
 }
 
 /*
- * toggleProjChip(qual) — liga/desliga um filtro rápido (atraso / risco alto)
- * da aba Projetos e re-renderiza a lista, atualizando o destaque visual do chip.
+ * toggleProjectChip(qual) — toggles a quick filter (overdue / high risk)
+ * on the Projects tab and re-renders the list, updating the chip's visual highlight.
  */
-function toggleProjChip(qual){
+function toggleProjectChip(qual){
   if(!App.projChips) App.projChips = {atraso:false, risco:false};
   App.projChips[qual] = !App.projChips[qual];
   const map = {atraso:'proj-chip-atraso', risco:'proj-chip-risco'};
   const btn = document.getElementById(map[qual]);
   if(btn) btn.classList.toggle('active', App.projChips[qual]);
-  renderProjList();
+  renderProjectList();
 }
 
 /*
- * toggleProj(key) — abre ou fecha o painel de detalhes de um projeto.
- * Usa um Set (App.projOpen) para manter quais projetos estão expandidos.
- * Se a chave já está no Set → remove (fecha). Se não está → adiciona (abre).
- * Re-renderiza a lista após para refletir a mudança.
+ * toggleProject(key) — opens or closes a project's details panel.
+ * Uses a Set (App.projOpen) to track which projects are expanded.
+ * If the key is already in the Set → removes it (closes). If not → adds it (opens).
+ * Re-renders the list afterward to reflect the change.
  */
-function toggleProj(key){
+function toggleProject(key){
   if(!App.projOpen) App.projOpen = new Set();
   if(App.projOpen.has(key)) App.projOpen.delete(key);
   else App.projOpen.add(key);
-  renderProjList();
+  renderProjectList();
 }
 
 /*
- * projDetails(p) — gera o HTML do painel expandido de detalhes de um projeto.
- * Só renderiza os blocos de campos que estão preenchidos na planilha.
- * Campos vazios não aparecem (nem como placeholder vazio).
- * O layout é em grid 2 colunas (ou 1 coluna em mobile).
+ * projectDetails(p) — generates the HTML for a project's expanded details panel.
+ * Only renders the field blocks that are filled in on the spreadsheet.
+ * Empty fields don't show up (not even as an empty placeholder).
+ * The layout is a 2-column grid (or 1 column on mobile).
  */
-function projDetails(p){
+function projectDetails(p){
   const fmt = txt => String(txt||'').trim().replace(/\n/g,'<br>');
   const blocks = [];
   if(p.resp)        blocks.push({lbl:'Responsável',             val:p.resp});
@@ -2092,66 +2097,66 @@ function projDetails(p){
 
 
 /*
- * buildGraficoEvolutivo(M) — gráfico de linhas: Concluídas × Backlog × Previsão.
+ * buildImprovementEvolutionChart(M) — line chart: Completed × Backlog × Forecast.
  *
- * Linha 1 — Concluídas/mês: items com sc='done' agrupados por dtFim
- * Linha 2 — Backlog/mês: reconstruído historicamente como
- *           items_todo_hoje + items_concluídos_após_aquele_mês
- * Linha 3 — Previsão (futuro): média das últimas 3 competências projetada para frente
+ * Line 1 — Completed/month: items with sc='done' grouped by dtFim
+ * Line 2 — Backlog/month: reconstructed historically as
+ *           items_todo_today + items_completed_after_that_month
+ * Line 3 — Forecast (future): average of the last 3 months projected forward
  *
- * Linha vertical vermelha tracejada marca o mês atual (divisor passado/futuro).
- * Retorna '' se não houver dados suficientes (< 3 meses com conclusões).
+ * Dashed red vertical line marks the current month (past/future divider).
+ * Returns '' if there isn't enough data (< 3 months with completions).
  */
-// Calcula os dados das três séries do gráfico evolutivo de melhorias.
-// Retorna null se não houver dados suficientes (< 3 concluídas ou < 2 meses históricos).
-function calcMelEvolutData(melhorias) {
-  const concluidas = melhorias.filter(m => m.sc === 'done' && m.dtFim);
-  if (concluidas.length < 3) return null;
+// Calculates the data for the three series of the improvement evolution chart.
+// Returns null if there isn't enough data (< 3 completed or < 2 historical months).
+function calcImprovementEvolutionData(improvements) {
+  const completed = improvements.filter(m => m.sc === 'done' && m.dtFim);
+  if (completed.length < 3) return null;
 
-  const porMes    = {};
-  concluidas.forEach(m => { const k = ym(m.dtFim); porMes[k] = (porMes[k] || 0) + 1; });
-  const mesAtual  = ym(HOJE);
-  const mesesHist = Object.keys(porMes).sort().filter(k => k <= mesAtual);
-  if (mesesHist.length < 2) return null;
+  const byMonth        = {};
+  completed.forEach(m => { const k = ym(m.dtFim); byMonth[k] = (byMonth[k] || 0) + 1; });
+  const currentMonth    = ym(HOJE);
+  const historicalMonths = Object.keys(byMonth).sort().filter(k => k <= currentMonth);
+  if (historicalMonths.length < 2) return null;
 
-  const avancaMes = k => {
+  const advanceMonth = k => {
     const [y, mo] = k.split('-').map(Number);
     return mo === 12 ? `${y + 1}-01` : `${y}-${String(mo + 1).padStart(2, '0')}`;
   };
 
-  // Prazo final = outubro do ano corrente (ou do próximo, se outubro já passou)
-  const [curY, curMo] = mesAtual.split('-').map(Number);
-  const OCT_PRAZO = `${curMo <= 10 ? curY : curY + 1}-10`;
+  // Final deadline = October of the current year (or the next one, if October already passed)
+  const [curY, curMo] = currentMonth.split('-').map(Number);
+  const OCT_DEADLINE = `${curMo <= 10 ? curY : curY + 1}-10`;
 
-  let fimRange = mesAtual;
-  for (let i = 0; i < 6; i++) fimRange = avancaMes(fimRange);
-  if (fimRange > OCT_PRAZO) fimRange = OCT_PRAZO;
+  let rangeEnd = currentMonth;
+  for (let i = 0; i < 6; i++) rangeEnd = advanceMonth(rangeEnd);
+  if (rangeEnd > OCT_DEADLINE) rangeEnd = OCT_DEADLINE;
 
-  const allMeses = [];
-  let cur = mesesHist[0];
-  while (cur <= fimRange) { allMeses.push(cur); cur = avancaMes(cur); }
+  const allMonths = [];
+  let cur = historicalMonths[0];
+  while (cur <= rangeEnd) { allMonths.push(cur); cur = advanceMonth(cur); }
 
-  const itemsTodoAtual = melhorias.filter(m => m.sc === 'todo').length;
-  const mesesFuturos   = allMeses.filter(m => m >= mesAtual);
-  const prevPorMes     = mesesFuturos.length > 0 ? Math.max(1, Math.round(itemsTodoAtual / mesesFuturos.length)) : 1;
+  const currentTodoItems  = improvements.filter(m => m.sc === 'todo').length;
+  const futureMonths      = allMonths.filter(m => m >= currentMonth);
+  const forecastPerMonth  = futureMonths.length > 0 ? Math.max(1, Math.round(currentTodoItems / futureMonths.length)) : 1;
 
   return {
-    labels:        allMeses.map(m => ymLabel(m)),
-    idxAtual:      allMeses.indexOf(mesAtual),
-    itemsTodoAtual,
-    mesesFuturos,
-    prevPorMes,
-    dataConcl:    allMeses.map(m => m <= mesAtual ? (porMes[m] || 0) : null),
-    dataBacklog:  allMeses.map(m => {
-      if (m > mesAtual) return null;
-      return itemsTodoAtual + concluidas.filter(c => ym(c.dtFim) > m).length;
+    labels:         allMonths.map(m => ymLabel(m)),
+    currentIndex:   allMonths.indexOf(currentMonth),
+    currentTodoItems,
+    futureMonths,
+    forecastPerMonth,
+    completedData: allMonths.map(m => m <= currentMonth ? (byMonth[m] || 0) : null),
+    backlogData:   allMonths.map(m => {
+      if (m > currentMonth) return null;
+      return currentTodoItems + completed.filter(c => ym(c.dtFim) > m).length;
     }),
-    dataPrevisao: allMeses.map(m => m >= mesAtual ? prevPorMes : null),
+    forecastData:  allMonths.map(m => m >= currentMonth ? forecastPerMonth : null),
   };
 }
 
-// Plugins Chart.js para o gráfico evolutivo: rótulos sobre os pontos e linha do mês atual.
-function melEvolutPlugins(idxAtual) {
+// Chart.js plugins for the evolution chart: point labels and the current-month line.
+function improvementEvolutionPlugins(currentIndex) {
   const dataLabels = {
     id: 'dataLabels',
     afterDatasetsDraw(chart) {
@@ -2159,7 +2164,7 @@ function melEvolutPlugins(idxAtual) {
       data.datasets.forEach((dataset, i) => {
         const meta = chart.getDatasetMeta(i);
         if (meta.hidden) return;
-        const above = i !== 2; // Previsão (i===2) fica abaixo para não colidir
+        const above = i !== 2; // Forecast (i===2) sits below to avoid overlap
         meta.data.forEach((el, j) => {
           const value = dataset.data[j];
           if (value == null) return;
@@ -2174,12 +2179,12 @@ function melEvolutPlugins(idxAtual) {
       });
     }
   };
-  const linhaHoje = {
-    id: 'linhaHoje',
+  const todayLine = {
+    id: 'todayLine',
     afterDraw(chart) {
-      if (idxAtual < 0) return;
+      if (currentIndex < 0) return;
       const { ctx, chartArea, scales } = chart;
-      const x = scales.x.getPixelForValue(chart.data.labels[idxAtual]);
+      const x = scales.x.getPixelForValue(chart.data.labels[currentIndex]);
       ctx.save();
       ctx.beginPath();
       ctx.setLineDash([6, 4]);
@@ -2191,15 +2196,15 @@ function melEvolutPlugins(idxAtual) {
       ctx.restore();
     }
   };
-  return [dataLabels, linhaHoje];
+  return [dataLabels, todayLine];
 }
 
-function buildGraficoEvolutivo(melhorias) {
-  const evol = calcMelEvolutData(melhorias);
+function buildImprovementEvolutionChart(improvements) {
+  const evol = calcImprovementEvolutionData(improvements);
   if (!evol) return '';
 
-  const { labels, idxAtual, itemsTodoAtual, mesesFuturos, prevPorMes,
-          dataConcl, dataBacklog, dataPrevisao } = evol;
+  const { labels, currentIndex, currentTodoItems, futureMonths, forecastPerMonth,
+          completedData, backlogData, forecastData } = evol;
   const id = _cid('mel-evol');
 
   _pendingCharts.push({
@@ -2211,7 +2216,7 @@ function buildGraficoEvolutivo(melhorias) {
         datasets: [
           {
             label:               'Concluídas',
-            data:                dataConcl,
+            data:                completedData,
             borderColor:         C.ink,
             backgroundColor:     'transparent',
             borderWidth:         2,
@@ -2222,7 +2227,7 @@ function buildGraficoEvolutivo(melhorias) {
           },
           {
             label:               'Backlog',
-            data:                dataBacklog,
+            data:                backlogData,
             borderColor:         C.ink,
             backgroundColor:     'transparent',
             borderWidth:         2,
@@ -2234,7 +2239,7 @@ function buildGraficoEvolutivo(melhorias) {
           },
           {
             label:               'Previsão',
-            data:                dataPrevisao,
+            data:                forecastData,
             borderColor:         C.err,
             backgroundColor:     'transparent',
             borderWidth:         1.5,
@@ -2275,7 +2280,7 @@ function buildGraficoEvolutivo(melhorias) {
           }
         }
       },
-      plugins: melEvolutPlugins(idxAtual)
+      plugins: improvementEvolutionPlugins(currentIndex)
     }
   });
 
@@ -2283,7 +2288,7 @@ function buildGraficoEvolutivo(melhorias) {
     <div class="card-title">
       <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
       Melhorias Concluídas × Backlog
-      <span class="rt">previsão = ${itemsTodoAtual} pendentes ÷ ${mesesFuturos.length} meses = ${prevPorMes}/mês · linha vermelha = hoje</span>
+      <span class="rt">previsão = ${currentTodoItems} pendentes ÷ ${futureMonths.length} meses = ${forecastPerMonth}/mês · linha vermelha = hoje</span>
     </div>
     <div style="position:relative;height:280px"><canvas id="${id}"></canvas></div>
   </div>`;
@@ -2291,61 +2296,61 @@ function buildGraficoEvolutivo(melhorias) {
 
 
 /*
- * overviewFrentes(M) — tabela "Overview por categoria" da aba Pipefy Melhorias.
+ * overviewByArea(M) — "Overview por categoria" table on the Pipefy Improvements tab.
  *
- * Linhas  = frentes (P2P, O2C, TAX…), na ordem padrão + extras ao final.
- * Colunas = Melhorias (total) + breakdown por status.
+ * Rows    = business areas (P2P, O2C, TAX…), in the standard order + extras at the end.
+ * Columns = Improvements (total) + breakdown by status.
  *
- * "Dev + Planej." e "Validação" são ambos sc='doing', distinguidos pelo statusRaw:
- *   Validação    → statusRaw contém "validação" ou "aguardando"
- *   Dev + Planej → sc='doing' e não é validação
+ * "Dev + Planej." and "Validação" are both sc='doing', distinguished by statusRaw:
+ *   Validação    → statusRaw contains "validação" or "aguardando"
+ *   Dev + Planej → sc='doing' and not validation
  */
-function overviewFrentes(melhorias) {
-  const isValidacao = m => {
+function overviewByArea(improvements) {
+  const isValidation = m => {
     const statusText = (m.statusRaw || '').toLowerCase();
     return statusText.includes('validação') || statusText.includes('validacao') || statusText.includes('aguardando');
   };
 
-  const COLUNAS = [
-    { label: 'Melhorias',     fn: null,                                    cls: '' },
-    { label: 'Backlog',       fn: m => m.sc === 'todo',                    cls: '' },
-    { label: 'Dev + Planej.', fn: m => m.sc === 'doing' && !isValidacao(m), cls: '' },
-    { label: 'Validação',     fn: m => isValidacao(m),                     cls: '' },
-    { label: 'Pipefy',        fn: m => m.sc === 'vendor',                  cls: '' },
-    { label: 'Bloqueado',     fn: m => m.sc === 'blocked',                 cls: '' },
-    { label: 'Concluídos',    fn: m => m.sc === 'done',                    cls: 'ov-done' },
-    { label: 'Cancelados',    fn: m => m.sc === 'cancel',                  cls: 'ov-cancel' },
+  const COLUMNS = [
+    { label: 'Melhorias',     fn: null,                                      cls: '' },
+    { label: 'Backlog',       fn: m => m.sc === 'todo',                      cls: '' },
+    { label: 'Dev + Planej.', fn: m => m.sc === 'doing' && !isValidation(m), cls: '' },
+    { label: 'Validação',     fn: m => isValidation(m),                     cls: '' },
+    { label: 'Pipefy',        fn: m => m.sc === 'vendor',                    cls: '' },
+    { label: 'Bloqueado',     fn: m => m.sc === 'blocked',                   cls: '' },
+    { label: 'Concluídos',    fn: m => m.sc === 'done',                      cls: 'ov-done' },
+    { label: 'Cancelados',    fn: m => m.sc === 'cancel',                    cls: 'ov-cancel' },
   ];
 
-  const ORDEM  = ['COE','P2P','O2C','R2R','TAX','H2R'];
-  const CORES  = { COE:'#0195D6', P2P:'#E83430', O2C:'#4DB1B3', R2R:'#E66407', TAX:'#0F5299', H2R:'#8B6FD4' };
+  const ORDER  = ['COE','P2P','O2C','R2R','TAX','H2R'];
+  const COLORS = { COE:'#0195D6', P2P:'#E83430', O2C:'#4DB1B3', R2R:'#E66407', TAX:'#0F5299', H2R:'#8B6FD4' };
 
-  const todasFrentes = [...new Set(melhorias.map(m => m.frente).filter(Boolean))];
+  const todasFrentes = [...new Set(improvements.map(m => m.frente).filter(Boolean))];
   const frentes = [
-    ...ORDEM.filter(f => todasFrentes.includes(f)),
-    ...todasFrentes.filter(f => !ORDEM.includes(f)).sort(),
+    ...ORDER.filter(f => todasFrentes.includes(f)),
+    ...todasFrentes.filter(f => !ORDER.includes(f)).sort(),
   ];
   if (!frentes.length) return '';
 
-  const cel = n => n
+  const cell = n => n
     ? `<td>${n}</td>`
     : `<td class="ov-zero">—</td>`;
 
-  const linhas = frentes.map(frente => {
-    const itens = melhorias.filter(m => m.frente === frente);
-    const cor   = CORES[frente] || 'var(--ink3)';
-    const cols  = COLUNAS.map((c, i) => cel(i === 0 ? itens.length : itens.filter(c.fn).length)).join('');
+  const rows = frentes.map(frente => {
+    const itens = improvements.filter(m => m.frente === frente);
+    const cor   = COLORS[frente] || 'var(--ink3)';
+    const cols  = COLUMNS.map((c, i) => cell(i === 0 ? itens.length : itens.filter(c.fn).length)).join('');
     return `<tr>
       <td><span class="ov-badge" style="background:${cor}">${frente}</span></td>
       ${cols}
     </tr>`;
   }).join('');
 
-  const totais = COLUNAS.map((c, i) =>
-    `<td>${i === 0 ? melhorias.length : melhorias.filter(c.fn).length}</td>`
+  const totals = COLUMNS.map((c, i) =>
+    `<td>${i === 0 ? improvements.length : improvements.filter(c.fn).length}</td>`
   ).join('');
 
-  const cabecalhos = COLUNAS.map(c =>
+  const headers = COLUMNS.map(c =>
     `<th class="${c.cls}">${c.label}</th>`
   ).join('');
 
@@ -2358,11 +2363,11 @@ function overviewFrentes(melhorias) {
     </div>
     <div style="overflow-x:auto">
       <table class="ov-table">
-        <thead><tr><th></th>${cabecalhos}</tr></thead>
-        <tbody>${linhas}</tbody>
+        <thead><tr><th></th>${headers}</tr></thead>
+        <tbody>${rows}</tbody>
         <tfoot><tr>
           <td style="text-align:left">Total</td>
-          ${totais}
+          ${totals}
         </tr></tfoot>
       </table>
     </div>
@@ -2371,40 +2376,40 @@ function overviewFrentes(melhorias) {
 
 
 /* ============================================================
-   VIEW: PIPEFY MELHORIAS
+   VIEW: PIPEFY IMPROVEMENTS
    ============================================================
-   FILTRO DE DATA: usa DataConclusaoRealDesenvolvimento.
-   A maioria das melhorias em backlog/planejamento NÃO tem essa data.
-   Ao filtrar por período, elas ficam fora — comportamento correto e documentado.
-   Para ver todas as melhorias, use o filtro de Status dentro da aba.
+   DATE FILTER: uses DataConclusaoRealDesenvolvimento.
+   Most backlog/planning improvements do NOT have this date.
+   When filtering by period, they are excluded — correct, documented behavior.
+   To see every improvement, use the Status filter inside the tab.
    ============================================================ */
 /*
- * buildMel() — aba Pipefy Melhorias.
+ * buildImprovements() — Pipefy Improvements tab.
  *
- * Lê:     App.P.mel
- * Escreve: #mel-content
- * Chamada por: generate() e renderAll()
+ * Reads:  App.P.improvements
+ * Writes: #mel-content
+ * Called by: generate() and renderAll()
  *
- * ATENÇÃO — lógica especial de filtro de data:
- *   Usa dtInicio + dtFim (intervalo de desenvolvimento), não uma data única.
- *   Melhorias de backlog sem data são SEMPRE incluídas, mesmo com filtro ativo
- *   (elas representam trabalho pendente, não histórico).
+ * ATTENTION — special date-filter logic:
+ *   Uses dtInicio + dtFim (development interval), not a single date.
+ *   Backlog improvements without a date are ALWAYS included, even with an
+ *   active filter (they represent pending work, not history).
  *
- * Produz:
- *  - KPIs: total, concluídas, backlog, bloqueadas, fluxos distintos
- *  - Donut de status, barras por frente, complexidade e responsável
+ * Produces:
+ *  - KPIs: total, completed, backlog, blocked, distinct flows
+ *  - Status donut, bars by area, complexity and owner
  */
-function buildMel(){
-  const {kept: melhoriasFiltradas} = applyDate(App.P.mel);
-  // Backlog sem data = trabalho pendente, não histórico. Sempre incluído.
-  const backlogSemData = App.dateRange.mode !== 'all'
-    ? App.P.mel.filter(m => !m.dtInicio && !m.dtFim && m.sc === 'todo')
+function buildImprovements(){
+  const {kept: filteredImprovements} = applyDate(App.P.improvements);
+  // Backlog without a date = pending work, not history. Always included.
+  const backlogWithoutDate = App.dateRange.mode !== 'all'
+    ? App.P.improvements.filter(m => !m.dtInicio && !m.dtFim && m.sc === 'todo')
     : [];
-  const melhorias = [...melhoriasFiltradas, ...backlogSemData];
-  document.getElementById('mel-empty').style.display  = App.P.mel.length ? 'none' : 'block';
-  document.getElementById('mel-content').style.display = App.P.mel.length ? 'block' : 'none';
-  if(!App.P.mel.length) return;
-  const sc      = statusCounts(melhorias);
+  const improvements = [...filteredImprovements, ...backlogWithoutDate];
+  document.getElementById('mel-empty').style.display  = App.P.improvements.length ? 'none' : 'block';
+  document.getElementById('mel-content').style.display = App.P.improvements.length ? 'block' : 'none';
+  if(!App.P.improvements.length) return;
+  const sc      = statusCounts(improvements);
   const done    = sc.done;
   const backlog = sc.todo;
   const blocked = sc.blocked;
@@ -2412,144 +2417,144 @@ function buildMel(){
   let dateNote = '';
   if(App.dateRange.mode !== 'all'){
     dateNote = `<div class="note" style="background:var(--neu-bg);color:var(--ink3)"><i class="ti ti-calendar-stats"></i><div>
-      Período aplicado: <b>${melhorias.length} melhorias</b> no recorte${backlogSemData.length > 0 ? ` (inclui <b>${backlogSemData.length} backlog</b> sem data)` : ''}.
+      Período aplicado: <b>${improvements.length} melhorias</b> no recorte${backlogWithoutDate.length > 0 ? ` (inclui <b>${backlogWithoutDate.length} backlog</b> sem data)` : ''}.
       <br><span style="font-size:10px;opacity:.6;font-style:italic">Referência de data: início e conclusão do desenvolvimento — inclui melhorias ativas no período, mesmo que iniciadas antes dele</span>
       </div></div>`;
   }
 
-  // "Fluxos (processos)" = número de NomeFluxo únicos no recorte atual
-  const fluxosUnicos = new Set(App.P.mel.map(m => m.fluxo).filter(Boolean)).size;
+  // "Fluxos (processos)" = number of distinct NomeFluxo in the current range
+  const uniqueFlows = new Set(App.P.improvements.map(m => m.fluxo).filter(Boolean)).size;
 
-  // Qualidade de dados: concluídas sem dtFim = erro de preenchimento na planilha.
-  // Itens não-concluídos sem dtFim são corretos (ainda estão em andamento/backlog).
-  const doneSemData = App.P.mel.filter(m => m.sc==='done' && !m.dtFim).length;
+  // Data quality: completed without dtFim = a spreadsheet fill-in error.
+  // Non-completed items without dtFim are correct (still in progress/backlog).
+  const completedWithoutDate = App.P.improvements.filter(m => m.sc==='done' && !m.dtFim).length;
 
   let html = dateNote + `<div class="sh">Pipefy — Melhorias & Ajustes</div>
   ${aiBar('mel')}
   <div class="krow k5">
-    <div class="kpi">${kpiIcon('message')}<div class="knum">${App.P.mel.length}</div><div class="klbl">Total melhorias</div>${App.dateRange.mode !== 'all' ? `<div class="ksub">${melhorias.length} no recorte</div>` : ''}</div>
-    <div class="kpi gl">${kpiIcon('check')}<div class="knum">${done}</div><div class="klbl">Concluídas</div><div class="ksub">${pct(done,App.P.mel.length)}% do total</div></div>
+    <div class="kpi">${kpiIcon('message')}<div class="knum">${App.P.improvements.length}</div><div class="klbl">Total melhorias</div>${App.dateRange.mode !== 'all' ? `<div class="ksub">${improvements.length} no recorte</div>` : ''}</div>
+    <div class="kpi gl">${kpiIcon('check')}<div class="knum">${done}</div><div class="klbl">Concluídas</div><div class="ksub">${pct(done,App.P.improvements.length)}% do total</div></div>
     <div class="kpi">${kpiIcon('stack')}<div class="knum">${backlog}</div><div class="klbl">Backlog</div></div>
     <div class="kpi wl">${kpiIcon('lock')}<div class="knum">${blocked}</div><div class="klbl">Bloqueadas</div></div>
-    <div class="kpi il">${kpiIcon('branch')}<div class="knum">${fluxosUnicos}</div><div class="klbl">Fluxos (processos)</div><div class="ksub">distintos no recorte</div></div>
+    <div class="kpi il">${kpiIcon('branch')}<div class="knum">${uniqueFlows}</div><div class="klbl">Fluxos (processos)</div><div class="ksub">distintos no recorte</div></div>
   </div>
-  ${doneSemData > 0 ? `<div class="note" style="background:var(--neu-bg);color:var(--ink3)"><i class="ti ti-alert-triangle" style="color:var(--warn)"></i><div>
-    <b>${doneSemData} melhorias marcadas como concluídas não têm data de conclusão preenchida.</b>
+  ${completedWithoutDate > 0 ? `<div class="note" style="background:var(--neu-bg);color:var(--ink3)"><i class="ti ti-alert-triangle" style="color:var(--warn)"></i><div>
+    <b>${completedWithoutDate} melhorias marcadas como concluídas não têm data de conclusão preenchida.</b>
     Isso é um erro de preenchimento na planilha — preencher o campo <i>DataConclusaoRealDesenvolvimento</i> permite análise temporal correta dessas entregas.
   </div></div>` : ''}`;
 
   html += `<div class="two">
     <div class="card"><div class="card-title"><i class="ti ti-chart-pie"></i> Status</div>
-      ${donut(['done','doing','todo','vendor','blocked','cancel'].map(k=>({label:STATUS_PT[k],value:melhorias.filter(m=>m.sc===k).length,color:STATUS_COLOR[k]})).filter(d=>d.value), {total:App.P.mel.length})}</div>
+      ${donut(['done','doing','todo','vendor','blocked','cancel'].map(k=>({label:STATUS_PT[k],value:improvements.filter(m=>m.sc===k).length,color:STATUS_COLOR[k]})).filter(d=>d.value), {total:App.P.improvements.length})}</div>
     <div class="card"><div class="card-title"><i class="ti ti-building"></i> Por frente</div>
-      ${hbars(sortedCountEntries(melhorias, m=>m.frente),{max:8,lw:60,tot:melhorias.length})}</div>
+      ${hbars(sortedCountEntries(improvements, m=>m.frente),{max:8,lw:60,tot:improvements.length})}</div>
   </div>`;
   html += `<div class="two">
     <div class="card"><div class="card-title"><i class="ti ti-stack-2"></i> Por complexidade</div>
-      ${hbars(sortedCountEntries(melhorias.filter(m=>m.complex), m=>m.complex),{max:6,lw:90})}</div>
+      ${hbars(sortedCountEntries(improvements.filter(m=>m.complex), m=>m.complex),{max:6,lw:90})}</div>
     <div class="card"><div class="card-title"><i class="ti ti-user-code"></i> Por responsável</div>
       ${(() => {
-        const dados = sortedCountEntries(melhorias.filter(m=>m.resp && ehMembroEquipePipefy(m.resp)), m=>m.resp);
+        const dados = sortedCountEntries(improvements.filter(m=>m.resp && isPipefyTeamMember(m.resp)), m=>m.resp);
         return hbars(dados,{max:8,lw:130});
       })()}</div>
   </div>`;
-  html += buildGraficoEvolutivo(melhorias);
-  html += overviewFrentes(melhorias);
+  html += buildImprovementEvolutionChart(improvements);
+  html += overviewByArea(improvements);
   html += '<div id="mel-atividades"></div>';
   document.getElementById('mel-content').innerHTML = html;
   flushCharts();
-  setBadge('nb-mel', melhorias.length, '');
-  renderizarSecaoAtividadesMelhorias();
+  setBadge('nb-mel', improvements.length, '');
+  renderImprovementActivitiesSection();
 }
 
 
 /* ============================================================
-   MELHORIAS — REGISTRO MANUAL DE ATIVIDADES
+   IMPROVEMENTS — MANUAL ACTIVITY LOG
    ============================================================
-   Card "Atividades" no final da aba Pipefy Melhorias.
+   "Atividades" card at the end of the Pipefy Improvements tab.
 
-   Diferente do resto da aba (que vem inteiramente da planilha), esses
-   registros são criados e mantidos manualmente pela equipe dentro do
-   próprio site. Eles existem porque o acompanhamento apresentado à
-   diretoria é organizado por tema/iniciativa (ex: "Anticipos v1",
-   "Miscelaneas v1"), e esses temas não têm correspondência 1:1 com as
-   linhas da planilha Pipefy_Melhorias — por isso não dá para calcular
-   essa tabela a partir de App.P.mel, como as demais seções da aba.
+   Unlike the rest of the tab (which comes entirely from the spreadsheet),
+   these records are created and maintained manually by the team inside
+   the site itself. They exist because the tracking presented to
+   management is organized by topic/initiative (ex: "Anticipos v1",
+   "Miscelaneas v1"), and those topics have no 1:1 correspondence with
+   rows in the Pipefy_Melhorias spreadsheet — so this table can't be
+   calculated from App.P.improvements like the rest of the tab.
 
-   PERSISTÊNCIA:
-   Os registros são salvos no localStorage do navegador (chave
-   CHAVE_ARMAZENAMENTO_ATIVIDADES_MELHORIAS), não em nenhuma planilha e
-   não em um servidor — de acordo com a arquitetura 100% local do
-   SYNAPSE (ver README). Isso significa:
-     - Sobrevivem a recarregar a página e a gerar o dashboard de novo
-       com uma planilha diferente (não dependem do Excel carregado).
-     - Ficam restritos a este navegador/computador — não aparecem para
-       quem abrir o site em outra máquina.
-     - São apagados se o usuário limpar os dados de navegação do site.
+   PERSISTENCE:
+   Records are saved to the browser's localStorage (key
+   IMPROVEMENT_ACTIVITIES_STORAGE_KEY), not to any spreadsheet and not
+   to a server — consistent with SYNAPSE's 100% local architecture (see
+   README). This means:
+     - They survive reloading the page and regenerating the dashboard
+       with a different spreadsheet (they don't depend on the loaded Excel).
+     - They stay restricted to this browser/computer — they don't show up
+       for someone opening the site on another machine.
+     - They are deleted if the user clears the site's browsing data.
 
-   Exporta (indiretamente, via window — ver final do arquivo):
-     renderizarSecaoAtividadesMelhorias() — chamada por buildMel()
-     abrirFormularioDeAtividade(identificador?)
-     fecharFormularioDeAtividade()
-     fecharFormularioDeAtividadeAoClicarFora(evento)
-     salvarFormularioDeAtividade(evento)
-     confirmarExclusaoDeAtividade(identificador)
+   Exports (indirectly, via window — see the end of the file):
+     renderImprovementActivitiesSection() — called by buildImprovements()
+     openActivityForm(activityId?)
+     closeActivityForm()
+     closeActivityFormOnOutsideClick(event)
+     saveActivityForm(event)
+     confirmDeleteActivity(activityId)
    ============================================================ */
 
-const CHAVE_ARMAZENAMENTO_ATIVIDADES_MELHORIAS = 'synapse.melhorias.atividades';
+const IMPROVEMENT_ACTIVITIES_STORAGE_KEY = 'synapse.melhorias.atividades';
 
 /*
- * Um registro da tabela "Atividades" da aba Pipefy Melhorias.
+ * A record in the "Atividades" table on the Pipefy Improvements tab.
  *
- * @typedef {Object} RegistroDeAtividade
- * @property {string} id            identificador único do registro
- * @property {string} tema          nome do tema/iniciativa (ex: "Anticipos v1")
- * @property {string} atividade     etapa atual (ex: "Em desenvolvimento")
- * @property {string} observacao    anotações livres sobre o andamento
- * @property {string} responsavel   pessoa ou equipe responsável
+ * @typedef {Object} ActivityRecord
+ * @property {string} id            unique record identifier
+ * @property {string} tema          topic/initiative name (ex: "Anticipos v1")
+ * @property {string} atividade     current stage (ex: "Em desenvolvimento")
+ * @property {string} observacao    free-form notes on progress
+ * @property {string} responsavel   person or team responsible
  */
 
 /*
- * carregarAtividadesMelhorias()
- * Lê do localStorage a lista de registros salvos. Retorna um array vazio
- * tanto se nunca houve nada salvo quanto se o conteúdo salvo estiver
- * corrompido — nesse segundo caso o erro é só avisado no console, sem
- * interromper o carregamento do dashboard.
+ * loadImprovementActivities()
+ * Reads the list of saved records from localStorage. Returns an empty
+ * array both when nothing was ever saved and when the saved content is
+ * corrupted — in the second case the error is only logged to the
+ * console, without interrupting the dashboard's loading.
  */
-function carregarAtividadesMelhorias() {
-  const conteudoSalvo = localStorage.getItem(CHAVE_ARMAZENAMENTO_ATIVIDADES_MELHORIAS);
-  if (!conteudoSalvo) return [];
+function loadImprovementActivities() {
+  const savedContent = localStorage.getItem(IMPROVEMENT_ACTIVITIES_STORAGE_KEY);
+  if (!savedContent) return [];
 
   try {
-    const registrosSalvos = JSON.parse(conteudoSalvo);
-    return Array.isArray(registrosSalvos) ? registrosSalvos : [];
-  } catch (erroDeLeitura) {
-    console.warn('Não foi possível ler as atividades salvas de Melhorias:', erroDeLeitura);
+    const savedRecords = JSON.parse(savedContent);
+    return Array.isArray(savedRecords) ? savedRecords : [];
+  } catch (readError) {
+    console.warn('Não foi possível ler as atividades salvas de Melhorias:', readError);
     return [];
   }
 }
 
 /*
- * salvarAtividadesMelhorias(registrosDeAtividade)
- * Grava a lista completa de registros no localStorage. Não existe
- * atualização parcial: toda operação de criar/editar/excluir relê a lista
- * inteira, altera o que precisa e grava tudo de volta.
+ * saveImprovementActivities(activityRecords)
+ * Writes the full list of records to localStorage. There is no partial
+ * update: every create/edit/delete operation rereads the whole list,
+ * changes what's needed, and writes it all back.
  */
-function salvarAtividadesMelhorias(registrosDeAtividade) {
+function saveImprovementActivities(activityRecords) {
   localStorage.setItem(
-    CHAVE_ARMAZENAMENTO_ATIVIDADES_MELHORIAS,
-    JSON.stringify(registrosDeAtividade)
+    IMPROVEMENT_ACTIVITIES_STORAGE_KEY,
+    JSON.stringify(activityRecords)
   );
 }
 
 /*
- * gerarIdentificadorDeAtividade()
- * Usa crypto.randomUUID() quando disponível. Como fallback (navegadores
- * muito antigos ou contexto sem HTTPS), gera um identificador a partir do
- * timestamp atual + um número aleatório — suficiente aqui porque esses
- * registros nunca saem do navegador do próprio usuário.
+ * generateActivityId()
+ * Uses crypto.randomUUID() when available. As a fallback (very old
+ * browsers or a non-HTTPS context), generates an id from the current
+ * timestamp + a random number — good enough here because these records
+ * never leave the user's own browser.
  */
-function gerarIdentificadorDeAtividade() {
+function generateActivityId() {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
     return crypto.randomUUID();
   }
@@ -2557,88 +2562,88 @@ function gerarIdentificadorDeAtividade() {
 }
 
 /*
- * escaparTextoParaHtml(texto)
- * Os campos desta tabela são texto livre digitado pelo usuário (em
- * especial "Observação"). Sem escapar, caracteres como < e > quebrariam o
- * HTML da tabela ao renderizar. A troca por um elemento temporário é o
- * jeito padrão do navegador de fazer esse escape corretamente.
+ * escapeHtmlText(text)
+ * The fields in this table are free text typed by the user (especially
+ * "Observação"). Without escaping, characters like < and > would break
+ * the table's HTML when rendered. Round-tripping through a temporary
+ * element is the standard way the browser does this escaping correctly.
  */
-function escaparTextoParaHtml(texto) {
-  const elementoTemporario = document.createElement('div');
-  elementoTemporario.textContent = texto || '';
-  return elementoTemporario.innerHTML;
+function escapeHtmlText(text) {
+  const tempElement = document.createElement('div');
+  tempElement.textContent = text || '';
+  return tempElement.innerHTML;
 }
 
 /*
- * adicionarAtividadeMelhoria(dadosDoFormulario)
- * Cria um novo registro a partir dos dados do formulário e o acrescenta
- * à lista persistida.
+ * addImprovementActivity(formData)
+ * Creates a new record from the form data and appends it to the
+ * persisted list.
  */
-function adicionarAtividadeMelhoria(dadosDoFormulario) {
-  const registros = carregarAtividadesMelhorias();
-  registros.push({ id: gerarIdentificadorDeAtividade(), ...dadosDoFormulario });
-  salvarAtividadesMelhorias(registros);
+function addImprovementActivity(formData) {
+  const records = loadImprovementActivities();
+  records.push({ id: generateActivityId(), ...formData });
+  saveImprovementActivities(records);
 }
 
 /*
- * atualizarAtividadeMelhoria(identificador, dadosDoFormulario)
- * Substitui os campos de um registro existente pelos novos valores do
- * formulário. Não faz nada se o identificador não for encontrado (registro
- * pode ter sido excluído em outra aba do navegador, por exemplo).
+ * updateImprovementActivity(activityId, formData)
+ * Replaces the fields of an existing record with the new form values.
+ * Does nothing if the id isn't found (the record may have been deleted
+ * in another browser tab, for example).
  */
-function atualizarAtividadeMelhoria(identificador, dadosDoFormulario) {
-  const registros = carregarAtividadesMelhorias();
-  const indiceDoRegistro = registros.findIndex(registro => registro.id === identificador);
-  if (indiceDoRegistro === -1) return;
+function updateImprovementActivity(activityId, formData) {
+  const records = loadImprovementActivities();
+  const recordIndex = records.findIndex(record => record.id === activityId);
+  if (recordIndex === -1) return;
 
-  registros[indiceDoRegistro] = { ...registros[indiceDoRegistro], ...dadosDoFormulario };
-  salvarAtividadesMelhorias(registros);
+  records[recordIndex] = { ...records[recordIndex], ...formData };
+  saveImprovementActivities(records);
 }
 
 /*
- * excluirAtividadeMelhoria(identificador)
- * Remove definitivamente um registro da lista persistida.
+ * deleteImprovementActivity(activityId)
+ * Permanently removes a record from the persisted list.
  */
-function excluirAtividadeMelhoria(identificador) {
-  const registrosRestantes = carregarAtividadesMelhorias()
-    .filter(registro => registro.id !== identificador);
-  salvarAtividadesMelhorias(registrosRestantes);
+function deleteImprovementActivity(activityId) {
+  const remainingRecords = loadImprovementActivities()
+    .filter(record => record.id !== activityId);
+  saveImprovementActivities(remainingRecords);
 }
 
 /*
- * construirLinhaDaTabelaDeAtividade(registro)
- * Gera uma linha <tr> da tabela de atividades, com os botões de editar e
- * excluir na última coluna.
+ * buildActivityTableRow(record)
+ * Generates a <tr> row for the activities table, with the edit and
+ * delete buttons in the last column.
  */
-function construirLinhaDaTabelaDeAtividade(registro) {
+function buildActivityTableRow(record) {
   return `<tr>
-    <td>${escaparTextoParaHtml(registro.tema)}</td>
-    <td>${escaparTextoParaHtml(registro.atividade)}</td>
-    <td style="white-space:pre-wrap">${escaparTextoParaHtml(registro.observacao)}</td>
-    <td>${escaparTextoParaHtml(registro.responsavel)}</td>
+    <td>${escapeHtmlText(record.tema)}</td>
+    <td>${escapeHtmlText(record.atividade)}</td>
+    <td style="white-space:pre-wrap">${escapeHtmlText(record.observacao)}</td>
+    <td>${escapeHtmlText(record.responsavel)}</td>
     <td style="text-align:right;white-space:nowrap">
-      <button type="button" class="icon-button" title="Editar atividade" onclick="abrirFormularioDeAtividade('${registro.id}')"><i class="ti ti-pencil"></i></button>
-      <button type="button" class="icon-button icon-button-perigo" title="Excluir atividade" onclick="confirmarExclusaoDeAtividade('${registro.id}')"><i class="ti ti-trash"></i></button>
+      <button type="button" class="icon-button" title="Editar atividade" onclick="openActivityForm('${record.id}')"><i class="ti ti-pencil"></i></button>
+      <button type="button" class="icon-button icon-button-perigo" title="Excluir atividade" onclick="confirmDeleteActivity('${record.id}')"><i class="ti ti-trash"></i></button>
     </td>
   </tr>`;
 }
 
 /*
- * construirFormularioDeAtividade()
- * Monta o modal (oculto por padrão) usado tanto para criar quanto para
- * editar um registro. O mesmo formulário serve para os dois casos: o
- * campo oculto "campo-atividade-id" fica vazio ao criar e preenchido ao
- * editar — é esse valor que salvarFormularioDeAtividade() usa para decidir
- * entre adicionar ou atualizar.
+ * buildActivityForm()
+ * Builds the modal (hidden by default) used both to create and to edit
+ * a record. The same form serves both cases: the hidden
+ * "campo-atividade-id" field is empty when creating and filled in when
+ * editing — that value is what saveActivityForm() uses to decide
+ * between adding or updating.
  */
-function construirFormularioDeAtividade() {
-  return `<div class="modal-fundo oculto" id="fundo-formulario-atividade" onclick="fecharFormularioDeAtividadeAoClicarFora(event)">
+function buildActivityForm() {
+  return `<div class="modal-fundo oculto" id="fundo-formulario-atividade" onclick="closeActivityFormOnOutsideClick(event)">
     <div class="modal-caixa">
       <div class="modal-cabecalho">
         <span class="modal-titulo" id="titulo-formulario-atividade">Adicionar atividade</span>
-        <button type="button" class="modal-botao-fechar" onclick="fecharFormularioDeAtividade()" aria-label="Fechar">×</button>
+        <button type="button" class="modal-botao-fechar" onclick="closeActivityForm()" aria-label="Fechar">×</button>
       </div>
-      <form id="formulario-atividade" onsubmit="salvarFormularioDeAtividade(event)">
+      <form id="formulario-atividade" onsubmit="saveActivityForm(event)">
         <input type="hidden" id="campo-atividade-id">
         <label class="modal-campo">
           <span>Tema</span>
@@ -2657,7 +2662,7 @@ function construirFormularioDeAtividade() {
           <input type="text" id="campo-atividade-responsavel" placeholder="Ex: Equipe de Projetos Saint Gobain / P2P" required maxlength="120">
         </label>
         <div class="modal-rodape">
-          <button type="button" class="btn" onclick="fecharFormularioDeAtividade()">Cancelar</button>
+          <button type="button" class="btn" onclick="closeActivityForm()">Cancelar</button>
           <button type="submit" class="btn primary">Salvar</button>
         </div>
       </form>
@@ -2666,18 +2671,18 @@ function construirFormularioDeAtividade() {
 }
 
 /*
- * construirSecaoAtividadesMelhorias()
- * Monta o card "Atividades" inteiro: título, botão de adicionar, tabela
- * (ou mensagem de lista vazia) e o modal de criação/edição.
+ * buildImprovementActivitiesSection()
+ * Builds the whole "Atividades" card: title, add button, table
+ * (or empty-list message) and the create/edit modal.
  */
-function construirSecaoAtividadesMelhorias() {
-  const registros = carregarAtividadesMelhorias();
+function buildImprovementActivitiesSection() {
+  const records = loadImprovementActivities();
 
-  const corpoDaTabela = registros.length
+  const tableBody = records.length
     ? `<table class="tbl"><thead><tr>
          <th>Tema</th><th>Atividade</th><th>Observação</th><th>Responsável</th><th></th>
        </tr></thead>
-       <tbody>${registros.map(construirLinhaDaTabelaDeAtividade).join('')}</tbody></table>`
+       <tbody>${records.map(buildActivityTableRow).join('')}</tbody></table>`
     : `<div class="empty" style="padding:32px 20px"><i class="ti ti-clipboard-list"></i>Nenhuma atividade registrada ainda.</div>`;
 
   return `<div class="card">
@@ -2686,127 +2691,128 @@ function construirSecaoAtividadesMelhorias() {
       <span class="rt">registro manual, salvo neste navegador</span>
     </div>
     <div style="margin-bottom:14px">
-      <button type="button" class="btn primary" onclick="abrirFormularioDeAtividade()"><i class="ti ti-plus"></i> Adicionar atividade</button>
+      <button type="button" class="btn primary" onclick="openActivityForm()"><i class="ti ti-plus"></i> Adicionar atividade</button>
     </div>
-    ${corpoDaTabela}
+    ${tableBody}
   </div>
-  ${construirFormularioDeAtividade()}`;
+  ${buildActivityForm()}`;
 }
 
 /*
- * renderizarSecaoAtividadesMelhorias()
- * Recria apenas o conteúdo do container #mel-atividades. Chamada por
- * buildMel() ao montar a aba, e de novo depois de qualquer
- * adicionar/editar/excluir — sem precisar recalcular os KPIs e gráficos
- * do resto da aba Melhorias.
+ * renderImprovementActivitiesSection()
+ * Recreates only the content of the #mel-atividades container. Called by
+ * buildImprovements() when assembling the tab, and again after any
+ * add/edit/delete — without needing to recalculate the rest of the
+ * Improvements tab's KPIs and charts.
  */
-function renderizarSecaoAtividadesMelhorias() {
+function renderImprovementActivitiesSection() {
   const container = document.getElementById('mel-atividades');
-  if (container) container.innerHTML = construirSecaoAtividadesMelhorias();
+  if (container) container.innerHTML = buildImprovementActivitiesSection();
 }
 
 /*
- * abrirFormularioDeAtividade(identificador)
- * Sem argumento, abre o modal em branco (modo criação). Com o
- * identificador de um registro existente, abre o modal preenchido com os
- * valores atuais (modo edição).
+ * openActivityForm(activityId)
+ * With no argument, opens the modal blank (create mode). With the id of
+ * an existing record, opens the modal filled with its current values
+ * (edit mode).
  */
-function abrirFormularioDeAtividade(identificador) {
-  const registroExistente = identificador
-    ? carregarAtividadesMelhorias().find(registro => registro.id === identificador)
+function openActivityForm(activityId) {
+  const existingRecord = activityId
+    ? loadImprovementActivities().find(record => record.id === activityId)
     : null;
 
   document.getElementById('titulo-formulario-atividade').textContent =
-    registroExistente ? 'Editar atividade' : 'Adicionar atividade';
-  document.getElementById('campo-atividade-id').value         = registroExistente ? registroExistente.id : '';
-  document.getElementById('campo-atividade-tema').value        = registroExistente ? registroExistente.tema : '';
-  document.getElementById('campo-atividade-etapa').value       = registroExistente ? registroExistente.atividade : '';
-  document.getElementById('campo-atividade-observacao').value  = registroExistente ? registroExistente.observacao : '';
-  document.getElementById('campo-atividade-responsavel').value = registroExistente ? registroExistente.responsavel : '';
+    existingRecord ? 'Editar atividade' : 'Adicionar atividade';
+  document.getElementById('campo-atividade-id').value         = existingRecord ? existingRecord.id : '';
+  document.getElementById('campo-atividade-tema').value        = existingRecord ? existingRecord.tema : '';
+  document.getElementById('campo-atividade-etapa').value       = existingRecord ? existingRecord.atividade : '';
+  document.getElementById('campo-atividade-observacao').value  = existingRecord ? existingRecord.observacao : '';
+  document.getElementById('campo-atividade-responsavel').value = existingRecord ? existingRecord.responsavel : '';
 
   document.getElementById('fundo-formulario-atividade').classList.remove('oculto');
 }
 
 /*
- * fecharFormularioDeAtividade()
- * Apenas esconde o modal — os dados digitados são descartados, já que
- * nada é salvo antes do envio do formulário.
+ * closeActivityForm()
+ * Just hides the modal — any typed data is discarded, since nothing is
+ * saved before the form is submitted.
  */
-function fecharFormularioDeAtividade() {
+function closeActivityForm() {
   document.getElementById('fundo-formulario-atividade').classList.add('oculto');
 }
 
 /*
- * fecharFormularioDeAtividadeAoClicarFora(evento)
- * O modal ocupa a tela toda com um fundo escurecido (#fundo-formulario-atividade)
- * por trás da caixa branca. Clicar nesse fundo fecha o modal; clicar dentro
- * da caixa (ou nos campos) não deve fechar — daí a checagem do alvo do clique.
+ * closeActivityFormOnOutsideClick(event)
+ * The modal covers the whole screen with a dimmed background
+ * (#fundo-formulario-atividade) behind the white box. Clicking that
+ * background closes the modal; clicking inside the box (or its fields)
+ * should not close it — hence the click-target check.
  */
-function fecharFormularioDeAtividadeAoClicarFora(evento) {
-  if (evento.target.id === 'fundo-formulario-atividade') fecharFormularioDeAtividade();
+function closeActivityFormOnOutsideClick(event) {
+  if (event.target.id === 'fundo-formulario-atividade') closeActivityForm();
 }
 
 /*
- * salvarFormularioDeAtividade(evento)
- * Handler de submit do formulário do modal. Decide entre criar ou
- * atualizar com base no campo oculto "campo-atividade-id": vazio significa
- * um registro novo; preenchido significa edição de um registro existente.
+ * saveActivityForm(event)
+ * Submit handler for the modal's form. Decides between create or update
+ * based on the hidden "campo-atividade-id" field: empty means a new
+ * record; filled in means editing an existing one.
  */
-function salvarFormularioDeAtividade(evento) {
-  evento.preventDefault();
+function saveActivityForm(event) {
+  event.preventDefault();
 
-  const identificador = document.getElementById('campo-atividade-id').value;
-  const dadosDoFormulario = {
+  const activityId = document.getElementById('campo-atividade-id').value;
+  const formData = {
     tema:        document.getElementById('campo-atividade-tema').value.trim(),
     atividade:   document.getElementById('campo-atividade-etapa').value.trim(),
     observacao:  document.getElementById('campo-atividade-observacao').value.trim(),
     responsavel: document.getElementById('campo-atividade-responsavel').value.trim()
   };
 
-  if (identificador) atualizarAtividadeMelhoria(identificador, dadosDoFormulario);
-  else adicionarAtividadeMelhoria(dadosDoFormulario);
+  if (activityId) updateImprovementActivity(activityId, formData);
+  else addImprovementActivity(formData);
 
-  fecharFormularioDeAtividade();
-  renderizarSecaoAtividadesMelhorias();
+  closeActivityForm();
+  renderImprovementActivitiesSection();
 }
 
 /*
- * confirmarExclusaoDeAtividade(identificador)
- * Pede confirmação nativa do navegador antes de excluir. Não há lixeira
- * nem "desfazer" para estes registros — por isso a confirmação explícita.
+ * confirmDeleteActivity(activityId)
+ * Asks for native browser confirmation before deleting. There is no
+ * trash bin or "undo" for these records — hence the explicit confirmation.
  */
-function confirmarExclusaoDeAtividade(identificador) {
-  const usuarioConfirmou = window.confirm('Excluir esta atividade? Essa ação não pode ser desfeita.');
-  if (!usuarioConfirmou) return;
+function confirmDeleteActivity(activityId) {
+  const userConfirmed = window.confirm('Excluir esta atividade? Essa ação não pode ser desfeita.');
+  if (!userConfirmed) return;
 
-  excluirAtividadeMelhoria(identificador);
-  renderizarSecaoAtividadesMelhorias();
+  deleteImprovementActivity(activityId);
+  renderImprovementActivitiesSection();
 }
 
 
 /* ============================================================
    VIEW: ANALYTICS
    ============================================================
-   FILTRO DE DATA: usa DataAbertura (início do desenvolvimento)
-   ou DataFechamento (término da validação) como fallback.
-   Muitas atividades não têm data preenchida — a interface exibe quantas ficaram fora do recorte.
+   DATE FILTER: uses DataAbertura (start of development)
+   or DataFechamento (end of validation) as a fallback.
+   Many activities have no date filled in — the interface shows how many were excluded.
    ============================================================ */
 /*
- * buildAna() — aba Analytics.
+ * buildAna() — Analytics tab.
  *
- * Lê:     App.P.ana
- * Escreve: #ana-content
- * Chamada por: generate() e renderAll()
+ * Reads:  App.P.ana
+ * Writes: #ana-content
+ * Called by: generate() and renderAll()
  *
- * ATENÇÃO — cobertura de datas baixa:
- *   Muitas atividades não têm data preenchida na planilha.
- *   Com filtro ativo, apenas atividades COM data entram no recorte.
- *   A interface exibe quantas ficaram de fora para transparência.
+ * ATTENTION — low date coverage:
+ *   Many activities have no date filled in on the spreadsheet.
+ *   With an active filter, only activities WITH a date are included.
+ *   The interface shows how many were excluded, for transparency.
  *
- * Produz:
- *  - KPIs: total, concluídas, em andamento, não iniciadas
- *  - Donut de status, barras por prioridade, frente e responsável
- *  - Heatmap de prioridade × frente (chamado via buildHeatmap em buildGov)
+ * Produces:
+ *  - KPIs: total, completed, in progress, not started
+ *  - Status donut, bars by priority, area and owner
+ *  - Priority × area heatmap (via buildHeatmap(), called directly here)
  */
 function buildAna(){
   const {kept:A, noDate} = applyDate(App.P.ana);
@@ -2819,7 +2825,7 @@ function buildAna(){
   const todo  = sc.todo;
   const comData = A.filter(a => a.dtFim).length;
 
-  // Nota informativa: quantas atividades têm data vs. quantas não têm
+  // Informational note: how many activities have a date vs. how many don't
   let dateNote = '';
   if(App.dateRange.mode !== 'all'){
     dateNote = `<div class="note" style="background:var(--neu-bg);color:var(--ink3)"><i class="ti ti-calendar-stats"></i><div>
@@ -2828,11 +2834,11 @@ function buildAna(){
       `<br><span style="font-size:10px;opacity:.6;font-style:italic">Referência de data: data de abertura da atividade (ou fechamento como fallback)</span>
       </div></div>`;
   } else if(comData < A.length){
-    // sem filtro ativo: avisa quantas têm data (relevante para o gráfico de evolução)
+    // no active filter: warns how many have a date (relevant to the evolution chart)
     dateNote = `<div class="note"><i class="ti ti-info-circle"></i><div>${comData} de ${A.length} atividades têm data registrada. As ${A.length-comData} restantes não têm data preenchida na base, então não entram nos cálculos por período.</div></div>`;
   }
 
-  // só prioridades de 1 a 5 (valores fora dessa faixa são descartados do gráfico)
+  // only priorities 1 to 5 (values outside that range are dropped from the chart)
   const prioCount = count(A.filter(a => a.prio && a.prio>=1 && a.prio<=5), a => 'Prioridade '+a.prio);
   let html = dateNote + `<div class="sh">Analytics</div>
   ${aiBar('ana')}
@@ -2868,38 +2874,38 @@ function setBadge(id, txt, cls){
 
 
 /* ============================================================
-   VIEW: CHAMADOS RPA (5 sub-abas)
+   VIEW: RPA TICKETS (5 sub-tabs)
    ============================================================
-   FILTRO DE DATA: usa 'criado' (data de abertura do chamado).
-   Todos os chamados têm essa data preenchida (campo obrigatório no Pipefy).
-   Sub-abas: Visão geral, Top bots, Tipos de problema, Tempo de resolução, Chamados.
+   DATE FILTER: uses 'criado' (ticket opening date).
+   Every ticket has this date filled in (a required field in Pipefy).
+   Sub-tabs: Overview, Top bots, Problem types, Resolution time, Tickets.
    ============================================================ */
 /*
- * buildRPAChamados() — aba RPA & Bots (sub-abas de chamados).
+ * buildRPATickets() — RPA & Bots tab (ticket sub-tabs).
  *
- * Lê:     App.R (chamados), App.B (inventário, via areaPorProc)
- * Escreve: #rpa-empty / #rpa-content  (visibilidade)
- *          #rpage-visao   → estrutura + chama renderRPAStatus()
- *          #rpage-bots    → top bots por volume de manutenções
- *          #rpage-prob    → tipos de problema × fase (clusteredBars)
- *          #rpage-tempo   → tempo médio por bot
- *          #rpage-lista   → tabela paginada com busca
- * Chamada por: generate() e renderAll()
+ * Reads:  App.R (tickets), App.B (inventory, via areaPorProc)
+ * Writes: #rpa-empty / #rpa-content  (visibility)
+ *          #rpage-visao   → structure + calls renderRPAStatus()
+ *          #rpage-bots    → top bots by maintenance volume
+ *          #rpage-prob    → problem types × phase (clusteredBars)
+ *          #rpage-tempo   → average time per bot
+ *          #rpage-lista   → paginated table with search
+ * Called by: generate() and renderAll()
  *
- * ESTRUTURA DA FUNÇÃO:
- *   1. Validação e nota de filtro de data
- *   2. Sub-aba Visão Geral  → htmlVisao + renderRPAStatus()
- *   3. Sub-aba Top Bots     → htmlTopBots
- *   4. Sub-aba Tipos Problema → htmlProblemas
- *   5. Sub-aba Tempo        → htmlTempo
- *   6. Sub-aba Lista        → htmlLista + renderRPALista()
+ * FUNCTION STRUCTURE:
+ *   1. Validation and date-filter note
+ *   2. Overview sub-tab  → htmlVisao + renderRPAStatus()
+ *   3. Top Bots sub-tab     → htmlTopBots
+ *   4. Problem Types sub-tab → htmlProblemas
+ *   5. Time sub-tab        → htmlTempo
+ *   6. List sub-tab        → htmlLista + renderRPAList()
  */
-function buildRPAChamados(){
+function buildRPATickets(){
   const {kept: chamados, noDate} = applyDate(App.R);
   const emptyEl = document.getElementById('rpa-empty');
   emptyEl.style.display  = App.R.length ? 'none' : 'block';
   document.getElementById('rpa-content').style.display = App.R.length ? 'block' : 'none';
-  // se houve aviso de arquivo errado, mostra mensagem específica em vez do texto padrão
+  // if there was a wrong-file warning, shows a specific message instead of the default text
   if(!App.R.length){
     emptyEl.innerHTML = App.rpaWarn
       ? `<i class="ti ti-alert-triangle" style="color:var(--warn)"></i>${App.rpaWarn}`
@@ -2923,7 +2929,7 @@ function buildRPAChamados(){
       </div></div>`;
   }
 
-  // Filtro local por status (fase) — opções derivadas das fases presentes nos dados
+  // Local status (phase) filter — options derived from the phases present in the data
   const fasesDisp = [...new Set(chamados.map(r=>r.fase).filter(Boolean))].sort();
   const filtroStatus = `<div class="filters" style="margin-bottom:14px">
     <label>Status do chamado</label>
@@ -2934,18 +2940,18 @@ function buildRPAChamados(){
 
   let htmlVisao = dateNote + aiBar('rpa') + filtroStatus + `<div id="rpa-visao-kpis"></div>`;
   document.getElementById('rpage-visao').innerHTML = htmlVisao;
-  // os KPIs e gráficos são renderizados por renderRPAStatus (respeita o filtro de status)
+  // the KPIs and charts are rendered by renderRPAStatus (it respects the status filter)
   renderRPAStatus();
 
-  const labelComArea = rpaLabelComArea(chamados);
+  const labelComArea = rpaLabelWithArea(chamados);
   buildRPATabTopBots(chamados, labelComArea);
-  buildRPATabProblemas(chamados);
-  buildRPATabTempo(chamados, labelComArea);
-  buildRPATabLista(chamados, total, venc);
+  buildRPATabProblems(chamados);
+  buildRPATabTime(chamados, labelComArea);
+  buildRPATabList(chamados, total, venc);
 }
 
-// Retorna uma função que formata "Nome do bot  ·  ÁREA" para rótulos de gráfico.
-function rpaLabelComArea(chamados) {
+// Returns a function that formats "Nome do bot  ·  ÁREA" for chart labels.
+function rpaLabelWithArea(chamados) {
   const areaPorProc = {};
   chamados.forEach(r => { if(r.processo && !areaPorProc[r.processo]) areaPorProc[r.processo] = r.area; });
   return proc => {
@@ -2964,7 +2970,7 @@ function buildRPATabTopBots(chamados, labelComArea) {
   flushCharts();
 }
 
-function buildRPATabProblemas(chamados) {
+function buildRPATabProblems(chamados) {
   const porProb   = count(chamados, r => r.problema);
   const porReexec = count(chamados.filter(r=>r.reexec), r => r.reexec);
   const porIntext = count(chamados.filter(r=>r.intext), r => r.intext);
@@ -3028,7 +3034,7 @@ function buildRPATabProblemas(chamados) {
   flushCharts();
 }
 
-function buildRPATabTempo(chamados, labelComArea) {
+function buildRPATabTime(chamados, labelComArea) {
   const tempoPorProcesso = {};
   chamados.forEach(r => {
     const diasAtivos = (r.tIdent || 0) + (r.tDesenv || 0);
@@ -3068,22 +3074,22 @@ function buildRPATabTempo(chamados, labelComArea) {
   flushCharts();
 }
 
-function buildRPATabLista(chamados, total, venc) {
+function buildRPATabList(chamados, total, venc) {
   document.getElementById('rpage-lista').innerHTML =
     `<div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
-      <input type="text" id="rsearch" placeholder="Buscar por código, processo, solicitante..." oninput="renderRPALista()" style="flex:1;max-width:360px">
+      <input type="text" id="rsearch" placeholder="Buscar por código, processo, solicitante..." oninput="renderRPAList()" style="flex:1;max-width:360px">
       <span style="font-size:11px;color:var(--ink4)" id="rlista-count">${total} chamados</span></div>
     <div class="card np"><div style="overflow-x:auto"><table class="tbl" style="margin:0">
     <thead><tr><th style="padding-left:20px">Código</th><th>Processo</th><th>Problema</th><th>Fase</th><th>Mês</th><th style="padding-right:20px">Status</th></tr></thead>
     <tbody id="rlista-body"></tbody></table></div></div>`;
-  renderRPALista();
+  renderRPAList();
   setBadge('nb-rpa', venc>0 ? venc+' venc' : total, venc>0?'warn':'');
 }
 
 /*
- * renderRPAStatus() — renderiza os KPIs e gráficos da visão geral de Chamados RPA,
- * respeitando o filtro de data global E o filtro local de status (fase).
- * Inclui: KPIs, volume mensal, abertura por dia útil (seg-sex) e tickets por área.
+ * renderRPAStatus() — renders the KPIs and charts of the RPA Tickets overview,
+ * respecting the global date filter AND the local status (phase) filter.
+ * Includes: KPIs, monthly volume, opened by weekday (Mon-Fri) and tickets by area.
  */
 function renderRPAStatus(){
   const {kept: chamadosFiltrados} = applyDate(App.R);   // já filtrado pelo período global
@@ -3109,7 +3115,7 @@ function renderRPAStatus(){
     <div class="kpi wl">${kpiIcon('refresh')}<div class="knum">${reexec}</div><div class="klbl">Reexecuções</div></div>
   </div>`;
 
-  // Volume mensal (barras empilhadas: chamados normais + vencidos)
+  // Monthly volume (stacked bars: normal tickets + overdue)
   const porMes={}, porMesV={};
   chamados.forEach(r => {
     if (r.mes) {
@@ -3120,22 +3126,22 @@ function renderRPAStatus(){
   const meses = Object.keys(porMes).sort().slice(-12);
   const vol   = chartVBars(meses, porMes, porMesV);
 
-  // Volume mensal + donut de fase lado a lado (visão temporal + estado atual)
+  // Monthly volume + phase donut side by side (time view + current state)
   htmlKpis += `<div class="two">
     <div class="card"><div class="card-title"><i class="ti ti-chart-bar"></i> Volume mensal</div>${vol}</div>
     <div class="card"><div class="card-title"><i class="ti ti-chart-pie"></i> Status (fase) dos chamados</div>
       ${donut(Object.entries(count(chamados,r=>r.fase)).map(([k,vv],i)=>({label:k,value:vv,color:['var(--ok)','var(--info)','var(--warn)','var(--err)','#7c5cbf','var(--ink4)'][i%6]})))}</div>
   </div>`;
 
-  // Tickets por área (área herdada do inventário de bots via match de nome).
-  // As frentes principais ficam visíveis; as demais (PAM, CI, IT, ARG, etc.)
-  // são somadas em "Outros" para não poluir o gráfico com fatias minúsculas.
+  // Tickets by area (area inherited from the bot inventory via name matching).
+  // The main areas stay visible; the rest (PAM, CI, IT, ARG, etc.)
+  // are summed into "Outros" to avoid cluttering the chart with tiny slices.
   const porArea = count(chamados, r => r.area || '(não mapeada)');
   let outrosArea = 0;
   const areaEntries = [];
   Object.entries(porArea).forEach(([area, n]) => {
     const up = area.toUpperCase();
-    if(AREAS_PRINCIPAIS_RPA.includes(up) || area === '(não mapeada)'){
+    if(MAIN_RPA_AREAS.includes(up) || area === '(não mapeada)'){
       areaEntries.push([area, n]);
     } else {
       outrosArea += n; // PAM, CI, IT, ARG e quaisquer outras pequenas
@@ -3151,11 +3157,11 @@ function renderRPAStatus(){
 }
 
 /*
- * renderRPALista() — renderiza a lista paginada de chamados.
- * Aplica filtro de data global + busca por texto.
- * Exibe até 1000 chamados; avisa se houver mais.
+ * renderRPAList() — renders the paginated ticket list.
+ * Applies the global date filter + text search.
+ * Shows up to 1000 tickets; warns if there are more.
  */
-function renderRPALista(){
+function renderRPAList(){
   const {kept: chamados} = applyDate(App.R);
   const q = (document.getElementById('rsearch')?.value||'').toLowerCase();
   const vis = q ? chamados.filter(r=>(r.cod+r.processo+r.solicitante+r.problema).toLowerCase().includes(q)) : chamados;
@@ -3178,33 +3184,33 @@ function renderRPALista(){
 
 
 /* ============================================================
-   VIEW: INVENTÁRIO DE BOTS
+   VIEW: BOT INVENTORY
    ============================================================
-   FILTRO DE DATA DIFERENTE: usa o ANO de entrada em produção (AnoPRD),
-   não uma data de ação. Ao filtrar "2026", mostra apenas bots que
-   entraram em PRD em 2026 (não chamados nem melhorias de 2026).
+   DIFFERENT DATE FILTER: uses the YEAR the bot went live (AnoPRD),
+   not an action date. Filtering by "2026" shows only bots that
+   went live in 2026 (not tickets or improvements from 2026).
    ============================================================ */
 /*
- * buildBots() — aba Inventário de Bots (dentro de RPA & Bots).
+ * buildBots() — Bot Inventory tab (inside RPA & Bots).
  *
- * Lê:     App.B (inventário), App.R (para cruzamento de chamados, se disponível)
- * Escreve: #bots-empty / #bots-content
- *          #bots-list  → lista filtrável de bots, via renderBotsList()
- * Chamada por: generate() e renderAll()
+ * Reads:  App.B (inventory), App.R (for ticket cross-reference, if available)
+ * Writes: #bots-empty / #bots-content
+ *          #bots-list  → filterable bot list, via renderBotsList()
+ * Called by: generate() and renderAll()
  *
- * FILTRO DE DATA DIFERENTE:
- *   Usa o AnoPRD (ano de entrada em produção), não datas de ação.
- *   "Filtrar por 2026" mostra bots que foram ao ar em 2026, não chamados de 2026.
+ * DIFFERENT DATE FILTER:
+ *   Uses AnoPRD (year the bot went live), not action dates.
+ *   "Filter by 2026" shows bots that went live in 2026, not tickets from 2026.
  *
- * Produz:
- *  - KPIs: total de bots, em PRD, em DEV, backlog
- *  - Barras por área e donut por perímetro (bots em PRD)
- *  - Barras por criticidade e frequência
- *  - Tabela de cruzamento inventário × chamados (se App.R disponível)
- *  - Lista filtrada com expand inline (detalhes do bot)
+ * Produces:
+ *  - KPIs: total bots, in PRD, in DEV, backlog
+ *  - Bars by area and donut by perimeter (bots in PRD)
+ *  - Bars by criticality and frequency
+ *  - Inventory × tickets cross-reference table (if App.R is available)
+ *  - Filtered list with inline expand (bot details)
  */
 function buildBots(){
-  // Filtro especial por AnoPRD (extrai apenas o ano do range de datas selecionado)
+  // Special AnoPRD filter (extracts just the year from the selected date range)
   const dr = App.dateRange;
   let B = App.B;
   let dateNote = '';
@@ -3244,9 +3250,9 @@ function buildBots(){
   </div>`;
 
   const prdBots = B.filter(b=>b.status==='PRD');
-  // As 5 frentes principais ficam visíveis; as demais (MEX, PAM, IT, etc.)
-  // são somadas em "Outros" para que a soma das barras feche com o total de bots em PRD.
-  const AREAS_PRINCIPAIS = AREAS_PRINCIPAIS_RPA;
+  // The 5 main business areas stay visible; the rest (MEX, PAM, IT, etc.)
+  // are summed into "Outros" so the bars' total matches the total bots in PRD.
+  const AREAS_PRINCIPAIS = MAIN_RPA_AREAS;
   const porAreaPrd = count(prdBots, b => b.area);
   let outrosPrd = 0;
   const areaBots = [];
@@ -3275,10 +3281,10 @@ function buildBots(){
       ${hbars(sortedCountEntries(prdBots.filter(b=>b.freq), b=>b.freq),{max:6,lw:80})}</div>
   </div>`;
 
-  // Cruzamento inventário × chamados (só se o relatório de RPA estiver carregado)
+  // Inventory × tickets cross-reference (only if the RPA report is loaded)
   if(App.R.length) html += buildBotsCruzamento(B);
 
-  // Lista filtrada por status e área
+  // List filtered by status and area
   html += `<div class="filters" style="margin-top:8px">
     <label>Status</label><select id="bot-fs" onchange="renderBotsList()"><option value="">Todos</option>
       <option>PRD</option><option>DEV</option><option>BACKLOG</option><option>CANCELADO</option><option>DESATIVADO</option></select>
@@ -3291,17 +3297,17 @@ function buildBots(){
 }
 
 /*
- * buildBotsCruzamento(Bf) — tabela de cruzamento inventário × chamados RPA.
- * Tenta casar o nome do bot (inventário) com o nome do processo (chamados)
- * usando match aproximado (um contém o outro, após normalização).
- * Mostra os 10 bots em PRD com mais chamados de manutenção — candidatos à refatoração.
+ * buildBotsCruzamento(Bf) — inventory × RPA tickets cross-reference table.
+ * Tries to match the bot name (inventory) with the process name (tickets)
+ * using an approximate match (one contains the other, after normalization).
+ * Shows the 10 bots in PRD with the most maintenance tickets — refactoring candidates.
  *
- * LIMITAÇÃO: o match por nome é heurístico. Se o nome do bot no inventário
- * for muito diferente do nome do processo no Pipefy, o cruzamento pode errar.
+ * LIMITATION: the name match is heuristic. If the bot's name in the inventory
+ * is very different from the process name in Pipefy, the cross-reference can miss it.
  */
 function buildBotsCruzamento(Bf){
   const norm = normBotName;
-  const {kept:Rf} = applyDate(App.R); // aplica filtro de data nos chamados também
+  const {kept:Rf} = applyDate(App.R); // also applies the date filter to the tickets
   const chamPorProc = count(Rf, r => r.processo);
   const rows = Bf.filter(b => b.status === 'PRD').map(b => {
     const botNameNorm = norm(b.nome);
@@ -3328,16 +3334,16 @@ function buildBotsCruzamento(Bf){
 }
 
 /*
- * renderBotsList() — lista filtrada de bots com filtros locais (status, área).
- * Aplica filtro de data por AnoPRD antes dos filtros locais.
- * Exibe até 200 bots; avisa se houver mais.
+ * renderBotsList() — filtered bot list with local filters (status, area).
+ * Applies the AnoPRD date filter before the local filters.
+ * Shows up to 200 bots; warns if there are more.
  */
 function renderBotsList(){
   const filterStatus = document.getElementById('bot-fs')?.value||'';
   const filterArea   = document.getElementById('bot-fa')?.value||'';
   const dr = App.dateRange;
   let source = App.B;
-  // filtro de data especial: por AnoPRD (não por data de ação)
+  // special date filter: by AnoPRD (not by action date)
   if(dr.mode !== 'all'){
     const yFrom = dr.from ? dr.from.getFullYear() : null;
     const yTo   = dr.to   ? dr.to.getFullYear()   : null;
@@ -3416,25 +3422,25 @@ function botDetails(b){
 }
 
 /* ============================================================
-   FILTRO DE DATA GLOBAL — CONTROLES DO HEADER
+   GLOBAL DATE FILTER — HEADER CONTROLS
    ============================================================ */
 
 /*
- * applyDateFilter() — chamado quando o usuário muda qualquer um dos campos de data no header.
- * Lê os dois inputs (de/até), atualiza App.dateRange, e chama renderAll() para
- * redesenhar todas as abas com o novo recorte.
+ * applyDateFilter() — called when the user changes either date field in the header.
+ * Reads both inputs (from/to), updates App.dateRange, and calls renderAll() to
+ * redraw every tab with the new range.
  *
- * Se ambos os campos estiverem vazios → volta para modo 'all' (sem filtro).
- * A hora é fixada: 'from' começa em 00:00:00 e 'to' termina em 23:59:59
- * para incluir o dia completo em ambas as extremidades.
+ * If both fields are empty → goes back to 'all' mode (no filter).
+ * The time is fixed: 'from' starts at 00:00:00 and 'to' ends at 23:59:59
+ * to include the full day on both ends.
  */
 /*
- * setQuickRange(mode) — aplica um atalho de período (mês/trimestre/ano atual).
- * Calcula as datas de início e fim com base na data de hoje e preenche os
- * campos de data, depois aciona o filtro. Marca o chip ativo visualmente.
+ * setQuickRange(mode) — applies a period shortcut (current month/quarter/year).
+ * Calculates the start and end dates based on today's date, fills in the
+ * date fields, then triggers the filter. Visually marks the active chip.
  */
 function setQuickRange(mode){
-  // Se o chip clicado já está ativo, limpa o filtro (toggle)
+  // If the clicked chip is already active, clears the filter (toggle)
   const chip = document.getElementById('dfc-' + mode);
   if (chip && chip.classList.contains('active')) {
     clearDateFilter();
@@ -3446,11 +3452,11 @@ function setQuickRange(mode){
   let from, to;
   if(mode==='month'){
     from = new Date(y, m, 1);
-    to   = new Date(y, m+1, 0); // último dia do mês atual
+    to   = new Date(y, m+1, 0); // last day of the current month
   } else if(mode==='quarter'){
     const q = Math.floor(m/3);  // 0,1,2,3
     from = new Date(y, q*3, 1);
-    to   = new Date(y, q*3+3, 0); // último dia do trimestre
+    to   = new Date(y, q*3+3, 0); // last day of the quarter
   } else if(mode==='year'){
     from = new Date(y, 0, 1);
     to   = new Date(y, 11, 31);
@@ -3458,18 +3464,18 @@ function setQuickRange(mode){
   const iso = toIsoDate;
   document.getElementById('df-from').value = iso(from);
   document.getElementById('df-to').value   = iso(to);
-  // marca o chip ativo
+  // marks the active chip
   ['month','quarter','year'].forEach(k=>{
     const c = document.getElementById('dfc-'+k);
     if(c) c.classList.toggle('active', k===mode);
   });
-  applyDateFilter(true); // true = não limpar os chips (já marcamos acima)
+  applyDateFilter(true); // true = don't clear the chips (already marked above)
 }
 
 /*
- * applyDateFilter(fromChip) — chamado quando o usuário muda os campos de data
- * ou clica num atalho. Atualiza App.dateRange e redesenha tudo.
- * fromChip: se false (mudança manual), desmarca os chips de atalho.
+ * applyDateFilter(fromChip) — called when the user changes the date fields
+ * or clicks a shortcut. Updates App.dateRange and redraws everything.
+ * fromChip: if false (manual change), unmarks the shortcut chips.
  */
 function applyDateFilter(fromChip){
   const dr = App.dateRange;
@@ -3482,7 +3488,7 @@ function applyDateFilter(fromChip){
     dr.from = ff ? new Date(ff+'T00:00:00') : null;
     dr.to   = tt ? new Date(tt+'T23:59:59') : null;
   }
-  // mudança manual nos campos desmarca os atalhos rápidos
+  // a manual change in the fields unmarks the quick shortcuts
   if(fromChip!==true){
     ['month','quarter','year'].forEach(k=>{
       const c=document.getElementById('dfc-'+k); if(c) c.classList.remove('active');
@@ -3493,7 +3499,7 @@ function applyDateFilter(fromChip){
   renderAll();
 }
 
-// Limpa os dois campos de data, desmarca atalhos e volta para modo 'all'
+// Clears both date fields, unmarks shortcuts, and returns to 'all' mode
 function clearDateFilter(){
   document.getElementById('df-from').value = '';
   document.getElementById('df-to').value   = '';
@@ -3504,25 +3510,25 @@ function clearDateFilter(){
 }
 
 /*
- * renderAll() — redesenha todas as abas com o estado atual (filtros incluídos).
- * É chamado sempre que o filtro de data muda.
- * Cada função build*() aplica internamente o filtro de data antes de calcular.
+ * renderAll() — redraws every tab with the current state (filters included).
+ * Called whenever the date filter changes.
+ * Each build*() function applies the date filter internally before calculating.
  */
 function renderAll(){
-  buildGov();
-  if(App.P.proj.length) buildProj();
-  if(App.P.mel.length) buildMel();
+  buildGovernance();
+  if(App.P.proj.length) buildProjects();
+  if(App.P.improvements.length) buildImprovements();
   if(App.P.ana.length) buildAna();
-  if(App.R.length) buildRPAChamados();
+  if(App.R.length) buildRPATickets();
   if(App.B.length) buildBots();
   updateDateBadge();
 }
 
 /*
- * updateDateBadge() — atualiza o texto de status no header (topbar).
- * Quando há filtro ativo, acrescenta "· período: DD/MM/AAAA → DD/MM/AAAA".
- * Usa dataset.base para guardar o texto original (horário de atualização + fontes)
- * e não sobrescrever ao atualizar o período.
+ * updateDateBadge() — updates the status text in the header (topbar).
+ * When a filter is active, appends "· período: DD/MM/AAAA → DD/MM/AAAA".
+ * Uses dataset.base to store the original text (update time + sources)
+ * and avoid overwriting it when the period updates.
  */
 function updateDateBadge(){
   const dr = App.dateRange;
@@ -3537,57 +3543,57 @@ function updateDateBadge(){
 
 
 /* ============================================================
-   ANÁLISE AUTOMÁTICA ("IA" de insights calculados)
+   AUTOMATIC ANALYSIS ("AI" of computed insights)
    ============================================================
-   Gera leituras analíticas a partir dos dados, 100% no navegador —
-   nada é enviado para servidor algum. Não é um modelo de linguagem:
-   são análises programadas (concentração, tendência, gargalos, outliers)
-   que produzem frases dinâmicas, sempre recalculadas conforme a planilha
-   e o filtro de período ativos.
+   Generates analytical readings from the data, 100% in the browser —
+   nothing is sent to any server. This is not a language model: these
+   are programmed analyses (concentration, trend, bottlenecks, outliers)
+   that produce dynamic sentences, always recalculated according to the
+   spreadsheet and the active period filter.
 
-   Cada aba tem uma função analise<Aba>() que retorna uma lista de
-   insights no formato { tipo, texto }, onde tipo ∈ {pos, neg, warn, neu}
-   controla a cor/ícone. renderAnalise() monta o painel e aiBar() o botão.
+   Each tab has an analyze<Tab>() function that returns a list of
+   insights in the format { type, text }, where type ∈ {pos, neg, warn, neu}
+   controls the color/icon. generateAnalysis() builds the panel and aiBar() the button.
    ============================================================ */
 
-// Ícone (SVG inline) de "faísca/análise" — não depende de fonte externa
+// Icon (inline SVG) for the "spark/analysis" button — doesn't depend on an external font
 const AI_SPARK = '<svg class="ai-spark" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.9 5.8L20 11l-6.1 2.2L12 19l-1.9-5.8L4 11l6.1-2.2z"/></svg>';
 
 /*
- * aiBar(aba) — gera o HTML do botão "Gerar análise" de uma aba.
- * O id do container do painel é ai-panel-<aba>, preenchido por gerarAnalise().
+ * aiBar(tab) — generates the HTML for a tab's "Gerar análise" button.
+ * The panel container's id is ai-panel-<tab>, filled in by generateAnalysis().
  */
-function aiBar(aba){
+function aiBar(tab){
   return `<div class="ai-bar">
-    <button class="ai-btn" id="ai-btn-${aba}" onclick="gerarAnalise('${aba}')">${AI_SPARK} Gerar análise</button>
+    <button class="ai-btn" id="ai-btn-${tab}" onclick="generateAnalysis('${tab}')">${AI_SPARK} Gerar análise</button>
     <span class="ai-hint">leitura automática dos números deste recorte · 100% local</span>
-  </div><div id="ai-panel-${aba}"></div>`;
+  </div><div id="ai-panel-${tab}"></div>`;
 }
 
 /*
- * gerarAnalise(aba) — calcula os insights da aba e renderiza o painel.
- * Mostra um estado de "analisando" breve (puramente visual) e então o resultado.
- * Se clicar de novo, recolhe o painel (toggle).
+ * generateAnalysis(tab) — computes the tab's insights and renders the panel.
+ * Shows a brief "analyzing" state (purely visual) and then the result.
+ * Clicking again collapses the panel (toggle).
  */
-function gerarAnalise(aba){
-  const panel = document.getElementById('ai-panel-'+aba);
-  const btn = document.getElementById('ai-btn-'+aba);
+function generateAnalysis(tab){
+  const panel = document.getElementById('ai-panel-'+tab);
+  const btn = document.getElementById('ai-btn-'+tab);
   if(!panel) return;
-  // toggle: se já está aberto, recolhe
+  // toggle: if already open, collapse it
   if(panel.dataset.open === '1'){
     panel.innerHTML = ''; panel.dataset.open = '0';
     return;
   }
   if(btn) btn.classList.add('loading');
-  // pequeno atraso só para dar sensação de processamento (sem travar nada)
+  // small delay just to give a sense of processing (doesn't block anything)
   setTimeout(() => {
     const fn = {
-      gov: analiseGov, proj: analiseProj, mel: analiseMel,
-      ana: analiseAna, rpa: analiseRPA, bots: analiseBots
-    }[aba];
+      gov: analyzeGovernance, proj: analyzeProjects, mel: analyzeImprovements,
+      ana: analyzeAnalytics, rpa: analyzeRPA, bots: analyzeBots
+    }[tab];
     const insights = (fn ? fn() : []).filter(Boolean);
     const corpo = insights.length
-      ? insights.map(i => `<div class="ai-item ${i.tipo}"><div class="ai-ico">${i.ico||'•'}</div><div>${i.texto}</div></div>`).join('')
+      ? insights.map(i => `<div class="ai-item ${i.type}"><div class="ai-ico">${i.ico||'•'}</div><div>${i.text}</div></div>`).join('')
       : `<div class="ai-item neu"><div class="ai-ico">•</div><div>Não há dados suficientes neste recorte para gerar uma análise. Tente limpar o filtro de período.</div></div>`;
     panel.innerHTML = `<div class="ai-panel">
       <div class="ai-panel-head">${AI_SPARK}<span class="ai-panel-title">Análise automática</span>
@@ -3598,14 +3604,14 @@ function gerarAnalise(aba){
   }, 280);
 }
 
-// helper: maior entrada {chave,valor} de um objeto de contagem
-function topEntry(obj, excluir=[]){
-  const e = Object.entries(obj).filter(([k]) => !excluir.includes(k)).sort((a,b)=>b[1]-a[1]);
+// helper: largest {key,value} entry of a count object
+function topEntry(obj, exclude=[]){
+  const e = Object.entries(obj).filter(([k]) => !exclude.includes(k)).sort((a,b)=>b[1]-a[1]);
   return e[0] || null;
 }
 
-/* --- Análise: GOVERNANÇA --- */
-function analiseGov(){
+/* --- Analysis: GOVERNANCE --- */
+function analyzeGovernance(){
   const {kept:A} = allActionsFiltered();
   const tot = A.length;
   if(!tot) return [];
@@ -3614,110 +3620,110 @@ function analiseGov(){
   const done    = sc.done;
   const doing   = sc.doing + sc.closing;
   const backlog = sc.todo;
-  const taxa = pct(done,tot);
+  const rate = pct(done,tot);
 
-  // 1. Leitura geral da conclusão
-  ins.push({tipo: taxa>=60?'pos':(taxa>=35?'neu':'warn'), ico:'%',
-    texto:`<b>${taxa}% das ${tot} ações estão concluídas</b> (${done}). Em andamento: ${doing}. Backlog/não iniciadas: ${backlog} (${pct(backlog,tot)}%).`});
+  // 1. General completion reading
+  ins.push({type: rate>=60?'pos':(rate>=35?'neu':'warn'), ico:'%',
+    text:`<b>${rate}% das ${tot} ações estão concluídas</b> (${done}). Em andamento: ${doing}. Backlog/não iniciadas: ${backlog} (${pct(backlog,tot)}%).`});
 
-  // 2. Qual fonte concentra o backlog em aberto
-  const fontes = ['Projetos','Pipefy','Analytics','Chamados RPA'];
-  const backlogPorFonte = {};
-  fontes.forEach(f => { backlogPorFonte[f] = A.filter(a=>a.fonte===f && (a.sc==='todo'||a.sc==='doing'||a.sc==='closing')).length; });
-  const topBacklog = topEntry(backlogPorFonte);
+  // 2. Which source concentrates the most open backlog
+  const sources = ['Projetos','Pipefy','Analytics','Chamados RPA'];
+  const backlogBySource = {};
+  sources.forEach(f => { backlogBySource[f] = A.filter(a=>a.source===f && (a.sc==='todo'||a.sc==='doing'||a.sc==='closing')).length; });
+  const topBacklog = topEntry(backlogBySource);
   if(topBacklog && topBacklog[1]>0){
-    ins.push({tipo:'neu', ico:'≡',
-      texto:`A fonte com mais ações em aberto é <b>${topBacklog[0]}</b>, com ${topBacklog[1]} ${topBacklog[1]===1?'ação':'ações'} (em andamento ou backlog).`});
+    ins.push({type:'neu', ico:'≡',
+      text:`A fonte com mais ações em aberto é <b>${topBacklog[0]}</b>, com ${topBacklog[1]} ${topBacklog[1]===1?'ação':'ações'} (em andamento ou backlog).`});
   }
 
-  // 3. Concentração de ações abertas por responsável (só equipe CoE, igual ao gráfico)
-  const abertasPorResp = {};
+  // 3. Concentration of open actions by owner (CoE team only, same as the chart)
+  const openByOwner = {};
   A.filter(a=>a.resp && a.sc!=='done' && a.sc!=='cancel').forEach(a=>{
     const nome = getStandardCoeName(a.resp);
-    if(nome) abertasPorResp[nome] = (abertasPorResp[nome]||0)+1;
+    if(nome) openByOwner[nome] = (openByOwner[nome]||0)+1;
   });
-  const totalAbertas = Object.values(abertasPorResp).reduce((s,v)=>s+v,0);
-  const topResp = topEntry(abertasPorResp);
-  if(topResp && totalAbertas>0){
-    // Limiar 30%: uma pessoa carregando >30% das ações abertas é possível gargalo.
-    // Abaixo disso é "maior carga individual" — informativo, não problemático.
-    ins.push({tipo: topResp[1]/totalAbertas>0.3?'warn':'neu', ico:'@',
-      texto:`Na equipe CoE, <b>${topResp[0]}</b> concentra ${topResp[1]} ações abertas (${pct(topResp[1],totalAbertas)}% do total da equipe) — ${topResp[1]/totalAbertas>0.3?'possível gargalo de capacidade':'maior carga individual'}.`});
+  const totalOpen = Object.values(openByOwner).reduce((s,v)=>s+v,0);
+  const topOwner = topEntry(openByOwner);
+  if(topOwner && totalOpen>0){
+    // 30% threshold: one person carrying >30% of open actions is a possible bottleneck.
+    // Below that it's just "highest individual load" — informative, not a problem.
+    ins.push({type: topOwner[1]/totalOpen>0.3?'warn':'neu', ico:'@',
+      text:`Na equipe CoE, <b>${topOwner[0]}</b> concentra ${topOwner[1]} ações abertas (${pct(topOwner[1],totalOpen)}% do total da equipe) — ${topOwner[1]/totalOpen>0.3?'possível gargalo de capacidade':'maior carga individual'}.`});
   }
 
-  // 4. Canceladas (sinaliza se for relevante)
-  // Limiar 5%: abaixo disso é ruído normal do planejamento; acima merece revisão de processo.
+  // 4. Cancelled (flagged if relevant)
+  // 5% threshold: below that is normal planning noise; above it deserves a process review.
   const cancel = A.filter(a=>a.sc==='cancel').length;
   if(cancel>0 && pct(cancel,tot)>=5){
-    ins.push({tipo:'warn', ico:'×',
-      texto:`<b>${cancel} ações canceladas</b> (${pct(cancel,tot)}% do total) — vale revisar o motivo para reduzir retrabalho de planejamento.`});
+    ins.push({type:'warn', ico:'×',
+      text:`<b>${cancel} ações canceladas</b> (${pct(cancel,tot)}% do total) — vale revisar o motivo para reduzir retrabalho de planejamento.`});
   }
   return ins;
 }
 
-/* --- Análise: PROJETOS --- */
-function analiseProj(){
+/* --- Analysis: PROJECTS --- */
+function analyzeProjects(){
   const {kept:P} = applyDate(App.P.proj);
   const tot = P.length;
   if(!tot) return [];
   const ins = [];
   const exec = P.filter(p=>p.sc==='doing').length;
   const fin = P.filter(p=>p.sc==='closing'||p.sc==='monitor').length;
-  const atrasados = P.filter(isProjectOverdue);
+  const overdue = P.filter(isProjectOverdue);
 
-  // 1. Situação geral
-  ins.push({tipo:'neu', ico:'≡',
-    texto:`<b>${tot} projetos</b> no recorte: ${exec} em execução, ${fin} em fase final (encerramento/monitoramento).`});
+  // 1. General status
+  ins.push({type:'neu', ico:'≡',
+    text:`<b>${tot} projetos</b> no recorte: ${exec} em execução, ${fin} em fase final (encerramento/monitoramento).`});
 
-  // 2. Atrasados — lista NOMINAL de quais são (ordenados por dias de atraso)
-  if(atrasados.length>0){
-    const comDias = atrasados.map(p => ({
+  // 2. Overdue — a NAMED list of which ones (sorted by days overdue)
+  if(overdue.length>0){
+    const withDays = overdue.map(p => ({
       titulo: p.titulo,
-      dias: diasEntre(HOJE, p.dtFim),
+      dias: daysBetween(HOJE, p.dtFim),
       fase: getProjectPhase(p.statusRaw), statusRaw: p.statusRaw
     })).sort((a,b)=>b.dias-a.dias);
-    const lista = comDias.map(p => `<b>${p.titulo}</b> (${p.dias}d, ${p.statusRaw})`).join('; ');
-    ins.push({tipo:'neg', ico:'!',
-      texto:`<b>${atrasados.length} ${atrasados.length===1?'projeto atrasado':'projetos atrasados'}</b>: ${lista}.`});
+    const list = withDays.map(p => `<b>${p.titulo}</b> (${p.dias}d, ${p.statusRaw})`).join('; ');
+    ins.push({type:'neg', ico:'!',
+      text:`<b>${overdue.length} ${overdue.length===1?'projeto atrasado':'projetos atrasados'}</b>: ${list}.`});
   } else {
-    ins.push({tipo:'pos', ico:'✓', texto:`Nenhum projeto com prazo vencido neste recorte.`});
+    ins.push({type:'pos', ico:'✓', text:`Nenhum projeto com prazo vencido neste recorte.`});
   }
 
-  // 3. Projeto mais crítico pelo score de risco automático
-  const comRisco = P.map(p => ({p, r:getProjectRisk(p)})).filter(x=>x.r.score>0).sort((a,b)=>b.r.score-a.r.score);
-  if(comRisco.length){
-    const top = comRisco[0];
-    const nivelPt = {high:'alto', medium:'médio', low:'baixo'}[top.r.level];
-    ins.push({tipo: top.r.level==='high'?'neg':'warn', ico:'▲',
-      texto:`Projeto mais crítico: <b>${top.p.titulo}</b> (risco ${nivelPt}, score ${top.r.score}) — ${top.r.reasons.join(', ')}.`});
-    const altos = comRisco.filter(x=>x.r.level==='high').length;
-    if(altos>1){
-      ins.push({tipo:'warn', ico:'▲',
-        texto:`<b>${altos} projetos</b> estão em risco alto e merecem atenção prioritária.`});
+  // 3. Most critical project by the automatic risk score
+  const withRisk = P.map(p => ({p, r:getProjectRisk(p)})).filter(x=>x.r.score>0).sort((a,b)=>b.r.score-a.r.score);
+  if(withRisk.length){
+    const top = withRisk[0];
+    const levelPt = {high:'alto', medium:'médio', low:'baixo'}[top.r.level];
+    ins.push({type: top.r.level==='high'?'neg':'warn', ico:'▲',
+      text:`Projeto mais crítico: <b>${top.p.titulo}</b> (risco ${levelPt}, score ${top.r.score}) — ${top.r.reasons.join(', ')}.`});
+    const highRiskCount = withRisk.filter(x=>x.r.level==='high').length;
+    if(highRiskCount>1){
+      ins.push({type:'warn', ico:'▲',
+        text:`<b>${highRiskCount} projetos</b> estão em risco alto e merecem atenção prioritária.`});
     }
   }
 
-  // 4. Frente com mais projetos
-  const porFrente = count(P.filter(p=>p.frente), p=>p.frente);
-  const topFr = topEntry(porFrente);
-  if(topFr){
-    ins.push({tipo:'neu', ico:'#',
-      texto:`A frente com mais projetos é <b>${topFr[0]}</b> (${topFr[1]}).`});
+  // 4. Area with the most projects
+  const byArea = count(P.filter(p=>p.frente), p=>p.frente);
+  const topArea = topEntry(byArea);
+  if(topArea){
+    ins.push({type:'neu', ico:'#',
+      text:`A frente com mais projetos é <b>${topArea[0]}</b> (${topArea[1]}).`});
   }
 
-  // 5. Projetos não iniciados
-  // Limiar 30%: se mais de 30% da carteira ainda não começou, o pipeline está represado.
-  const naoIni = P.filter(p=>p.sc==='todo').length;
-  if(naoIni>0){
-    ins.push({tipo: pct(naoIni,tot)>30?'warn':'neu', ico:'○',
-      texto:`<b>${naoIni} ${naoIni===1?'projeto não iniciado':'projetos não iniciados'}</b> (${pct(naoIni,tot)}% da carteira) aguardando início.`});
+  // 5. Not-started projects
+  // 30% threshold: if more than 30% of the portfolio hasn't started, the pipeline is backed up.
+  const notStarted = P.filter(p=>p.sc==='todo').length;
+  if(notStarted>0){
+    ins.push({type: pct(notStarted,tot)>30?'warn':'neu', ico:'○',
+      text:`<b>${notStarted} ${notStarted===1?'projeto não iniciado':'projetos não iniciados'}</b> (${pct(notStarted,tot)}% da carteira) aguardando início.`});
   }
   return ins;
 }
 
-/* --- Análise: PIPEFY MELHORIAS --- */
-function analiseMel(){
-  const {kept: melhorias} = applyDate(App.P.mel);
+/* --- Analysis: PIPEFY IMPROVEMENTS --- */
+function analyzeImprovements(){
+  const {kept: melhorias} = applyDate(App.P.improvements);
   const tot = melhorias.length;
   if(!tot) return [];
   const ins = [];
@@ -3726,132 +3732,132 @@ function analiseMel(){
   const backlog = sc.todo;
   const blocked = sc.blocked;
 
-  ins.push({tipo: pct(done,tot)>=60?'pos':'neu', ico:'%',
-    texto:`<b>${pct(done,tot)}% das ${tot} melhorias concluídas</b> (${done}). Backlog: ${backlog}.`});
+  ins.push({type: pct(done,tot)>=60?'pos':'neu', ico:'%',
+    text:`<b>${pct(done,tot)}% das ${tot} melhorias concluídas</b> (${done}). Backlog: ${backlog}.`});
 
-  // complexidade dominante
-  const porCplx = count(melhorias.filter(m=>m.complex), m=>m.complex);
-  const topC = topEntry(porCplx);
-  if(topC){
-    ins.push({tipo:'neu', ico:'≡',
-      texto:`Complexidade predominante: <b>${topC[0]}</b> (${topC[1]} melhorias, ${pct(topC[1],tot)}%).`});
+  // dominant complexity
+  const byComplexity = count(melhorias.filter(m=>m.complex), m=>m.complex);
+  const topComplexity = topEntry(byComplexity);
+  if(topComplexity){
+    ins.push({type:'neu', ico:'≡',
+      text:`Complexidade predominante: <b>${topComplexity[0]}</b> (${topComplexity[1]} melhorias, ${pct(topComplexity[1],tot)}%).`});
   }
 
-  // frente com mais melhorias
-  const porFr = count(melhorias.filter(m=>m.frente), m=>m.frente);
-  const topFr = topEntry(porFr);
-  if(topFr){
-    ins.push({tipo:'neu', ico:'#',
-      texto:`A frente que mais demanda melhorias é <b>${topFr[0]}</b> (${topFr[1]}).`});
+  // area with the most improvements
+  const byArea = count(melhorias.filter(m=>m.frente), m=>m.frente);
+  const topArea = topEntry(byArea);
+  if(topArea){
+    ins.push({type:'neu', ico:'#',
+      text:`A frente que mais demanda melhorias é <b>${topArea[0]}</b> (${topArea[1]}).`});
   }
 
   if(blocked>0){
-    ins.push({tipo:'warn', ico:'!',
-      texto:`<b>${blocked} ${blocked===1?'melhoria bloqueada':'melhorias bloqueadas'}</b> — vale destravar para liberar o fluxo.`});
+    ins.push({type:'warn', ico:'!',
+      text:`<b>${blocked} ${blocked===1?'melhoria bloqueada':'melhorias bloqueadas'}</b> — vale destravar para liberar o fluxo.`});
   }
   return ins;
 }
 
-/* --- Análise: ANALYTICS --- */
-function analiseAna(){
+/* --- Analysis: ANALYTICS --- */
+function analyzeAnalytics(){
   const {kept:A} = applyDate(App.P.ana);
   const tot = A.length;
   if(!tot) return [];
   const ins = [];
   const done = A.filter(a=>a.sc==='done').length;
 
-  ins.push({tipo: pct(done,tot)>=50?'pos':'neu', ico:'%',
-    texto:`<b>${pct(done,tot)}% das ${tot} atividades concluídas</b> (${done}).`});
+  ins.push({type: pct(done,tot)>=50?'pos':'neu', ico:'%',
+    text:`<b>${pct(done,tot)}% das ${tot} atividades concluídas</b> (${done}).`});
 
-  // prioridade 1 ainda aberta — alerta
-  const p1aberta = A.filter(a=>a.prio===1 && a.sc!=='done' && a.sc!=='cancel').length;
-  if(p1aberta>0){
-    ins.push({tipo:'neg', ico:'!',
-      texto:`<b>${p1aberta} ${p1aberta===1?'atividade de Prioridade 1 em aberto':'atividades de Prioridade 1 em aberto'}</b> — foco máximo de atenção.`});
+  // priority 1 still open — alert
+  const openP1 = A.filter(a=>a.prio===1 && a.sc!=='done' && a.sc!=='cancel').length;
+  if(openP1>0){
+    ins.push({type:'neg', ico:'!',
+      text:`<b>${openP1} ${openP1===1?'atividade de Prioridade 1 em aberto':'atividades de Prioridade 1 em aberto'}</b> — foco máximo de atenção.`});
   }
 
-  // frente mais demandada
-  const porFr = count(A.filter(a=>a.frente), a=>a.frente);
-  const topFr = topEntry(porFr);
-  if(topFr){
-    ins.push({tipo:'neu', ico:'#',
-      texto:`A frente com mais atividades de Analytics é <b>${topFr[0]}</b> (${topFr[1]}).`});
+  // most in-demand area
+  const byArea = count(A.filter(a=>a.frente), a=>a.frente);
+  const topArea = topEntry(byArea);
+  if(topArea){
+    ins.push({type:'neu', ico:'#',
+      text:`A frente com mais atividades de Analytics é <b>${topArea[0]}</b> (${topArea[1]}).`});
   }
 
-  // sem data (transparência)
-  const semData = A.filter(a=>!a.dtFim && !a.dtInicio).length;
-  if(semData>0){
-    ins.push({tipo:'neu', ico:'○',
-      texto:`${semData} de ${tot} atividades não têm data registrada, então não entram nos cálculos por período.`});
+  // without a date (transparency)
+  const withoutDate = A.filter(a=>!a.dtFim && !a.dtInicio).length;
+  if(withoutDate>0){
+    ins.push({type:'neu', ico:'○',
+      text:`${withoutDate} de ${tot} atividades não têm data registrada, então não entram nos cálculos por período.`});
   }
   return ins;
 }
 
-/* --- Análise: CHAMADOS RPA --- */
-function analiseRPA(){
+/* --- Analysis: RPA TICKETS --- */
+function analyzeRPA(){
   const {kept: chamados} = applyDate(App.R);
   const tot = chamados.length;
   if(!tot) return [];
   const ins = [];
-  const venc = chamados.filter(r=>r.vencido).length;
-  const concl = chamados.filter(r=>r.fase.toLowerCase().includes('conclu')).length;
+  const overdue = chamados.filter(r=>r.vencido).length;
+  const done = chamados.filter(r=>r.fase.toLowerCase().includes('conclu')).length;
 
-  // 1. Concentração nos top bots
-  // Limiar 40%: se 3 processos (de dezenas) concentram >40% dos chamados,
-  // estabilizá-los tem impacto desproporcional no volume total de suporte.
-  const porProc = count(chamados.filter(r=>r.processo!=='(sem processo)'), r=>r.processo);
-  const ordenado = Object.entries(porProc).sort((a,b)=>b[1]-a[1]);
-  const totalProc = ordenado.reduce((s,e)=>s+e[1],0);
-  if(ordenado.length>=3){
-    const top3 = ordenado.slice(0,3);
-    const soma3 = top3.reduce((s,e)=>s+e[1],0);
-    ins.push({tipo: soma3/totalProc>0.4?'warn':'neu', ico:'≡',
-      texto:`Os 3 processos com mais manutenções (<b>${top3.map(e=>e[0]).join(', ')}</b>) concentram <b>${pct(soma3,totalProc)}%</b> dos chamados. Estabilizá-los reduz bastante o volume de suporte.`});
+  // 1. Concentration in the top bots
+  // 40% threshold: if 3 processes (out of dozens) concentrate >40% of tickets,
+  // stabilizing them has a disproportionate impact on the total support volume.
+  const byProcess = count(chamados.filter(r=>r.processo!=='(sem processo)'), r=>r.processo);
+  const sorted = Object.entries(byProcess).sort((a,b)=>b[1]-a[1]);
+  const totalProcess = sorted.reduce((s,e)=>s+e[1],0);
+  if(sorted.length>=3){
+    const top3 = sorted.slice(0,3);
+    const top3Sum = top3.reduce((s,e)=>s+e[1],0);
+    ins.push({type: top3Sum/totalProcess>0.4?'warn':'neu', ico:'≡',
+      text:`Os 3 processos com mais manutenções (<b>${top3.map(e=>e[0]).join(', ')}</b>) concentram <b>${pct(top3Sum,totalProcess)}%</b> dos chamados. Estabilizá-los reduz bastante o volume de suporte.`});
   }
 
-  // 2. Taxa de vencidos de SLA
-  // Limiar: >25% = crítico (vermelho), >0% = atenção (laranja), 0% = bom (verde).
-  ins.push({tipo: pct(venc,tot)>25?'neg':(pct(venc,tot)>0?'warn':'pos'), ico: pct(venc,tot)>25?'!':'%',
-    texto:`<b>${pct(venc,tot)}% dos ${tot} chamados venceram o prazo</b> (${venc}). Concluídos: ${pct(concl,tot)}%.`});
+  // 2. SLA overdue rate
+  // Threshold: >25% = critical (red), >0% = attention (orange), 0% = good (green).
+  ins.push({type: pct(overdue,tot)>25?'neg':(pct(overdue,tot)>0?'warn':'pos'), ico: pct(overdue,tot)>25?'!':'%',
+    text:`<b>${pct(overdue,tot)}% dos ${tot} chamados venceram o prazo</b> (${overdue}). Concluídos: ${pct(done,tot)}%.`});
 
-  // 3. Problema mais comum
-  const porProb = count(chamados, r=>r.problema);
-  const topProb = topEntry(porProb, ['']);
-  if(topProb && topProb[0]){
-    ins.push({tipo:'neu', ico:'?',
-      texto:`Problema mais frequente: <b>"${topProb[0]}"</b> (${topProb[1]} chamados, ${pct(topProb[1],tot)}%).`});
+  // 3. Most common problem
+  const byProblem = count(chamados, r=>r.problema);
+  const topProblem = topEntry(byProblem, ['']);
+  if(topProblem && topProblem[0]){
+    ins.push({type:'neu', ico:'?',
+      text:`Problema mais frequente: <b>"${topProblem[0]}"</b> (${topProblem[1]} chamados, ${pct(topProblem[1],tot)}%).`});
   }
 
-  // 4. Tendência mês a mês: compara a média da 1ª metade do período com a 2ª metade.
-  // Limiar 15%: variações abaixo disso são flutuação normal; acima é tendência real.
-  // A divisão em duas metades funciona com qualquer quantidade de meses disponíveis.
-  const porMes = {};
-  chamados.forEach(r=>{ if(r.mes) porMes[r.mes]=(porMes[r.mes]||0)+1; });
-  const meses = Object.keys(porMes).sort();
-  if(meses.length>=4){
-    const metade = Math.floor(meses.length/2);
-    const recentes = meses.slice(-metade).reduce((s,m)=>s+porMes[m],0)/metade; // média 2ª metade
-    const antigos  = meses.slice(0,metade).reduce((s,m)=>s+porMes[m],0)/metade; // média 1ª metade
-    const variacao = antigos>0 ? Math.round((recentes-antigos)/antigos*100) : 0; // variação em %
-    if(Math.abs(variacao)>=15){
-      ins.push({tipo: variacao>0?'warn':'pos', ico: variacao>0?'↑':'↓',
-        texto:`O volume de chamados está <b>${variacao>0?'subindo':'caindo'}</b>: média recente ${recentes.toFixed(0)}/mês vs ${antigos.toFixed(0)}/mês no início do período (${variacao>0?'+':''}${variacao}%).`});
+  // 4. Month-over-month trend: compares the average of the 1st half of the period with the 2nd half.
+  // 15% threshold: variations below that are normal fluctuation; above it is a real trend.
+  // Splitting into two halves works with any number of available months.
+  const byMonth = {};
+  chamados.forEach(r=>{ if(r.mes) byMonth[r.mes]=(byMonth[r.mes]||0)+1; });
+  const months = Object.keys(byMonth).sort();
+  if(months.length>=4){
+    const half = Math.floor(months.length/2);
+    const recent = months.slice(-half).reduce((s,m)=>s+byMonth[m],0)/half; // 2nd-half average
+    const older  = months.slice(0,half).reduce((s,m)=>s+byMonth[m],0)/half; // 1st-half average
+    const change = older>0 ? Math.round((recent-older)/older*100) : 0; // % change
+    if(Math.abs(change)>=15){
+      ins.push({type: change>0?'warn':'pos', ico: change>0?'↑':'↓',
+        text:`O volume de chamados está <b>${change>0?'subindo':'caindo'}</b>: média recente ${recent.toFixed(0)}/mês vs ${older.toFixed(0)}/mês no início do período (${change>0?'+':''}${change}%).`});
     }
   }
 
-  // 5. Área que mais abre chamados (se mapeada)
-  const porArea = count(chamados.filter(r=>r.area && r.area!=='(não mapeada)'), r=>r.area);
-  const topArea = topEntry(porArea);
+  // 5. Area that opens the most tickets (if mapped)
+  const byArea = count(chamados.filter(r=>r.area && r.area!=='(não mapeada)'), r=>r.area);
+  const topArea = topEntry(byArea);
   if(topArea){
-    ins.push({tipo:'neu', ico:'#',
-      texto:`A área que mais abre chamados é <b>${topArea[0]}</b> (${topArea[1]}).`});
+    ins.push({type:'neu', ico:'#',
+      text:`A área que mais abre chamados é <b>${topArea[0]}</b> (${topArea[1]}).`});
   }
   return ins;
 }
 
-/* --- Análise: INVENTÁRIO DE BOTS --- */
-function analiseBots(){
-  // bots usam filtro por AnoPRD; aqui analisamos o conjunto total carregado
+/* --- Analysis: BOT INVENTORY --- */
+function analyzeBots(){
+  // bots use the AnoPRD filter; here we analyze the full loaded set
   const bots = App.B;
   if(!bots.length) return [];
   const ins = [];
@@ -3859,43 +3865,43 @@ function analiseBots(){
   const dev     = bots.filter(b=>b.status==='DEV').length;
   const backlog = bots.filter(b=>b.status==='BACKLOG').length;
 
-  ins.push({tipo:'neu', ico:'≡',
-    texto:`<b>${bots.length} bots no inventário</b>: ${prd} em produção (${pct(prd,bots.length)}%), ${dev} em desenvolvimento, ${backlog} em backlog.`});
+  ins.push({type:'neu', ico:'≡',
+    text:`<b>${bots.length} bots no inventário</b>: ${prd} em produção (${pct(prd,bots.length)}%), ${dev} em desenvolvimento, ${backlog} em backlog.`});
 
-  // cobertura por área (entre as frentes principais)
+  // coverage by area (among the main business areas)
   const prdBots = bots.filter(b=>b.status==='PRD');
-  const porArea = count(prdBots, b=>b.area);
-  const topArea = topEntry(porArea);
+  const byArea = count(prdBots, b=>b.area);
+  const topArea = topEntry(byArea);
   if(topArea){
-    ins.push({tipo:'neu', ico:'#',
-      texto:`A área com mais automações em produção é <b>${topArea[0]}</b> (${topArea[1]} bots, ${pct(topArea[1],prd)}%).`});
+    ins.push({type:'neu', ico:'#',
+      text:`A área com mais automações em produção é <b>${topArea[0]}</b> (${topArea[1]} bots, ${pct(topArea[1],prd)}%).`});
   }
 
-  // bots críticos
-  const criticos = prdBots.filter(b=>b.criticidade && b.criticidade<=2).length;
-  if(criticos>0){
-    ins.push({tipo:'warn', ico:'!',
-      texto:`<b>${criticos} bots em produção são de criticidade alta</b> (nível 1-2) — priorize monitoramento e plano de contingência.`});
+  // critical bots
+  const critical = prdBots.filter(b=>b.criticidade && b.criticidade<=2).length;
+  if(critical>0){
+    ins.push({type:'warn', ico:'!',
+      text:`<b>${critical} bots em produção são de criticidade alta</b> (nível 1-2) — priorize monitoramento e plano de contingência.`});
   }
 
-  // cruzamento com chamados, se disponível
+  // cross-reference with tickets, if available
   if(App.R.length){
-    const chamPorProc = count(App.R, r=>r.processo);
-    let maxChamados = 0, botMaisChamados = '';
+    const ticketsByProcess = count(App.R, r=>r.processo);
+    let maxTickets = 0, botWithMostTickets = '';
     prdBots.forEach(b => {
       const botNameNorm = normBotName(b.nome);
-      let totalChamados = 0;
-      Object.entries(chamPorProc).forEach(([proc, qtd]) => {
+      let totalTickets = 0;
+      Object.entries(ticketsByProcess).forEach(([proc, qtd]) => {
         const procNameNorm = normBotName(proc);
         if (procNameNorm && botNameNorm && (botNameNorm.includes(procNameNorm) || procNameNorm.includes(botNameNorm))) {
-          totalChamados += qtd;
+          totalTickets += qtd;
         }
       });
-      if (totalChamados > maxChamados) { maxChamados = totalChamados; botMaisChamados = b.nome; }
+      if (totalTickets > maxTickets) { maxTickets = totalTickets; botWithMostTickets = b.nome; }
     });
-    if(maxChamados>0){
-      ins.push({tipo:'warn', ico:'⚙',
-        texto:`O bot em produção com mais manutenções é <b>${botMaisChamados}</b> (${maxChamados} chamados) — forte candidato a refatoração.`});
+    if(maxTickets>0){
+      ins.push({type:'warn', ico:'⚙',
+        text:`O bot em produção com mais manutenções é <b>${botWithMostTickets}</b> (${maxTickets} chamados) — forte candidato a refatoração.`});
     }
   }
   return ins;
@@ -3903,28 +3909,28 @@ function analiseBots(){
 
 
 /* ============================================================
-   GENERATE — PONTO DE ENTRADA PRINCIPAL
+   GENERATE — MAIN ENTRY POINT
    ============================================================
-   Chamado quando o usuário clica em "Gerar dashboard".
-   Orquestra: parsers → descobre range de datas → constrói todas as views → navega.
+   Called when the user clicks "Gerar dashboard".
+   Orchestrates: parsers → finds the date range → builds every view → navigates.
    ============================================================ */
 function generate(){
-  // Destroi instâncias Chart.js anteriores e reseta o contador de IDs
-  // para evitar o erro "Canvas already in use" a cada re-geração do dashboard
+  // Destroys previous Chart.js instances and resets the id counter
+  // to avoid the "Canvas already in use" error on every dashboard regeneration
   Object.values(_chartInstances).forEach(ch => { try { ch.destroy(); } catch(_){} });
   Object.keys(_chartInstances).forEach(k => delete _chartInstances[k]);
   _chartSeq = 0;
 
-  // 1. Parseia cada fonte (converte Excel bruto em objetos normalizados)
-  if(App.gov) parseGov();   // base de governança: Pipefy, Projetos, Analytics
-  if(App.gov) parseInv();   // inventário de bots (aba separada dentro da base de governança)
-  if(App.rpa) parseRPA();   // relatório de chamados de manutenção RPA
-  enrichRPAComArea();       // associa área dos bots aos chamados (via match de nome)
+  // 1. Parses each source (converts raw Excel into normalized objects)
+  if(App.gov) parseGov();   // governance base: Pipefy, Projetos, Analytics
+  if(App.gov) parseInv();   // bot inventory (separate tab within the governance base)
+  if(App.rpa) parseRPA();   // RPA maintenance ticket report
+  enrichRPAWithArea();      // assigns bot area to tickets (via name matching)
 
-  // 2. Descobre o range global de datas (mínimo e máximo entre todas as fontes)
-  //    Isso define os limites min/max dos inputs de data no header,
-  //    impedindo o usuário de selecionar datas fora do alcance dos dados.
-  const all = [...App.P.mel, ...App.P.proj, ...App.P.ana, ...App.R];
+  // 2. Finds the global date range (min and max across all sources)
+  //    This sets the min/max limits of the header's date inputs,
+  //    preventing the user from selecting dates outside the data's range.
+  const all = [...App.P.improvements, ...App.P.proj, ...App.P.ana, ...App.R];
   const dates = all.map(refDate).filter(Boolean).map(d => d.getTime());
   if(dates.length){
     const min = new Date(Math.min(...dates));
@@ -3936,40 +3942,40 @@ function generate(){
     });
   }
 
-  // 3. Constrói todas as views (try/catch por aba: erro numa não bloqueia as demais nem o redirect)
-  function construirAba(construtor) {
-    try { construtor(); } catch(erro) { console.error('[SYNAPSE] erro ao construir aba:', erro); }
+  // 3. Builds every view (try/catch per tab: an error in one doesn't block the others or the redirect)
+  function buildTab(builder) {
+    try { builder(); } catch(error) { console.error('[SYNAPSE] erro ao construir aba:', error); }
   }
-  construirAba(() => buildGov());
-  construirAba(() => { if(App.P.proj.length) buildProj(); });
-  construirAba(() => { if(App.P.mel.length) buildMel(); });
-  construirAba(() => { if(App.P.ana.length) buildAna(); });
-  construirAba(() => { if(App.R.length) buildRPAChamados(); });
-  construirAba(() => { if(App.B.length) buildBots(); });
+  buildTab(() => buildGovernance());
+  buildTab(() => { if(App.P.proj.length) buildProjects(); });
+  buildTab(() => { if(App.P.improvements.length) buildImprovements(); });
+  buildTab(() => { if(App.P.ana.length) buildAna(); });
+  buildTab(() => { if(App.R.length) buildRPATickets(); });
+  buildTab(() => { if(App.B.length) buildBots(); });
 
-  // 4. Atualiza badges de navegação e texto de status
-  if(App.P.mel.length) setBadge('nb-mel', App.P.mel.length, '');
+  // 4. Updates navigation badges and status text
+  if(App.P.improvements.length) setBadge('nb-mel', App.P.improvements.length, '');
   const now = new Date();
   const ts  = `Atualizado ${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`;
   const src = [App.loaded.gov?'Base Governança':'', App.loaded.rpa?'Chamados RPA':''].filter(Boolean).join(' · ');
   const lbl = document.getElementById('sync-lbl');
   lbl.textContent = `${ts} · ${src}`;
-  lbl.dataset.base = `${ts} · ${src}`; // guarda para o updateDateBadge não sobrescrever
+  lbl.dataset.base = `${ts} · ${src}`; // stored so updateDateBadge doesn't overwrite it
 
-  // 5. Revela o filtro de data e o botão de exportar (ficam escondidos até o primeiro generate)
+  // 5. Reveals the date filter and the export button (hidden until the first generate)
   const df = document.getElementById('date-filter');
   if(df) df.style.display = 'flex';
   const bp = document.getElementById('btn-print');
   if(bp) bp.style.display = 'flex';
 
-  // 6. Navega para a aba Governança (visão executiva)
+  // 6. Navigates to the Governance tab (executive view)
   setNav('gov');
 }
 
-// Inicializa na tela de Upload ao carregar a página
+// Initializes on the Upload screen when the page loads
 setNav('upload');
 
-// Botão "voltar ao topo": aparece após 300px de scroll, some quando no topo
+// "Back to top" button: appears after 300px of scroll, hides at the top
 window.addEventListener('scroll', () => {
   const btn = document.getElementById('btn-top');
   if (btn) btn.classList.toggle('visible', window.scrollY > 300);
