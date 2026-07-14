@@ -32,25 +32,32 @@ export function parseGov(){
   /* --- Pipefy_Melhorias --- */
   // Looks up the tab by name (flexible: accepts "pipefymelhorias" or "melhorias")
   const sMel = findSheet(wb,'pipefymelhorias') || findSheet(wb,'melhorias');
-  App.P.improvements = sMel ? XLSX.utils.sheet_to_json(wb.Sheets[sMel], {defval:''}).map(r => ({
-    num:      getColumnValue(r, ['Numero']),
-    frente:   String(getColumnValue(r, ['Gerencia'])).trim(),      // business area (P2P, O2C, etc.)
-    fluxo:    getColumnValue(r, ['NomeFluxo']),                    // process flow name
-    atividade:getColumnValue(r, ['Atividade']),                    // improvement description
-    statusRaw:String(getColumnValue(r, ['Status'])).trim(),        // original status (spreadsheet text)
-    sc:       classeStatusMelhoria(getColumnValue(r, ['Status'])), // normalized status ("Planejamento" counts as 'doing' here)
-    resp:     String(getColumnValue(r, ['Responsavel'])).trim().replace(/​/g,''), // owner's name
-    champion: String(getColumnValue(r, ['Champion'])).trim(),
-    complex:  String(getColumnValue(r, ['Complexidade'])).trim(),
-    tipo:     String(getColumnValue(r, ['TipoMelhoriaAjuste'])).trim(),
-    // PERIOD FILTER — one column per field, no fallback:
-    //   dtInicio → DataInicioDesenvolvimento
-    //   dtFim    → DataRealEstimadaConclusaoValidacaoChampion
-    // Neither one filled in = not-started backlog → always included (see construirMelhorias).
-    dtInicio: toDate(getColumnValue(r, ['DataInicioDesenvolvimento'])),
-    dtFim:    toDate(getColumnValue(r, ['DataRealEstimadaConclusaoValidacaoChampion'])),
-    horas:    getColumnValue(r, ['QtdHorasEstimadas'])
-  })).filter(r => r.num !== '' || r.atividade) : []; // discards fully empty rows
+  App.P.improvements = sMel ? XLSX.utils.sheet_to_json(wb.Sheets[sMel], {defval:''}).map(r => {
+    const sc = classeStatusMelhoria(getColumnValue(r, ['Status']));
+    return {
+      num:      getColumnValue(r, ['Numero']),
+      frente:   String(getColumnValue(r, ['Gerencia'])).trim(),      // business area (P2P, O2C, etc.)
+      fluxo:    getColumnValue(r, ['NomeFluxo']),                    // process flow name
+      atividade:getColumnValue(r, ['Atividade']),                    // improvement description
+      statusRaw:String(getColumnValue(r, ['Status'])).trim(),        // original status (spreadsheet text)
+      sc,                                                            // normalized status ("Planejamento" counts as 'doing' here)
+      resp:     String(getColumnValue(r, ['Responsavel'])).trim().replace(/​/g,''), // owner's name
+      champion: String(getColumnValue(r, ['Champion'])).trim(),
+      complex:  String(getColumnValue(r, ['Complexidade'])).trim(),
+      tipo:     String(getColumnValue(r, ['TipoMelhoriaAjuste'])).trim(),
+      // PERIOD FILTER — one column per field, no fallback:
+      //   dtInicio → DataInicioDesenvolvimento
+      //   dtFim    → DataRealEstimadaConclusaoValidacaoChampion, mas só para concluídas.
+      //     Essa coluna guarda a data ESTIMADA enquanto a melhoria ainda não fechou e
+      //     só passa a valer como data REAL depois que o champion valida a conclusão —
+      //     por isso só é confiável como "data de conclusão" quando sc==='done'.
+      //     Para as demais, ficaria fora do prazo real de forma enganosa, então fica null.
+      // Neither one filled in = not-started backlog → always included (see construirMelhorias).
+      dtInicio: toDate(getColumnValue(r, ['DataInicioDesenvolvimento'])),
+      dtFim:    sc === 'done' ? toDate(getColumnValue(r, ['DataRealEstimadaConclusaoValidacaoChampion'])) : null,
+      horas:    getColumnValue(r, ['QtdHorasEstimadas'])
+    };
+  }).filter(r => r.num !== '' || r.atividade) : []; // discards fully empty rows
 
   /* --- Projetos --- */
   const sProj = findSheet(wb,'projetos');

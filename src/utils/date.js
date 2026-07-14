@@ -67,23 +67,30 @@ export function ativoNoIntervalo(ini, fim){
 }
 
 /*
- * Applies the date filter to an entire array.
- * Returns: { kept: [...items that passed], noDate: N (count without a date) }
- * For items that have dtInicio (ex: Pipefy), uses the "active in period" logic
- * (start→end interval). For the rest, uses the single dataReferencia.
- * Items without a date are not lost — they stay out of the range and the
- * count is shown in the interface's transparency note.
+ * Aplica o filtro de data a um array inteiro.
+ * Retorna: { kept: [...itens que passaram], noDate: N (quantidade sem data) }
+ * Para itens que têm dtInicio (ex: Pipefy, Analytics), usa a lógica de "ativo no
+ * período" (intervalo início→fim) — MAS só enquanto o item ainda está em
+ * andamento. Um item já concluído (sc==='done') tem uma data de conclusão real
+ * e fixa (dtFim); nesse caso o filtro passa a checar só se ESSA data cai no
+ * período, com dataNoIntervalo. Se usássemos o intervalo inteiro também para
+ * concluídos, um item que só passou pelo período em desenvolvimento e fechou
+ * bem depois apareceria como "concluído no período" de forma enganosa.
+ * Para os demais itens (sem dtInicio), usa a data única de dataReferencia.
+ * Os itens sem data não são perdidos — ficam fora do recorte e o número é
+ * exibido na nota de transparência da interface.
  */
 export function filtrarPorPeriodo(arr){
   if(App.dateRange.mode === 'all') return { kept: arr, noDate: 0 };
   const kept = [], noDate = [];
   arr.forEach(x => {
-    // if the item has an interval concept (dtInicio defined), uses ativoNoIntervalo
-    if(x.dtInicio !== undefined){
+    if(x.dtInicio !== undefined && x.sc !== 'done'){
+      // ainda em andamento: usa o intervalo início→fim (ativoNoIntervalo)
       const rangeStatus = ativoNoIntervalo(x.dtInicio, x.dtFim);
       if(rangeStatus === 'nodate') noDate.push(x);
       else if(rangeStatus === 'in') kept.push(x);
     } else {
+      // já concluído (ou sem conceito de intervalo): data única de referência
       const date = dataReferencia(x);
       if(!date) noDate.push(x);
       else if(dataNoIntervalo(date)) kept.push(x);
