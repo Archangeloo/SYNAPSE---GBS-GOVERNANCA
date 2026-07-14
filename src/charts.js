@@ -1,323 +1,517 @@
-import { pct } from './utils/helpers.js';
-
-// ─── MÓDULO: charts.js ───────────────────────────────────────────────────────
-// Componentes de gráfico: SVG/HTML puro, sem bibliotecas externas.
-// Cada função retorna uma string HTML que pode ser injetada via innerHTML.
+// ─── MODULE: charts.js ─────────────────────────────────────────────────────
+// Chart.js wrappers + a couple of pure-HTML/CSS chart-like components
+// (clusteredBars, heatmap).
 //
-// Exporta:
-//   donut(data, opts)                      — gráfico de rosca
-//   hbars(entries, opts)                   — barras horizontais simples
-//   stackedBars(rows, segDefs)             — barras empilhadas finas
-//   clusteredBars(groups, series)          — barras clusterizadas (grupo × série)
-//   lineChart(points, opts)               — linha com área preenchida
-//   heatmap(matrix, rowLabels, colLabels) — tabela de calor com gradiente de cor
+// Usage pattern:
+//   1. Chart functions return a <canvas id="..."> as part of the
+//      HTML string and register the config in _pendingCharts.
+//   2. After each innerHTML injection, flushCharts() instantiates
+//      all pending charts.
+//   3. Previous instances are destroyed before recreating
+//      (avoids the "Canvas already in use" error).
 // ─────────────────────────────────────────────────────────────────────────────
 
-// ─── Donut ────────────────────────────────────────────────────────────────────
-// data: array de { label, value, color }
-//
-// COMO FUNCIONA O TRUQUE DO SVG:
-//   Usamos um único <circle> por segmento, mas pintamos apenas uma parte da
-//   borda (stroke) de cada círculo usando stroke-dasharray.
-//
-//   stroke-dasharray="comprimento_pintado  comprimento_vazio"
-//     → pinta exatamente a fatia daquele segmento e deixa o resto transparente.
-//
-//   stroke-dashoffset  → rotaciona onde a fatia começa. Acumulamos o comprimento
-//     de todos os segmentos anteriores para encadear as fatias sem gaps.
-//
-//   O círculo tem raio R=54, então sua circunferência total = 2π×54 ≈ 339px.
-//   Uma fatia de 30% do total ocupa 30% × 339 ≈ 101px dessa linha.
-//
-//   transform="rotate(-90 64 64)"  → gira o início do traçado para as 12h
-//     (por padrão SVG começa às 3h).
+import { calculatePercentage } from './utils/helpers.js';
+import { toYearMonthLabel } from './utils/date.js';
+
+// Queue of configs waiting to be initialized after HTML injection
+let _pendingCharts = [];
+
+// Active Chart.js instances, indexed by canvas id
+const _chartInstances = {};
+
+// Counter for unique canvas ids per render cycle
+let _chartSeq = 0;
+export function _generateChartId(prefix) { return `ch-${prefix}-${++_chartSeq}`; }
+
+/*
+ * registerChart(id, config) — queues a raw Chart.js config for
+ * instantiation on the next flushCharts() call. Used by modules (ex:
+ * views/mel.js's construirGraficoEvolucaoMelhorias) that need a bespoke
+ * chart/plugin setup not covered by the donut/horizontalBars/lineChart/etc.
+ * wrappers below, without exposing the _pendingCharts queue itself.
+ */
+export function registerChart(id, config) { _pendingCharts.push({ id, config }); }
+
+/*
+ * resetCharts() — destroys every live Chart.js instance and resets the id
+ * counter. Called once by main.js's generate() at the start of each
+ * dashboard regeneration, to avoid the "Canvas already in use" error.
+ */
+export function resetCharts() {
+  Object.values(_chartInstances).forEach(ch => { try { ch.destroy(); } catch(_){} });
+  Object.keys(_chartInstances).forEach(k => delete _chartInstances[k]);
+  _chartSeq = 0;
+}
+
+/*
+ * flushCharts() — instantiates all pending charts.
+ * Call right after every innerHTML assignment.
+ */
+export function flushCharts() {
+  _pendingCharts.forEach(({ id, config }) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    try {
+      if (_chartInstances[id]) _chartInstances[id].destroy();
+      _chartInstances[id] = new Chart(el, config);
+    } catch (e) {
+      console.error(`flushCharts: falha ao criar gráfico ${id}`, e);
+    }
+  });
+  _pendingCharts = [];
+
+  // Animates freshly rendered KPIs (the data-an attribute avoids re-animating)
+  document.querySelectorAll('.knum:not([data-an])').forEach(el => {
+    el.dataset.an = '1';
+    _animateNumber(el);
+  });
+}
+
+/*
+ * _animateNumber(el) — counts the number from 0 up to the displayed value over ~850ms.
+ * Extracts the number from the text (int or float), animates with a cubic
+ * ease-out, and restores the exact original text at the end.
+ * Values smaller than 2 are skipped (0 and 1 don't need animating).
+ */
+export function _animateNumber(el) {
+  const raw   = el.textContent.trim();
+  const match = raw.match(/^(\d+\.?\d*)(.*)/);
+  if (!match) return;
+  const target  = parseFloat(match[1]);
+  const suffix  = match[2];
+  const isFloat = match[1].includes('.');
+  if (!target || target < 2) return;
+
+  const duration = 850;
+  const start    = performance.now();
+
+  (function frame(now) {
+    const progress = Math.min((now - start) / duration, 1);
+    const eased = 1 - Math.pow(1 - progress, 3); // cubic ease-out: starts fast, decelerates
+    el.textContent = (isFloat ? (target * eased).toFixed(1) : Math.round(target * eased)) + suffix;
+    if (progress < 1) requestAnimationFrame(frame);
+    else el.textContent = raw; // restores the exact text (avoids residual rounding)
+  })(start);
+}
+
+// Global Chart.js defaults
+Chart.defaults.font.family = "'Inter', system-ui, sans-serif";
+Chart.defaults.font.size   = 11;
+Chart.defaults.color       = '#6B7280';
+
+// Saint-Gobain palette in hex (CSS vars don't work inside Chart.js)
+export const CHART_COLORS = {
+  brand:  '#0F5299',  // dark blue
+  accent: '#0195D6',  // bright blue
+  teal:   '#4DB1B3',  // teal
+  orange: '#E66407',  // orange
+  red:    '#E83430',  // red
+  ok:     '#0d8f91',  // dark teal (ok text)
+  warn:   '#C55800',  // dark orange (warn text)
+  err:    '#C5284C',  // pink-red
+  ink:    '#111827',
+  ink2:   '#374151',
+  ink3:   '#6B7280',
+  ink4:   '#9CA3AF',
+  rule:   'rgba(15,82,153,0.07)',
+};
+
+// Resolves theme CSS variables to hex — needed to pass colors to Chart.js
+export function resolveColor(color) {
+  const map = {
+    'var(--brand)':  CHART_COLORS.brand,
+    'var(--accent)': CHART_COLORS.accent,
+    'var(--ok)':     CHART_COLORS.ok,
+    'var(--warn)':   CHART_COLORS.warn,
+    'var(--err)':    CHART_COLORS.err,
+    'var(--info)':   CHART_COLORS.brand,
+    'var(--neu)':    '#9CA3AF',
+    'var(--ink)':    CHART_COLORS.ink,
+    'var(--ink2)':   CHART_COLORS.ink2,
+    'var(--ink3)':   CHART_COLORS.ink3,
+    'var(--ink4)':   CHART_COLORS.ink4,
+  };
+  return map[color] || color;
+}
+
+/*
+ * donut(data, opts) — donut chart via Chart.js
+ * data: array of { label, value, color }
+ */
 export function donut(data, opts = {}) {
-  const total = data.reduce((s, d) => s + d.value, 0);
+  const filtered   = data.filter(d => d.value > 0);
+  const total      = filtered.reduce((s, d) => s + d.value, 0);
+  const totalLabel = opts.total != null ? opts.total : total; // total shown in the center (can be overridden)
   if (!total) return '<div style="font-size:12px;color:var(--ink4)">Sem dados</div>';
 
-  const R  = 54;                  // raio do círculo central
-  const C  = 2 * Math.PI * R;    // circunferência total (≈ 339px)
-  const sw = 22;                  // espessura do anel (stroke-width)
+  const id = _generateChartId('donut');
 
-  let off = 0; // acumulador de comprimento já "ocupado" pelas fatias anteriores
+  _pendingCharts.push({
+    id,
+    config: {
+      type: 'doughnut',
+      data: {
+        labels: filtered.map(d => d.label),
+        datasets: [{
+          data:            filtered.map(d => d.value),
+          backgroundColor: filtered.map(d => resolveColor(d.color)),
+          borderWidth:     0,
+          hoverOffset:     4,
+        }]
+      },
+      options: {
+        cutout:     '68%',
+        responsive: false,
+        animation:  { duration: 400 },
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            callbacks: {
+              label: ctx => ` ${ctx.label}: ${ctx.parsed}  (${calculatePercentage(ctx.parsed, total)}%)`
+            }
+          }
+        }
+      }
+    }
+  });
 
-  const segs = data.filter(d => d.value > 0).map(d => {
-    const frac = d.value / total;  // fração desta fatia (0.0 a 1.0)
-    const len  = frac * C;         // comprimento em pixels desta fatia no arco
-
-    // stroke-dasharray: "len (C - len)" → pinta 'len' pixels e interrompe o resto
-    // stroke-dashoffset: "-off" → começa a pintar onde o segmento anterior terminou
-    const s = `<circle r="${R}" cx="64" cy="64" fill="none" stroke="${d.color}" stroke-width="${sw}"
-      stroke-dasharray="${len} ${C - len}" stroke-dashoffset="${-off}" transform="rotate(-90 64 64)"/>`;
-
-    off += len; // avança o ponteiro para o próximo segmento
-    return s;
-  }).join('');
-
-  // Legenda: lista de itens com cor, rótulo, valor e percentual
-  const legend = data.filter(d => d.value > 0).map(d =>
-    `<div class="dleg"><span class="dleg-dot" style="background:${d.color}"></span>${d.label}
-     <b>${d.value}</b><span class="dpct">${pct(d.value, total)}%</span></div>`).join('');
-
-  // O número no centro (total) usa fonte Syne para destaque
-  return `<div class="donut-wrap">
-    <svg width="128" height="128" viewBox="0 0 128 128" style="flex-shrink:0">${segs}
-      <text x="64" y="60" text-anchor="middle" font-family="Syne" font-size="26" font-weight="600" fill="var(--ink)">${total}</text>
-      <text x="64" y="78" text-anchor="middle" font-size="9" fill="var(--ink4)" letter-spacing="1">TOTAL</text>
-    </svg>
-    <div class="donut-legend">${legend}</div></div>`;
-}
-
-// ─── Barras horizontais simples ───────────────────────────────────────────────
-// entries: array de [label, value]
-// opts: { max, lw (largura mínima do label), tot (para % lateral), color, fixedLabel, showTotal }
-//
-// COMO FUNCIONA A LARGURA DA BARRA:
-//   Primeiro achamos o maior valor entre os itens (mx). Cada barra recebe
-//   uma largura CSS proporcional: (valor / mx) × 100%. Assim a maior barra
-//   sempre ocupa 100% da trilha e as demais são proporcionais a ela.
-export function hbars(entries, opts = {}) {
-  const items = entries.slice(0, opts.max || 10);
-  const mx    = items.length ? Math.max(...items.map(e => e[1])) : 1;
-  const lw    = opts.lw || 90;
-
-  // fixedLabel: trava a largura do label para alinhar barras (útil quando os rótulos são longos)
-  const labelStyle = opts.fixedLabel
-    ? `width:${lw}px;min-width:${lw}px;max-width:${lw}px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap`
-    : `min-width:${lw}px`;
-
-  const h = items.map(([l, v]) => {
-    const w = Math.round(v / mx * 100);            // largura em % relativa ao maior valor
-    const p = opts.tot ? `<span class="hbar-pct">${pct(v, opts.tot)}%</span>` : '';
-    const col = opts.color || 'var(--accent)';
-    return `<div class="hbar-row"><span class="hbar-lbl" style="${labelStyle}" title="${String(l).replace(/"/g, '')}">${l}</span>
-      <div class="hbar-track"><div class="hbar-fill" style="width:${w}%;background:${col}"></div></div>
-      <span class="hbar-val">${v}</span>${p}</div>`;
-  }).join('');
-
-  if (!h) return '<div style="font-size:12px;color:var(--ink4)">Sem dados</div>';
-
-  // Cabeçalho opcional com total (ex: "Total de ações da equipe: 142")
-  const header = opts.showTotal
-    ? `<div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:8px;padding-bottom:8px;border-bottom:1px solid var(--rule)">
-    <span style="font-size:11px;color:var(--ink4)">${opts.totLabel || 'Total'}</span>
-    <span style="font-family:'Syne';font-size:18px;font-weight:600;color:var(--ink)">${opts.showTotal}</span></div>`
-    : '';
-
-  return header + h;
-}
-
-// ─── Barras empilhadas finas ──────────────────────────────────────────────────
-// rows: array de { label, valores: {chaveSeg: n} }
-// segDefs: array ordenado de { key, label, color }
-//
-// COMO FUNCIONA:
-//   Cada linha tem uma barra que representa o TOTAL daquela categoria.
-//   Dentro dessa barra, cada segmento (cor) representa a proporção de um status.
-//   A barra do maior total ocupa 100% da largura disponível; as demais são proporcionais.
-//
-//   Exemplo: se "P2P" tem 50 chamados e "O2C" tem 30, a barra de P2P ocupa 100%
-//   e a de O2C ocupa 60% da largura. Dentro de cada barra, as cores mostram
-//   a distribuição de fases/status.
-export function stackedBars(rows, segDefs) {
-  if (!rows.length) return '<div style="font-size:12px;color:var(--ink4)">Sem dados</div>';
-
-  // Calcula o total de cada linha somando todos os segmentos
-  const totais  = rows.map(r => segDefs.reduce((s, d) => s + (r.valores[d.key] || 0), 0));
-  const maxTot  = Math.max(...totais, 1); // maior total (escala de referência)
-
-  const corpo = rows.map((r, idx) => {
-    const tot         = totais[idx];
-    const larguraBarra = Math.round(tot / maxTot * 100); // % da largura máxima
-
-    // Gera os segmentos coloridos dentro da barra usando flex-basis
-    const segs = segDefs.map(d => {
-      const n = r.valores[d.key] || 0;
-      if (!n) return '';
-      // flex: 0 0 X% → cada segmento ocupa X% do comprimento da barra
-      return `<div class="sbar-seg" style="flex:0 0 ${(n / tot * 100).toFixed(2)}%;background:${d.color}" title="${d.label}: ${n}"></div>`;
-    }).join('');
-
-    // Números individuais de cada segmento (os zeros ficam acinzentados com .sn-z)
-    const nums = segDefs.map(d => {
-      const n = r.valores[d.key] || 0;
-      return `<span class="sn${n ? '' : ' sn-z'}" title="${d.label}"><span class="sn-dot" style="background:${d.color}"></span>${n}</span>`;
-    }).join('');
-
-    return `<div class="sbar-row">
-      <span class="sbar-lbl" title="${String(r.label).replace(/"/g, '')}">${r.label}</span>
-      <div class="sbar-track" style="max-width:${larguraBarra}%">${segs}</div>
-      <span class="sbar-nums">${nums}</span>
-      <span class="sbar-tot">${tot}</span>
-    </div>`;
-  }).join('');
-
-  const legenda = segDefs.map(d =>
-    `<div class="sbar-leg"><span class="sbar-leg-dot" style="background:${d.color}"></span>${d.label}</div>`
+  const legend = filtered.map(d =>
+    `<div class="dleg">
+      <span class="dleg-dot" style="background:${d.color}"></span>
+      ${d.label}
+      <b>${d.value}</b>
+      <span class="dpct">${calculatePercentage(d.value, total)}%</span>
+    </div>`
   ).join('');
 
-  return corpo + `<div class="sbar-legend">${legenda}</div>`;
+  return `<div class="donut-wrap">
+    <div style="position:relative;width:130px;height:130px;flex-shrink:0">
+      <canvas id="${id}" width="130" height="130"></canvas>
+      <div style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;pointer-events:none">
+        <div style="font-family:'Syne',sans-serif;font-size:26px;font-weight:600;color:var(--ink);line-height:1">${totalLabel}</div>
+        <div style="font-size:9px;color:var(--ink4);letter-spacing:1px;margin-top:2px">TOTAL</div>
+      </div>
+    </div>
+    <div class="donut-legend">${legend}</div>
+  </div>`;
 }
 
-// ─── Barras clusterizadas ─────────────────────────────────────────────────────
-// groups: array de { label, color, valores: {serieKey: n} }
-// series: array ordenado de { key, label, color }
-//
-// ESTRUTURA VISUAL:
-//   Cada "group" é um bloco (ex: uma fase do chamado). Dentro do bloco há
-//   uma barra fina por série (ex: por tipo de problema). Todas as barras
-//   compartilham a mesma escala — o valor máximo de qualquer série em qualquer
-//   grupo determina o comprimento de 100%.
-export function clusteredBars(groups, series) {
-  if (!groups.length) return '<div style="font-size:12px;color:var(--ink4)">Sem dados</div>';
+/*
+ * horizontalBars(entries, opts) — horizontal bars via Chart.js
+ * entries: array of [label, value]
+ * opts: { max, tot, color, showTotal, totLabel, lw }
+ * lw: minimum Y-axis width (calculated automatically; opts.lw is used as an extra minimum).
+ */
+export function horizontalBars(entries, opts = {}) {
+  const items = entries.slice(0, opts.max || 10);
+  if (!items.length) return '<div style="font-size:12px;color:var(--ink4)">Sem dados</div>';
 
-  // Encontra o maior valor individual em toda a matriz (escala global)
+  const id  = _generateChartId('hbar');
+  const col = resolveColor(opts.color || 'var(--accent)');
+  const tot = opts.tot || null;
+
+  // Splits labels on the "  ·  " separator to show bot and area on two lines
+  const splitLabel = l => {
+    const parts = String(l).split(/\s+·\s+/);
+    return parts.length > 1 ? parts : l;
+  };
+
+  // For labels with a "·" separator (bot  ·  area): computes the minimum needed to avoid clipping.
+  // For other labels: uses opts.lw exactly, with no automatic expansion.
+  const hasMultiline = items.some(([l]) => String(l).includes('·'));
+  const minLwDots = hasMultiline ? Math.ceil(Math.max(...items.map(([l]) => {
+    const parts = String(l).split(/\s+·\s+/);
+    return Math.max(...parts.map(p => p.length));
+  })) * 6.5) + 24 : 0;
+  const lw = opts.lw ? Math.max(opts.lw, minLwDots) : (minLwDots || undefined);
+
+  _pendingCharts.push({
+    id,
+    config: {
+      type: 'bar',
+      data: {
+        labels: items.map(([l]) => splitLabel(l)),
+        datasets: [{
+          data:            items.map(([, v]) => v),
+          backgroundColor: col,
+          borderRadius:    3,
+          borderSkipped:   false,
+        }]
+      },
+      options: {
+        indexAxis: 'y',
+        responsive: true,
+        maintainAspectRatio: false,
+        animation: { duration: 300 },
+        plugins: {
+          legend:  { display: false },
+          tooltip: { display: false },
+        },
+        layout: {
+          padding: { right: tot ? 90 : 52 }
+        },
+        scales: {
+          x: {
+            grid:   { color: CHART_COLORS.rule },
+            border: { display: false },
+            ticks:  { display: false }
+          },
+          y: {
+            grid:   { display: false },
+            border: { display: false },
+            ticks:  { color: CHART_COLORS.ink2, font: { size: 11 } },
+            afterFit(scale) { if (lw) scale.width = lw; }
+          }
+        }
+      },
+      plugins: [{
+        id: 'hbarLabels',
+        afterDatasetsDraw(chart) {
+          const { ctx, chartArea, data } = chart;
+          const meta = chart.getDatasetMeta(0);
+          ctx.save();
+          ctx.fillStyle    = CHART_COLORS.ink2;
+          ctx.font         = `500 11px 'Inter', system-ui, sans-serif`;
+          ctx.textAlign    = 'left';
+          ctx.textBaseline = 'middle';
+          // All labels stay aligned in the same X column (right after the longest bar)
+          // avoids labels of short bars ending up in the middle of the chart
+          const xBase = chartArea.right + 6;
+          data.datasets[0].data.forEach((value, i) => {
+            const bar   = meta.data[i];
+            const label = tot
+              ? `${value}  (${calculatePercentage(value, tot)}%)`
+              : String(value);
+            ctx.fillText(label, xBase, bar.y);
+          });
+          ctx.restore();
+        }
+      }]
+    }
+  });
+
+  const heightPerBar = hasMultiline ? 56 : (opts.lw ? 48 : 36);
+  const height = Math.max(items.length * heightPerBar + 20, 70);
+  const header = opts.showTotal
+    ? `<div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:10px;padding-bottom:8px;border-bottom:1px solid var(--rule)">
+        <span style="font-size:11px;color:var(--ink4)">${opts.totLabel || 'Total'}</span>
+        <span style="font-family:'Syne';font-size:18px;font-weight:600;color:var(--ink)">${opts.showTotal}</span>
+      </div>`
+    : '';
+
+  return `${header}<div style="position:relative;height:${height}px"><canvas id="${id}"></canvas></div>`;
+}
+
+/*
+ * clusteredBars(groups, series) — clustered (grouped) bar chart.
+ * Each GROUP (ex: a phase) becomes a block with a title; inside it there's a
+ * thin BAR for each series (ex: problem type), colored by the series.
+ * All bars share the same scale (global maxVal) for comparison.
+ * groups: array of { label, color, valores: {serieKey: n} }
+ * series: ordered array of { key, label, color }
+ * Bars with a value of 0 are omitted within the group, to avoid clutter.
+ */
+export function clusteredBars(groups, series){
+  if(!groups.length) return '<div style="font-size:12px;color:var(--ink4)">Sem dados</div>';
+  // global scale: largest value across all bars of all groups
   let maxVal = 1;
-  groups.forEach(g => series.forEach(s => { maxVal = Math.max(maxVal, g.valores[s.key] || 0); }));
-
+  groups.forEach(g => series.forEach(s => { maxVal = Math.max(maxVal, g.valores[s.key]||0); }));
   const corpo = groups.map(g => {
-    const totGrupo = series.reduce((acc, s) => acc + (g.valores[s.key] || 0), 0);
-
+    const totGrupo = series.reduce((acc,s)=>acc+(g.valores[s.key]||0),0);
     const barras = series.map(s => {
-      const n = g.valores[s.key] || 0;
-      if (!n) return ''; // omite barras com zero para não poluir visualmente
+      const value = g.valores[s.key]||0;
+      if(!value) return ''; // omits zeroed-out series within the group
+      const widthPct = Math.round(value/maxVal*100);
       return `<div class="clu-bar-row">
-        <span class="clu-bar-lbl" title="${String(s.label).replace(/"/g, '')}">${s.label}</span>
-        <div class="clu-bar-track"><div class="clu-bar-fill" style="width:${Math.round(n / maxVal * 100)}%;background:${s.color}"></div></div>
-        <span class="clu-bar-val">${n}</span>
+        <span class="clu-bar-lbl" title="${String(s.label).replace(/"/g,'')}">${s.label}</span>
+        <div class="clu-bar-track"><div class="clu-bar-fill" style="width:${widthPct}%;background:${s.color}"></div></div>
+        <span class="clu-bar-val">${value}</span>
       </div>`;
     }).join('');
-
     return `<div class="clu-group">
-      <div class="clu-group-title"><span class="clu-gt-dot" style="background:${g.color || 'var(--ink3)'}"></span>${g.label}<span class="clu-gt-tot">${totGrupo} no total</span></div>
+      <div class="clu-group-title"><span class="clu-gt-dot" style="background:${g.color||'var(--ink3)'}"></span>${g.label}<span class="clu-gt-tot">${totGrupo} no total</span></div>
       ${barras || '<div class="clu-bar-row"><span style="font-size:11px;color:var(--ink4);padding-left:17px">nenhum chamado nesta fase</span></div>'}
     </div>`;
   }).join('');
-
   const legenda = series.map(s =>
     `<div class="clu-leg"><span class="clu-leg-dot" style="background:${s.color}"></span>${s.label}</div>`
   ).join('');
-
   return corpo + `<div class="clu-legend">${legenda}</div>`;
 }
 
-// ─── Gráfico de linha SVG ─────────────────────────────────────────────────────
-// points: array de { label, value }
-//
-// SISTEMA DE COORDENADAS:
-//   O SVG tem dimensões W×H (padrão 560×140).
-//   As bordas internas ("padding") reservam espaço para eixos e rótulos:
-//     pad.l = 32px (eixo Y com números à esquerda)
-//     pad.b = 24px (eixo X com meses na base)
-//     pad.r e pad.t = margens menores
-//
-//   Após o padding, a área útil de desenho é:
-//     largura útil iw = W - pad.l - pad.r
-//     altura útil ih = H - pad.t - pad.b
-//
-//   Funções de conversão índice/valor → pixel:
-//     x(i) = pad.l + (i / (n-1)) × iw
-//       → espalha os pontos igualmente da esquerda até a direita
-//     y(v) = pad.t + ih - ((v - min) / (max - min)) × ih
-//       → valores mais altos ficam mais perto do topo (subtraímos porque
-//          em SVG y cresce para baixo, mas queremos valores altos acima)
-//
-// RÓTULOS DO EIXO X:
-//   Se houver muitos pontos, exibir todos os meses causaria sobreposição.
-//   step = ceil(n / 7) → exibe 1 a cada 'step' pontos para ter ~7 rótulos visíveis.
-//   Regra especial: se o último ponto ficaria muito perto do penúltimo rótulo
-//   exibido (menos de 60% da distância normal), ele é suprimido para evitar colisão.
+/*
+ * lineChart(points, opts) — line chart via Chart.js
+ * points: array of { label, value }
+ * opts: { pctAxis, max, min, fmt }
+ *
+ * NOTE: the chart only plots months up to the current one.
+ * If the last point is in Apr/26, it's because there are no more
+ * recent completions in the spreadsheet — it advances automatically once the base is updated.
+ */
 export function lineChart(points, opts = {}) {
-  if (points.length < 2) return '<div style="font-size:12px;color:var(--ink4)">Dados insuficientes para tendência</div>';
+  if (points.length < 2)
+    return '<div style="font-size:12px;color:var(--ink4)">Dados insuficientes para tendência</div>';
 
-  const W   = opts.w || 560;
-  const H   = opts.h || 140;
-  const pad = { l: 32, r: 12, t: 12, b: 24 }; // margens internas
+  const id = _generateChartId('line');
 
-  const iw  = W - pad.l - pad.r; // largura da área de dados
-  const ih  = H - pad.t - pad.b; // altura da área de dados
-
-  const max = opts.max != null ? opts.max : Math.max(...points.map(p => p.value), 1);
-  const min = opts.min != null ? opts.min : 0;
-
-  // Converte índice i → coordenada X em pixels (espaçamento uniforme entre pontos)
-  const x = i => pad.l + (i / (points.length - 1)) * iw;
-
-  // Converte valor v → coordenada Y em pixels (valores maiores ficam mais acima)
-  const y = v => pad.t + ih - ((v - min) / (max - min || 1)) * ih;
-
-  // Sequência de comandos SVG que traça a linha (M = mover, L = linha até)
-  const path = points.map((p, i) => `${i ? 'L' : 'M'}${x(i).toFixed(1)} ${y(p.value).toFixed(1)}`).join(' ');
-
-  // Área preenchida sob a linha: segue o caminho e "fecha" pelo fundo do gráfico
-  const area = `${path} L${x(points.length - 1)} ${pad.t + ih} L${pad.l} ${pad.t + ih} Z`;
-
-  // Pontos (bolinhas) e valores numéricos sobre eles
-  const dots = points.map((p, i) => {
-    const step    = Math.ceil(points.length / 7); // quantos pontos pular entre rótulos
-    const showVal = points.length <= 7 || i % step === 0 || i === points.length - 1;
-    return `<circle cx="${x(i)}" cy="${y(p.value)}" r="3" fill="var(--surface)" stroke="var(--info)" stroke-width="2"/>
-    ${showVal ? `<text x="${x(i)}" y="${y(p.value) - 9}" text-anchor="middle" font-size="9" font-weight="600" fill="var(--ink2)">${opts.fmt ? opts.fmt(p.value) : p.value}</text>` : ''}`;
-  }).join('');
-
-  // Rótulos do eixo X (meses). Evita colisão entre o último rótulo e o penúltimo.
-  const xl = points.map((p, i) => {
-    const step         = Math.ceil(points.length / 7);
-    const isShown      = points.length <= 7 || i % step === 0; // pontos regulares
-    const isLast       = i === points.length - 1;
-    const lastShownByStep = Math.floor((points.length - 1) / step) * step;
-    // se o último ponto está a menos de 60% de um passo do penúltimo rótulo, suprime
-    const lastTooClose = isLast && (points.length - 1 - lastShownByStep) < step * 0.6;
-
-    if (!isShown && !(isLast && !lastTooClose)) return '';
-    if (isLast && lastTooClose) return '';
-    return `<text x="${x(i)}" y="${H - 6}" text-anchor="middle" font-size="9" fill="var(--ink4)">${p.label}</text>`;
-  }).join('');
-
-  // Grade horizontal: 5 linhas nos níveis 0%, 25%, 50%, 75%, 100% do eixo Y
-  const grid = [0, .25, .5, .75, 1].map(f => {
-    const yy  = pad.t + ih - f * ih;
-    const val = Math.round(min + f * (max - min));
-    return `<line x1="${pad.l}" y1="${yy}" x2="${W - pad.r}" y2="${yy}" stroke="var(--rule)" stroke-width="1"/>
-      <text x="${pad.l - 6}" y="${yy + 3}" text-anchor="end" font-size="8" fill="var(--ink4)">${opts.pctAxis ? val + '%' : val}</text>`;
-  }).join('');
-
-  return `<svg width="100%" viewBox="0 0 ${W} ${H}" style="overflow:visible">
-    ${grid}<path d="${area}" fill="var(--info)" opacity="0.08"/>
-    <path d="${path}" fill="none" stroke="var(--info)" stroke-width="2" stroke-linejoin="round"/>${dots}${xl}</svg>`;
-}
-
-// ─── Heatmap ──────────────────────────────────────────────────────────────────
-// matrix[r][c] = valor numérico (frequência)
-// rowLabels = rótulos das linhas (eixo Y), colLabels = rótulos das colunas (eixo X)
-//
-// GRADIENTE DE COR:
-//   Células com zero ficam na cor de fundo neutro (var(--neu-bg)).
-//   Células com valor > 0 recebem um rgba(vermelho) com opacidade proporcional:
-//     opacidade = 0.12 + (valor / máximo) × 0.78
-//     → o menor valor não-zero fica com opacidade ≈ 0.12 (quase transparente)
-//     → o maior valor fica com opacidade ≈ 0.90 (quase sólido)
-//   Cor do texto: branco quando o fundo é escuro (valor > 55% do máximo), senão escuro.
-export function heatmap(matrix, rowLabels, colLabels, opts = {}) {
-  const flat = matrix.flat().filter(v => v > 0);
-  const mx   = flat.length ? Math.max(...flat) : 1; // maior valor (referência para escala)
-
-  // Calcula a cor de fundo de uma célula com base no seu valor
-  const color = v => {
-    if (!v) return 'var(--neu-bg)'; // zero = fundo neutro
-    const op = (0.12 + (v / mx) * 0.78).toFixed(2); // opacidade entre 0.12 e 0.90
-    return `rgba(199, 93, 93, ${op})`; // vermelho com intensidade proporcional
-  };
-
-  let html = '<table class="hm"><thead><tr><th class="rh"></th>' + colLabels.map(c => `<th>${c}</th>`).join('') + '</tr></thead><tbody>';
-
-  matrix.forEach((row, r) => {
-    html += `<tr><td class="rl">${rowLabels[r]}</td>` + row.map(v =>
-      // texto branco quando o fundo passa de 55% da intensidade máxima
-      `<td><div class="cell" style="background:${color(v)};color:${v / mx > 0.55 ? '#fff' : 'var(--ink2)'}">${v || ''}</div></td>`
-    ).join('') + '</tr>';
+  _pendingCharts.push({
+    id,
+    config: {
+      type: 'line',
+      data: {
+        labels: points.map(p => p.label),
+        datasets: [{
+          data:                 points.map(p => p.value),
+          borderColor:          CHART_COLORS.brand,
+          backgroundColor:      'rgba(15,82,153,0.07)',
+          borderWidth:          2,
+          pointRadius:          3,
+          pointBackgroundColor: '#fff',
+          pointBorderColor:     CHART_COLORS.brand,
+          pointBorderWidth:     2,
+          fill:                 true,
+          tension:              0.3,
+        }]
+      },
+      options: {
+        responsive:          true,
+        maintainAspectRatio: false,
+        animation:           { duration: 400 },
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            callbacks: {
+              label: ctx => opts.fmt
+                ? ` ${opts.fmt(ctx.parsed.y)}`
+                : ` ${ctx.parsed.y}`
+            }
+          }
+        },
+        scales: {
+          x: {
+            grid:   { display: false },
+            border: { display: false },
+            ticks:  { color: CHART_COLORS.ink4, font: { size: 9 }, maxTicksLimit: 8 }
+          },
+          y: {
+            min:    opts.min ?? 0,
+            max:    opts.max,
+            grid:   { color: CHART_COLORS.rule },
+            border: { display: false },
+            ticks: {
+              color:    CHART_COLORS.ink4,
+              font:     { size: 9 },
+              callback: v => opts.pctAxis ? v + '%' : v
+            }
+          }
+        }
+      }
+    }
   });
 
+  return `<div style="position:relative;height:160px"><canvas id="${id}"></canvas></div>`;
+}
+
+/*
+ * verticalBarsChart(meses, porMes, porMesV) — stacked vertical bars of monthly volume.
+ * Two datasets: normal tickets (brand blue) and overdue (red), stacked.
+ * meses: array of ordered "YYYY-MM" keys
+ * porMes / porMesV: objects { "YYYY-MM": count }
+ */
+export function verticalBarsChart(meses, porMes, porMesV) {
+  const id      = _generateChartId('vbar');
+  const labels  = meses.map(m => toYearMonthLabel(m));
+  const totais  = meses.map(m => porMes[m]  || 0);
+  const vencArr = meses.map(m => porMesV[m] || 0);
+  const normais = totais.map((t, i) => t - vencArr[i]);
+
+  _pendingCharts.push({
+    id,
+    config: {
+      type: 'bar',
+      data: {
+        labels,
+        datasets: [
+          {
+            label:           'Chamados',
+            data:            normais,
+            backgroundColor: 'rgba(15,82,153,0.25)',
+            borderRadius:    { topLeft: 3, topRight: 3 },
+            stack:           'vol',
+          },
+          {
+            label:           'Vencidos',
+            data:            vencArr,
+            backgroundColor: 'rgba(197,40,76,0.75)',
+            borderRadius:    { topLeft: 3, topRight: 3 },
+            stack:           'vol',
+          }
+        ]
+      },
+      options: {
+        responsive:          true,
+        maintainAspectRatio: false,
+        animation:           { duration: 300 },
+        plugins: {
+          legend: {
+            position: 'bottom',
+            labels: {
+              boxWidth: 10, boxHeight: 10,
+              borderRadius: 2, useBorderRadius: true,
+              color: CHART_COLORS.ink4, padding: 14,
+            }
+          },
+          tooltip: {
+            callbacks: {
+              footer: items => `Total: ${items.reduce((s, i) => s + i.parsed.y, 0)}`
+            }
+          }
+        },
+        scales: {
+          x: {
+            stacked: true,
+            grid:    { display: false },
+            border:  { display: false },
+            ticks:   { color: CHART_COLORS.ink4, font: { size: 9 } }
+          },
+          y: {
+            stacked: true,
+            grid:    { color: CHART_COLORS.rule },
+            border:  { display: false },
+            ticks:   { color: CHART_COLORS.ink4 }
+          }
+        }
+      }
+    }
+  });
+
+  return `<div style="position:relative;height:200px"><canvas id="${id}"></canvas></div>`;
+}
+
+/*
+ * heatmap(matrix, rowLabels, colLabels) — heat map table
+ * matrix[r][c] = numeric value
+ * Color intensity goes from near-white (low value) to red (max value).
+ * Uses rgba() with variable opacity (works in any browser).
+ * Zero values get a neutral background (no heat color).
+ */
+export function heatmap(matrix, rowLabels, colLabels, opts={}){
+  const flat = matrix.flat().filter(v => v > 0);
+  const mx = flat.length ? Math.max(...flat) : 1;
+  const HEATMAP_MIN_OPACITY   = 0.12;
+  const HEATMAP_OPACITY_RANGE = 0.78; // min + range = 0.90 (maximum intensity)
+  const color = v => {
+    if(!v) return 'var(--neu-bg)';
+    const op = (HEATMAP_MIN_OPACITY + (v / mx) * HEATMAP_OPACITY_RANGE).toFixed(2);
+    return `rgba(1, 149, 214, ${op})`; // Saint-Gobain accent blue
+  };
+  let html = '<table class="hm"><thead><tr><th class="rh"></th>'+colLabels.map(c=>`<th>${c}</th>`).join('')+'</tr></thead><tbody>';
+  matrix.forEach((row,r) => {
+    html += `<tr><td class="rl">${rowLabels[r]}</td>` + row.map(v =>
+      `<td><div class="cell" style="background:${color(v)};color:${v/mx>0.55?'#fff':'var(--ink2)'}">${v||''}</div></td>`
+    ).join('') + '</tr>';
+  });
   html += '</tbody></table>';
   return html;
 }

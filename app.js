@@ -71,7 +71,7 @@ const App = {
  * A prioridade é: data de conclusão (dtFim) > data de criação (criado).
  * Para Chamados RPA, criado é a data de abertura do chamado.
  */
-function refDate(item){
+function dataReferencia(item){
   return item.dtFim || item.criado || null;
 }
 
@@ -80,12 +80,12 @@ function refDate(item){
  * Retorna true se: modo=all, ou data dentro do range.
  * Retorna false se: modo=custom e sem data (item não entra no filtro).
  */
-function inDateRange(d){
+function dataNoIntervalo(date){
   const dr = App.dateRange;
   if(dr.mode === 'all') return true;        // sem filtro: passa tudo
-  if(!d) return false;                       // sem data: não entra em período específico
-  if(dr.from && d < dr.from) return false;  // antes do início: fora
-  if(dr.to && d > dr.to) return false;      // depois do fim: fora
+  if(!date) return false;                    // sem data: não entra em período específico
+  if(dr.from && date < dr.from) return false;  // antes do início: fora
+  if(dr.to && date > dr.to) return false;      // depois do fim: fora
   return true;
 }
 
@@ -97,11 +97,11 @@ function inDateRange(d){
  *   - tem início e fim → passa se o intervalo do item cruza o intervalo do filtro
  *   - só tem início (em andamento) → passa se começou até o fim do filtro
  *     (considera-se ativa do início até hoje)
- *   - só tem fim → cai no comportamento de data única (inDateRange no fim)
+ *   - só tem fim → cai no comportamento de data única (dataNoIntervalo no fim)
  *   - sem nenhuma data → fora (contabilizado como "sem data")
  * Retorna 'in' | 'out' | 'nodate'.
  */
-function activeInRange(ini, fim){
+function ativoNoIntervalo(ini, fim){
   const dr = App.dateRange;
   if(dr.mode === 'all') return 'in';
   if(!ini && !fim) return 'nodate';
@@ -119,23 +119,23 @@ function activeInRange(ini, fim){
  * Aplica o filtro de data a um array inteiro.
  * Retorna: { kept: [...itens que passaram], noDate: N (quantidade sem data) }
  * Para itens que têm dtInicio (ex: Pipefy), usa a lógica de "ativo no período"
- * (intervalo início→fim). Para os demais, usa a data única de refDate.
+ * (intervalo início→fim). Para os demais, usa a data única de dataReferencia.
  * Os itens sem data não são perdidos — ficam fora do recorte e o número é
  * exibido na nota de transparência da interface.
  */
-function applyDate(arr){
+function filtrarPorPeriodo(arr){
   if(App.dateRange.mode === 'all') return { kept: arr, noDate: 0 };
   const kept = [], noDate = [];
   arr.forEach(x => {
-    // se o item tem conceito de intervalo (dtInicio definido), usa activeInRange
+    // se o item tem conceito de intervalo (dtInicio definido), usa ativoNoIntervalo
     if(x.dtInicio !== undefined){
-      const r = activeInRange(x.dtInicio, x.dtFim);
-      if(r === 'nodate') noDate.push(x);
-      else if(r === 'in') kept.push(x);
+      const rangeStatus = ativoNoIntervalo(x.dtInicio, x.dtFim);
+      if(rangeStatus === 'nodate') noDate.push(x);
+      else if(rangeStatus === 'in') kept.push(x);
     } else {
-      const d = refDate(x);
-      if(!d) noDate.push(x);
-      else if(inDateRange(d)) kept.push(x);
+      const date = dataReferencia(x);
+      if(!date) noDate.push(x);
+      else if(dataNoIntervalo(date)) kept.push(x);
     }
   });
   return { kept, noDate: noDate.length };
@@ -171,77 +171,76 @@ const _SVG = {
   rocket:  '<path d="M4.5 16.5c-1.5 1.26-2 5-2 5s3.74-.5 5-2c.71-.84.7-2.13-.09-2.91a2.18 2.18 0 0 0-2.91-.09z"/><path d="m12 15-3-3a22 22 0 0 1 2-3.95A12.88 12.88 0 0 1 22 2c0 2.72-.78 7.5-6 11a22.35 22.35 0 0 1-4 2z"/><path d="M9 12H4s.55-3.03 2-4c1.62-1.08 5 0 5 0"/><path d="M12 15v5s3.03-.55 4-2c1.08-1.62 0-5 0-5"/>',
   code:    '<polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/>',
 };
-function kpiIcon(name){
-  const p = _SVG[name] || '';
-  if(!p) return '';
-  return `<svg class="kico" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${p}</svg>`;
+function iconeKpi(nome){
+  const path = _SVG[nome] || '';
+  if(!path) return '';
+  return `<svg class="kico" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${path}</svg>`;
 }
-const DOW   = ['Seg','Ter','Qua','Qui','Sex','Sáb','Dom'];
 const HOJE  = new Date(); // data atual no momento do carregamento da página
 
 /*
- * Converts the raw status text (from the spreadsheet) into an internal code.
- * This normalizes spelling variants ("Concluido" vs "Concluído"), synonyms,
- * and GBS-specific statuses (Encerramento, Monitoramento).
+ * Converte o texto bruto de status (vindo da planilha) num código interno.
+ * Isso normaliza variações de grafia ("Concluido" vs "Concluído"), sinônimos
+ * e status específicos do GBS (Encerramento, Monitoramento).
  *
- * GBS Project flow:
+ * Fluxo de Projeto GBS:
  *   Diagnóstico → Planejamento → Execução → Encerramento → Monitoramento
- *   (none of these is "done" — "done" only appears once a project truly closes)
+ *   (nenhuma dessas fases é "done" — "done" só aparece quando o projeto
+ *   realmente encerra)
  *
- * Mapping to internal code:
- *   done    = actually completed (doesn't exist yet for projects)
- *   doing   = in progress / in development
- *   closing = in the closing process (can be overdue if the deadline passed)
- *   monitor = delivered, in post go-live monitoring (does not count as overdue)
- *   todo    = not started / backlog / planning
- *   blocked = blocked / paused
- *   cancel  = cancelled
- *   vendor  = forwarded to Pipefy support (external vendor)
- *   other   = any unrecognized value
+ * Mapeamento para o código interno:
+ *   done    = realmente concluído (ainda não existe para projetos)
+ *   doing   = em andamento / em desenvolvimento
+ *   closing = em processo de encerramento (pode estar atrasado se o prazo passou)
+ *   monitor = entregue, em monitoramento pós-implantação (não conta como atrasado)
+ *   todo    = não iniciado / backlog / planejamento
+ *   blocked = bloqueado / pausado
+ *   cancel  = cancelado
+ *   vendor  = encaminhado ao suporte do Pipefy (fornecedor externo)
+ *   other   = qualquer valor não reconhecido
  */
-function statusClass(s){
-  // Removes the numeric ordering prefix, if any.
+function classeStatus(statusBruto){
+  // Remove o prefixo numérico de ordenação, se houver.
   // Ex: "6. Encerramento" → "encerramento", "3 - Planejamento" → "planejamento"
-  const normalized = (s || '').toString().trim().toLowerCase().replace(/^\s*\d+\s*[.\-)]\s*/, '');
+  const normalizado = (statusBruto || '').toString().trim().toLowerCase().replace(/^\s*\d+\s*[.\-)]\s*/, '');
 
-  if (['suporte pipefy', 'encaminhado ao fornecedor', 'pipefy'].includes(normalized))
+  if (['suporte pipefy', 'encaminhado ao fornecedor', 'pipefy'].includes(normalizado))
     return 'vendor';
 
-  if (['concluído', 'concluido', 'finalizados', 'finalizado', 'tema concluído.', 'tema concluído'].includes(normalized))
+  if (['concluído', 'concluido', 'finalizados', 'finalizado', 'tema concluído.', 'tema concluído'].includes(normalizado))
     return 'done';
 
   if (['em andamento', 'em execução', 'execução', 'execucao', 'desenvolvimento',
-       'em validação', 'em validacao', 'aguardando validação', 'aguardando validacao'].includes(normalized))
+       'em validação', 'em validacao', 'aguardando validação', 'aguardando validacao'].includes(normalizado))
     return 'doing';
 
-  if (['encerramento'].includes(normalized))  return 'closing';
-  if (['monitoramento'].includes(normalized)) return 'monitor';
+  if (['encerramento'].includes(normalizado))  return 'closing';
+  if (['monitoramento'].includes(normalizado)) return 'monitor';
 
-  if (['planejamento', 'diagnóstico', 'diagnostico', 'não iniciado', 'nao iniciado', 'backlog'].includes(normalized))
+  if (['planejamento', 'diagnóstico', 'diagnostico', 'não iniciado', 'nao iniciado', 'backlog'].includes(normalizado))
     return 'todo';
 
-  if (['bloqueado', 'pausado'].includes(normalized))  return 'blocked';
-  if (['cancelado'].includes(normalized))             return 'cancel';
+  if (['bloqueado', 'pausado'].includes(normalizado))  return 'blocked';
+  if (['cancelado'].includes(normalizado))             return 'cancel';
 
   return 'other';
 }
 
 /*
- * statusClass specific to Improvements (Pipefy_Melhorias).
- * There, "Planejamento" is already an item pulled out of the backlog (active
- * work), so it's counted together with "doing" — this is what feeds the
- * "Dev + Planej." column of the Overview and the "Backlog" KPI on the
- * Improvements tab.
- * Do not use for Projects/Analytics: there "Planejamento" is phase 2 of the
- * flow (Diagnóstico→Planejamento→Execução...) and must stay 'todo'.
+ * classeStatus específica para Melhorias (Pipefy_Melhorias).
+ * Ali, "Planejamento" já é um item retirado do backlog (trabalho ativo),
+ * então é contado junto com "doing" — é isso que alimenta a coluna
+ * "Dev + Planej." do Overview e o KPI "Backlog" da aba Melhorias.
+ * Não usar para Projetos/Analytics: lá "Planejamento" é a fase 2 do fluxo
+ * (Diagnóstico→Planejamento→Execução...) e precisa continuar como 'todo'.
  */
-function improvementStatusClass(s){
-  const normalized = (s || '').toString().trim().toLowerCase().replace(/^\s*\d+\s*[.\-)]\s*/, '');
-  if (normalized === 'planejamento') return 'doing';
-  return statusClass(s);
+function classeStatusMelhoria(statusBruto){
+  const normalizado = (statusBruto || '').toString().trim().toLowerCase().replace(/^\s*\d+\s*[.\-)]\s*/, '');
+  if (normalizado === 'planejamento') return 'doing';
+  return classeStatus(statusBruto);
 }
 
-// Portuguese labels for display in the interface
+// Rótulos em português para exibição na interface
 const STATUS_PT = {
   done:    'Concluído',
   doing:   'Em andamento',
@@ -254,7 +253,7 @@ const STATUS_PT = {
   other:   'Outro'
 };
 
-// CSS badge class for each status (see CSS: .badge.ok, .badge.info, etc.)
+// Classe CSS do selo (badge) de cada status (ver CSS: .badge.ok, .badge.info, etc.)
 const STATUS_BADGE = {
   done:    'ok',
   doing:   'info',
@@ -267,32 +266,32 @@ const STATUS_BADGE = {
   other:   'neu'
 };
 
-// Solid color for charts — Saint-Gobain palette
+// Cor sólida para os gráficos — paleta Saint-Gobain
 const STATUS_COLOR = {
-  done:    '#4DB1B3',  // teal        — done
-  doing:   '#0195D6',  // bright blue — in progress
-  closing: '#E66407',  // orange      — closing
-  monitor: '#0F5299',  // brand blue  — monitoring
-  todo:    '#9CA3AF',  // gray        — not started
-  blocked: '#E83430',  // red         — blocked
-  cancel:  '#C5284C',  // pink-red    — cancelled
-  vendor:  '#8B6FD4',  // purple      — Pipefy support
-  other:   '#9CA3AF'   // gray
+  done:    '#4DB1B3',  // verde-água    — concluído
+  doing:   '#0195D6',  // azul claro    — em andamento
+  closing: '#E66407',  // laranja       — encerramento
+  monitor: '#0F5299',  // azul da marca — monitoramento
+  todo:    '#9CA3AF',  // cinza         — não iniciado
+  blocked: '#E83430',  // vermelho      — bloqueado
+  cancel:  '#C5284C',  // rosa-vermelho — cancelado
+  vendor:  '#8B6FD4',  // roxo          — suporte Pipefy
+  other:   '#9CA3AF'   // cinza
 };
 
 /*
- * COE_TEAM — CoE team members, organized by the area they work in.
- * Used ONLY on the Governance tab to filter "Open actions by owner"
- * (shows only the internal team; non-CoE people don't appear on that chart).
+ * COE_TEAM — membros da equipe CoE, organizados pela área em que atuam.
+ * Usado SÓ na aba Governança para filtrar "Ações abertas por responsável"
+ * (mostra só a equipe interna; pessoas fora do CoE não aparecem nesse gráfico).
  *
- * Each entry has a 'match' list of distinctive terms to recognize the
- * person in the data, tolerating spelling variations. We deliberately use
- * surnames/unique terms to AVOID confusing first-name homonyms
- * (ex: "Gustavo" would also match "Matheus Gustavo Germano", who is not
- * CoE; that's why we use "archangelo"). 'name' is the label shown on the chart.
+ * Cada entrada tem uma lista 'match' de termos distintivos pra reconhecer
+ * a pessoa nos dados, tolerando variações de grafia. Usamos deliberadamente
+ * sobrenomes/termos únicos pra EVITAR confundir homônimos de primeiro nome
+ * (ex: "Gustavo" também bateria com "Matheus Gustavo Germano", que não é do
+ * CoE; por isso usamos "archangelo"). 'name' é o rótulo mostrado no gráfico.
  */
 const COE_TEAM = [
-  // --- Projects ---
+  // --- Projetos ---
   { name:'Gabriel Hirata',    match:['gabriel hirata','hirata'] },
   { name:'Maiara',            match:['maiara'] },
   { name:'Vinícius Milagres', match:['milagres','vinícius marchi','vinicius marchi'] },
@@ -315,91 +314,92 @@ const COE_TEAM = [
 ];
 
 /*
- * getStandardCoeName(resp) — takes the responsible person's name as it
- * appears in the data and, if they are a CoE team member, returns the
- * standardized name (label). Otherwise returns null.
- * Uses each member's 'match' terms (case-insensitive, accent-insensitive).
+ * nomePadraoCoe(resp) — pega o nome do responsável como ele aparece nos
+ * dados e, se for membro da equipe CoE, retorna o nome padronizado (rótulo).
+ * Caso contrário retorna null.
+ * Usa os termos 'match' de cada membro (sem diferenciar maiúsculas/minúsculas
+ * nem acentos).
  */
-function getStandardCoeName(resp){
+function nomePadraoCoe(resp){
   if(!resp) return null;
-  const normalized = resp.toString().toLowerCase()
-    .normalize('NFD').replace(/[\u0300-\u036f]/g,''); // strip accents for comparison
-  for(const member of COE_TEAM){
-    for(const term of member.match){
-      const termNorm = term.normalize('NFD').replace(/[\u0300-\u036f]/g,'');
-      if(normalized.includes(termNorm)) return member.name;
+  const normalizado = resp.toString().toLowerCase()
+    .normalize('NFD').replace(/[\u0300-\u036f]/g,''); // remove acentos pra comparação
+  for(const membro of COE_TEAM){
+    for(const termo of membro.match){
+      const termoNorm = termo.normalize('NFD').replace(/[\u0300-\u036f]/g,'');
+      if(normalizado.includes(termoNorm)) return membro.name;
     }
   }
   return null;
 }
 
 /*
- * Phase number in the lifecycle of a GBS Project.
- * The higher the number, the closer to completion.
- * Flow: Diagnóstico(1) → Planejamento(2) → Execução(3) → Encerramento(4) → Monitoramento(5)
- * Returns null for statuses outside the flow (cancelled, blocked).
+ * Número da fase no ciclo de vida de um Projeto GBS.
+ * Quanto maior o número, mais perto da conclusão.
+ * Fluxo: Diagnóstico(1) → Planejamento(2) → Execução(3) → Encerramento(4) → Monitoramento(5)
+ * Retorna null para status fora do fluxo (cancelado, bloqueado).
  */
-function getProjectPhase(statusRaw){
-  const normalized = (statusRaw||'').toString().trim().toLowerCase();
-  if(normalized.includes('diagn')) return 1;
-  if(normalized.includes('planej')) return 2;
-  if(normalized.includes('execu')) return 3;
-  if(normalized.includes('encerr')) return 4;
-  if(normalized.includes('monitor')) return 5;
-  if(normalized.includes('conclu')) return 5;
+function faseProjeto(statusBruto){
+  const normalizado = (statusBruto||'').toString().trim().toLowerCase();
+  if(normalizado.includes('diagn')) return 1;
+  if(normalizado.includes('planej')) return 2;
+  if(normalizado.includes('execu')) return 3;
+  if(normalizado.includes('encerr')) return 4;
+  if(normalizado.includes('monitor')) return 5;
+  if(normalizado.includes('conclu')) return 5;
   return null;
 }
 
 /*
- * isProjectOverdue(p) — true if the project has a past-due deadline and
- * hasn't been delivered/cancelled yet. Considered "not overdue-eligible":
- * completed, in monitoring (post go-live), or cancelled projects.
+ * projetoAtrasado(p) — true se o projeto tem prazo vencido e ainda não foi
+ * entregue/cancelado. Considerados "não elegíveis a atraso": projetos
+ * concluídos, em monitoramento (pós-implantação) ou cancelados.
  */
-function isProjectOverdue(p){
-  return !!(p.dtFim && p.dtFim < HOJE && p.sc!=='done' && p.sc!=='cancel' && p.sc!=='monitor');
+function projetoAtrasado(projeto){
+  return !!(projeto.dtFim && projeto.dtFim < HOJE && projeto.sc!=='done' && projeto.sc!=='cancel' && projeto.sc!=='monitor');
 }
 
 /*
- * getProjectRisk(p) — automatic risk score (0 to 100) for a project.
- * Combines three objective factors, with no manual field needed in the spreadsheet:
- *   1) DELAY (heaviest weight): days past the deadline. The more overdue, the higher.
- *   2) PHASE: projects in early phases (Diagnóstico/Planejamento) with a tight
- *      deadline are riskier than ones already in Encerramento.
- *   3) DEADLINE PROXIMITY: an approaching deadline (even without a delay) raises risk.
- * Completed/cancelled/monitoring projects have risk 0 (no longer "in play").
- * Returns { score, level, reasons[] } — level ∈ {high, medium, low}.
+ * riscoProjeto(p) — score de risco automático (0 a 100) de um projeto.
+ * Combina três fatores objetivos, sem precisar de campo manual na planilha:
+ *   1) ATRASO (peso mais forte): dias após o prazo. Quanto mais atrasado, maior.
+ *   2) FASE: projetos em fases iniciais (Diagnóstico/Planejamento) com prazo
+ *      apertado são mais arriscados que os que já estão em Encerramento.
+ *   3) PROXIMIDADE DO PRAZO: um prazo se aproximando (mesmo sem atraso) eleva o risco.
+ * Projetos concluídos/cancelados/em monitoramento têm risco 0 (não estão mais "em jogo").
+ * Retorna { score, level, reasons[] } — level ∈ {high, medium, low}.
  */
-function getProjectRisk(p){
-  if(p.sc==='done' || p.sc==='cancel' || p.sc==='monitor'){
+function riscoProjeto(projeto){
+  if(projeto.sc==='done' || projeto.sc==='cancel' || projeto.sc==='monitor'){
     return { score:0, level:'low', reasons:[] };
   }
   let score = 0;
   const reasons = [];
-  const phase = getProjectPhase(p.statusRaw) || 2;
+  const fase = faseProjeto(projeto.statusRaw) || 2;
 
-  // 1) Delay — the strongest factor. A meaningful delay alone already pushes to high risk.
-  if(p.dtFim){
-    const days = daysBetween(HOJE, p.dtFim);
-    if(days > 0){
-      // 15 base points + ~1/day, capping at 70; ~40 days already crosses the "high" threshold
-      score += Math.min(70, 15 + days*1.2);
-      reasons.push(`${days} ${days===1?'dia':'dias'} de atraso`);
+  // 1) Atraso — o fator mais forte. Um atraso significativo sozinho já empurra pro risco alto.
+  if(projeto.dtFim){
+    const dias = daysBetween(HOJE, projeto.dtFim);
+    if(dias > 0){
+      // 15 pontos base + ~1/dia, com teto em 70; ~40 dias já cruza o limiar de "alto"
+      score += Math.min(70, 15 + dias*1.2);
+      reasons.push(`${dias} ${dias===1?'dia':'dias'} de atraso`);
     } else {
-      // 2) Deadline proximity (not yet overdue)
-      const daysLeft = -days;
-      if(daysLeft <= 15){ score += 18; reasons.push(`prazo em ${daysLeft} ${daysLeft===1?'dia':'dias'}`); }
-      else if(daysLeft <= 30){ score += 10; reasons.push('prazo próximo'); }
+      // 2) Proximidade do prazo (ainda não atrasado)
+      const diasRestantes = -dias;
+      if(diasRestantes <= 15){ score += 18; reasons.push(`prazo em ${diasRestantes} ${diasRestantes===1?'dia':'dias'}`); }
+      else if(diasRestantes <= 30){ score += 10; reasons.push('prazo próximo'); }
     }
   } else {
-    // no deadline set on an active project = lack-of-control risk
+    // sem prazo definido num projeto ativo = risco de falta de controle
     score += 14; reasons.push('sem prazo definido');
   }
 
-  // 3) Phase — weight by stage (earlier phases = more road ahead = more risk)
-  if(p.sc==='blocked'){ score += 30; reasons.push('bloqueado'); }
-  const phaseWeight = {1:18, 2:14, 3:9, 4:4, 5:0}[phase] || 9;
-  score += phaseWeight;
-  if(phase<=2 && p.sc!=='blocked') reasons.push(`fase inicial (${p.statusRaw})`);
+  // 3) Fase — peso por estágio (fases mais iniciais = mais caminho pela frente = mais risco)
+  if(projeto.sc==='blocked'){ score += 30; reasons.push('bloqueado'); }
+  const pesoFase = {1:18, 2:14, 3:9, 4:4, 5:0}[fase] || 9;
+  score += pesoFase;
+  if(fase<=2 && projeto.sc!=='blocked') reasons.push(`fase inicial (${projeto.statusRaw})`);
 
   score = Math.min(100, Math.round(score));
   const level = score>=55 ? 'high' : (score>=30 ? 'medium' : 'low');
@@ -522,7 +522,7 @@ function setNav(id){
   const pg = document.getElementById('page-'+id);
   if(pg) pg.querySelectorAll('.knum').forEach(el => {
     delete el.dataset.an;
-    _animateNum(el);
+    _animateNumber(el);
   });
 }
 
@@ -545,17 +545,17 @@ function rpaPage(id){
    ============================================================ */
 
 // Drag & drop: drag-over (over), drag-leave (leave), drop events
-function dzO(e,id){ e.preventDefault(); document.getElementById(id).classList.add('over'); }
-function dzL(id){ document.getElementById(id).classList.remove('over'); }
-function dzD(e,t){
-  e.preventDefault();
-  document.getElementById('dz-'+t).classList.remove('over');
-  const f = e.dataTransfer.files[0];
-  if(f) readFile(f, t);
+function handleDropzoneDragOver(event,id){ event.preventDefault(); document.getElementById(id).classList.add('over'); }
+function handleDropzoneDragLeave(id){ document.getElementById(id).classList.remove('over'); }
+function handleDropzoneDrop(event,type){
+  event.preventDefault();
+  document.getElementById('dz-'+type).classList.remove('over');
+  const file = event.dataTransfer.files[0];
+  if(file) readFile(file, type);
 }
 
 // File input handler (click on the file selection button)
-function hf(i,t){ if(i.files[0]) readFile(i.files[0], t); }
+function handleFileInputChange(input,type){ if(input.files[0]) readFile(input.files[0], type); }
 
 /*
  * Reads an Excel (.xlsx) file from disk using FileReader.
@@ -652,23 +652,23 @@ function toDate(rawValue){
   if(!rawValue) return null;
   if(rawValue instanceof Date) return isNaN(rawValue) ? null : rawValue;
   if(typeof rawValue === 'number'){
-    const d = new Date(Math.round((rawValue - EXCEL_EPOCH_OFFSET) * 864e5));
-    return isNaN(d) ? null : d;
+    const date = new Date(Math.round((rawValue - EXCEL_EPOCH_OFFSET) * 864e5));
+    return isNaN(date) ? null : date;
   }
   if(typeof rawValue === 'string' && rawValue.length > 4){
-    const d = new Date(rawValue);
-    return isNaN(d) ? null : d;
+    const date = new Date(rawValue);
+    return isNaN(date) ? null : date;
   }
   return null;
 }
 
 // Formats a Date as a "YYYY-MM" string (used as the monthly grouping key)
-function ym(d){ return d ? `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}` : ''; }
+function toYearMonthKey(date){ return date ? `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}` : ''; }
 
 // Converts "YYYY-MM" into a readable "Mmm/AA" label (ex: "2026-04" → "Abr/26")
-function ymLabel(m){
-  if(!m) return '';
-  const partes = m.split('-');
+function toYearMonthLabel(monthKey){
+  if(!monthKey) return '';
+  const partes = monthKey.split('-');
   return `${MESES[+partes[1]-1]}/${partes[0].slice(2)}`;
 }
 
@@ -678,13 +678,13 @@ function ymLabel(m){
  * The comparison is case-insensitive and ignores extra spaces.
  * Returns '' if none of the keys are found.
  */
-function get(row, keys){
-  const rk = Object.keys(row);
-  for(const k of keys){
-    for(const r of rk){
-      if(r.trim().toLowerCase() === k.toLowerCase()){
-        const v = row[r];
-        return v == null ? '' : v;
+function getColumnValue(row, keys){
+  const rowKeys = Object.keys(row);
+  for(const key of keys){
+    for(const columnName of rowKeys){
+      if(columnName.trim().toLowerCase() === key.toLowerCase()){
+        const value = row[columnName];
+        return value == null ? '' : value;
       }
     }
   }
@@ -703,16 +703,16 @@ function count(arr, fn){
 }
 
 // Calculates a rounded percentage. Returns 0 if the divisor is 0 (never divides by zero).
-function pct(a, b){ return b ? Math.round(a/b*100) : 0; }
+function calculatePercentage(value, total){ return total ? Math.round(value/total*100) : 0; }
 
 // Converts a Date to a "YYYY-MM-DD" string (ISO format, used in date inputs).
 // Defined here to avoid the duplicated `iso = d => ...` lambda in setQuickRange and generate().
-function toIsoDate(d){ return d.toISOString().slice(0, 10); }
+function toIsoDate(date){ return date.toISOString().slice(0, 10); }
 
 // Calculates the average of a numeric field across an array, ignoring nulls.
 // Returns the value as a string with 1 decimal, or '—' if there's no data.
 // Extracted from buildRPATickets() for reuse in other analysis modules.
-function avgField(arr, campo){
+function averageField(arr, campo){
   const valores = arr.filter(r => r[campo] != null).map(r => r[campo]);
   return valores.length ? (valores.reduce((soma, v) => soma + v, 0) / valores.length).toFixed(1) : '—';
 }
@@ -720,8 +720,8 @@ function avgField(arr, campo){
 // Normalizes a bot or process name for approximate (fuzzy) comparison.
 // Strips bracketed prefixes (ex: "[P2P]"), lowercases, and
 // removes anything that isn't a letter or digit.
-// Used in enrichRPAWithArea(), buildBotsCruzamento() and analyzeBots().
-function normBotName(s){ return s.toLowerCase().replace(/^\[.*?\]/, '').replace(/[^a-z0-9]/g, ''); }
+// Used in enrichRPAWithArea(), buildBotsCruzamento() and analisarBots().
+function normalizeBotName(name){ return name.toLowerCase().replace(/^\[.*?\]/, '').replace(/[^a-z0-9]/g, ''); }
 
 // Main GBS business areas — used to filter RPA and bot charts.
 // Secondary inventory areas (PAM, CI, IT, ARG, MEX etc.) are grouped into "Outros"
@@ -729,7 +729,7 @@ function normBotName(s){ return s.toLowerCase().replace(/^\[.*?\]/, '').replace(
 const MAIN_RPA_AREAS = ['P2P', 'TAX', 'H2R', 'O2C', 'R2R'];
 
 // Team responsible for developing Pipefy improvements (excludes requesters/champions).
-// Used in buildImprovements() to filter the "Por responsável" chart.
+// Used in construirMelhorias() to filter the "Por responsável" chart.
 const PIPEFY_TEAM = ['willian', 'vinícius', 'vinicius', 'felipe', 'gustavo', 'caio'];
 function isPipefyTeamMember(nome){ return PIPEFY_TEAM.some(p => nome.toLowerCase().includes(p)); }
 
@@ -737,7 +737,7 @@ function isPipefyTeamMember(nome){ return PIPEFY_TEAM.some(p => nome.toLowerCase
 // Positive = date1 is more recent than date2 (ex: today - deadline = days overdue).
 const MS_PER_DAY = 86_400_000;
 const EXCEL_EPOCH_OFFSET = 25569; // days between 1900-01-01 (Excel epoch) and 1970-01-01 (Unix epoch)
-function daysBetween(data1, data2){ return Math.round((data1 - data2) / MS_PER_DAY); }
+function daysBetween(date1, date2){ return Math.round((date1 - date2) / MS_PER_DAY); }
 
 /*
  * Counts how many items in an array have each status code.
@@ -780,11 +780,11 @@ function sortedCountEntries(arr, keyFn) {
  *
  * TOLERANCE FOR VARIATIONS:
  *   - Tab names: fragment search, case-insensitive and underline-insensitive
- *   - Column names: each field tries multiple alternative names (see get())
+ *   - Column names: each field tries multiple alternative names (see getColumnValue())
  *   - Projects layout: automatically detects whether the header is correct
  *     or shuffled (old layout), and reads by position as a fallback
  *
- * To add a new field: add the column name to the array in get()
+ * To add a new field: add the column name to the array in getColumnValue()
  * and map it to the normalized field in the object returned by .map().
  */
 function parseGov(){
@@ -794,23 +794,23 @@ function parseGov(){
   // Looks up the tab by name (flexible: accepts "pipefymelhorias" or "melhorias")
   const sMel = findSheet(wb,'pipefymelhorias') || findSheet(wb,'melhorias');
   App.P.improvements = sMel ? XLSX.utils.sheet_to_json(wb.Sheets[sMel], {defval:''}).map(r => ({
-    num:      get(r, ['Numero']),
-    frente:   String(get(r, ['Gerencia'])).trim(),      // business area (P2P, O2C, etc.)
-    fluxo:    get(r, ['NomeFluxo']),                    // process flow name
-    atividade:get(r, ['Atividade']),                    // improvement description
-    statusRaw:String(get(r, ['Status'])).trim(),        // original status (spreadsheet text)
-    sc:       improvementStatusClass(get(r, ['Status'])), // normalized status ("Planejamento" counts as 'doing' here)
-    resp:     String(get(r, ['Responsavel'])).trim().replace(/​/g,''), // owner's name
-    champion: String(get(r, ['Champion'])).trim(),
-    complex:  String(get(r, ['Complexidade'])).trim(),
-    tipo:     String(get(r, ['TipoMelhoriaAjuste'])).trim(),
+    num:      getColumnValue(r, ['Numero']),
+    frente:   String(getColumnValue(r, ['Gerencia'])).trim(),      // business area (P2P, O2C, etc.)
+    fluxo:    getColumnValue(r, ['NomeFluxo']),                    // process flow name
+    atividade:getColumnValue(r, ['Atividade']),                    // improvement description
+    statusRaw:String(getColumnValue(r, ['Status'])).trim(),        // original status (spreadsheet text)
+    sc:       classeStatusMelhoria(getColumnValue(r, ['Status'])), // normalized status ("Planejamento" counts as 'doing' here)
+    resp:     String(getColumnValue(r, ['Responsavel'])).trim().replace(/​/g,''), // owner's name
+    champion: String(getColumnValue(r, ['Champion'])).trim(),
+    complex:  String(getColumnValue(r, ['Complexidade'])).trim(),
+    tipo:     String(getColumnValue(r, ['TipoMelhoriaAjuste'])).trim(),
     // PERIOD FILTER — one column per field, no fallback:
     //   dtInicio → DataInicioDesenvolvimento
     //   dtFim    → DataRealEstimadaConclusaoValidacaoChampion
-    // Neither one filled in = not-started backlog → always included (see buildImprovements).
-    dtInicio: toDate(get(r, ['DataInicioDesenvolvimento'])),
-    dtFim:    toDate(get(r, ['DataRealEstimadaConclusaoValidacaoChampion'])),
-    horas:    get(r, ['QtdHorasEstimadas'])
+    // Neither one filled in = not-started backlog → always included (see construirMelhorias).
+    dtInicio: toDate(getColumnValue(r, ['DataInicioDesenvolvimento'])),
+    dtFim:    toDate(getColumnValue(r, ['DataRealEstimadaConclusaoValidacaoChampion'])),
+    horas:    getColumnValue(r, ['QtdHorasEstimadas'])
   })).filter(r => r.num !== '' || r.atividade) : []; // discards fully empty rows
 
   /* --- Projetos --- */
@@ -823,30 +823,30 @@ function parseGov(){
     // Takes the first 5 rows and tests whether 'Status' contains recognizable values.
     // If no status is recognized, assumes the base is in the old layout (shuffled columns).
     const sample = rows.slice(0,5);
-    const headerLooksRight = sample.some(r => statusClass(get(r,['Status'])) !== 'other');
+    const headerLooksRight = sample.some(r => classeStatus(getColumnValue(r,['Status'])) !== 'other');
 
     if(headerLooksRight){
       // NEW LAYOUT (Universal base): well-defined fields
       App.P.proj = rows.map(r => ({
-        num:        get(r, ['Numero']),
-        titulo:     String(get(r, ['Titulo'])).trim(),
-        resp:       String(get(r, ['Responsavel'])).trim(),
+        num:        getColumnValue(r, ['Numero']),
+        titulo:     String(getColumnValue(r, ['Titulo'])).trim(),
+        resp:       String(getColumnValue(r, ['Responsavel'])).trim(),
         // AreaCliente is the new field name; 'Frente' is the fallback for the old base
-        frente:     String(get(r, ['AreaCliente','Frente'])).trim(),
-        focal:      String(get(r, ['PontoFocal'])).trim(),
-        statusRaw:  String(get(r, ['Status'])).trim(),
-        sc:         statusClass(get(r, ['Status'])),
+        frente:     String(getColumnValue(r, ['AreaCliente','Frente'])).trim(),
+        focal:      String(getColumnValue(r, ['PontoFocal'])).trim(),
+        statusRaw:  String(getColumnValue(r, ['Status'])).trim(),
+        sc:         classeStatus(getColumnValue(r, ['Status'])),
         // PERIOD FILTER — reference: PrazoConclusão (there's no start date in the spreadsheet)
-        dtFim:      toDate(get(r, ['PrazoConclusão','PrazoConclusao','DataFechamento'])),
-        proximos:   String(get(r, ['ProximosPassos'])).trim(),
+        dtFim:      toDate(getColumnValue(r, ['PrazoConclusão','PrazoConclusao','DataFechamento'])),
+        proximos:   String(getColumnValue(r, ['ProximosPassos'])).trim(),
         // Rich fields — filled in on the Universal spreadsheet, shown when expanding a project in the list
-        equipes:    String(get(r, ['EquipesEnvolvidas'])).trim(),
-        descricao:  String(get(r, ['DescricaoProjeto'])).trim(),
-        atvConcl:   String(get(r, ['AtividadesConcluidas'])).trim(),
-        atvAndam:   String(get(r, ['AtividadesAndamento'])).trim(),
-        comentarios:String(get(r, ['Comentarios'])).trim(),
+        equipes:    String(getColumnValue(r, ['EquipesEnvolvidas'])).trim(),
+        descricao:  String(getColumnValue(r, ['DescricaoProjeto'])).trim(),
+        atvConcl:   String(getColumnValue(r, ['AtividadesConcluidas'])).trim(),
+        atvAndam:   String(getColumnValue(r, ['AtividadesAndamento'])).trim(),
+        comentarios:String(getColumnValue(r, ['Comentarios'])).trim(),
         prog: (()=>{
-          const rawProg = get(r, ['ProgressoPct','Progresso']);
+          const rawProg = getColumnValue(r, ['ProgressoPct','Progresso']);
           return typeof rawProg === 'number' ? rawProg : (parseFloat(rawProg)||null);
         })() // progress 0.0 to 1.0 (ex: 0.75 = 75%)
       })).filter(p => p.titulo); // discards rows without a title
@@ -864,7 +864,7 @@ function parseGov(){
         App.P.proj.push({
           num:row[0], titulo:String(row[1]).trim(), resp:String(row[2]||'').trim(),
           frente:String(row[3]||'').trim(), focal:String(row[4]||'').trim(),
-          statusRaw:String(row[5]||'').trim(), sc:statusClass(row[5]),
+          statusRaw:String(row[5]||'').trim(), sc:classeStatus(row[5]),
           dtFim:toDate(row[6]), proximos:String(row[7]||'').trim(),
           equipes:'', descricao:'', atvConcl:'', atvAndam:'', comentarios:'',
           prog: typeof row[8]==='number' ? row[8] : (parseFloat(row[8])||null)
@@ -876,19 +876,19 @@ function parseGov(){
   /* --- Analytics --- */
   const sAna = findSheet(wb,'analytics');
   App.P.ana = sAna ? XLSX.utils.sheet_to_json(wb.Sheets[sAna], {defval:''}).map(r => ({
-    num:      get(r, ['Numero']),
-    titulo:   String(get(r, ['Titulo'])).trim(),
-    statusRaw:String(get(r, ['Status'])).trim(),
-    sc:       statusClass(get(r, ['Status'])),
-    prioRaw:  String(get(r, ['Prioridade'])).trim(),
+    num:      getColumnValue(r, ['Numero']),
+    titulo:   String(getColumnValue(r, ['Titulo'])).trim(),
+    statusRaw:String(getColumnValue(r, ['Status'])).trim(),
+    sc:       classeStatus(getColumnValue(r, ['Status'])),
+    prioRaw:  String(getColumnValue(r, ['Prioridade'])).trim(),
     // extracts just the priority number (ex: "Prioridade 2" → 2)
-    prio:     (()=>{ const m = String(get(r,['Prioridade'])).match(/\d+/); return m ? +m[0] : null; })(),
-    frente:   String(get(r, ['Frente'])).trim(),
-    resp:     String(get(r, ['Responsavel'])).trim(),
+    prio:     (()=>{ const match = String(getColumnValue(r,['Prioridade'])).match(/\d+/); return match ? +match[0] : null; })(),
+    frente:   String(getColumnValue(r, ['Frente'])).trim(),
+    resp:     String(getColumnValue(r, ['Responsavel'])).trim(),
     // dtInicio = DataAbertura (start); dtFim = DataFechamento (validation completion)
-    // With dtInicio set, applyDate uses activeInRange — includes activities in progress during the period.
-    dtInicio: toDate(get(r, ['DataAbertura'])),
-    dtFim:    toDate(get(r, ['DataFechamento']))
+    // With dtInicio set, filtrarPorPeriodo uses ativoNoIntervalo — includes activities in progress during the period.
+    dtInicio: toDate(getColumnValue(r, ['DataAbertura'])),
+    dtFim:    toDate(getColumnValue(r, ['DataFechamento']))
   })).filter(r => r.titulo) : []; // discards rows without a title (ex: phantom rows from the source)
 }
 
@@ -947,33 +947,32 @@ function parseRPA(){
 
   const rows = XLSX.utils.sheet_to_json(wb.Sheets[melhorAba], {defval:''});
   App.R = rows.map(r => {
-    const criado = toDate(get(r, ['Criado em']));
-    const vencRaw = get(r, ['Vencido']);
+    const criado = toDate(getColumnValue(r, ['Criado em']));
+    const vencRaw = getColumnValue(r, ['Vencido']);
     const venc = vencRaw===true || String(vencRaw).toLowerCase()==='true' || String(vencRaw).toLowerCase()==='sim';
     return {
-      cod:        String(get(r, ['Código','Codigo'])).trim(),
-      titulo:     String(get(r, ['Título','Titulo'])).trim(),
-      fase:       String(get(r, ['Fase atual'])).trim(),
-      processo:   String(get(r, ['Processo'])).trim() || '(sem processo)',
-      problema:   String(get(r, ['Qual é o problema?'])).trim(),
-      reexec:     String(get(r, ['Este robô admite reexecução?'])).trim(),
-      intext:     String(get(r, ['O problema é interno ou externo?', 'Interno ou externo?', 'Causa interna ou externa?', 'Causa interna/externa'])).trim(),
-      solicitante:String(get(r, ['Nome do solicitante'])).trim(),
+      cod:        String(getColumnValue(r, ['Código','Codigo'])).trim(),
+      titulo:     String(getColumnValue(r, ['Título','Titulo'])).trim(),
+      fase:       String(getColumnValue(r, ['Fase atual'])).trim(),
+      processo:   String(getColumnValue(r, ['Processo'])).trim() || '(sem processo)',
+      problema:   String(getColumnValue(r, ['Qual é o problema?'])).trim(),
+      reexec:     String(getColumnValue(r, ['Este robô admite reexecução?'])).trim(),
+      intext:     String(getColumnValue(r, ['O problema é interno ou externo?', 'Interno ou externo?', 'Causa interna ou externa?', 'Causa interna/externa'])).trim(),
+      solicitante:String(getColumnValue(r, ['Nome do solicitante'])).trim(),
       // "Responsáveis" = who works the ticket (RPA CoE team), not who opened it.
       // Can have several names separated by commas; we store it as a list so we
       // can count each owner individually.
-      responsaveis: String(get(r, ['Responsáveis','Responsável']))
+      responsaveis: String(getColumnValue(r, ['Responsáveis','Responsável']))
         .split(',').map(s=>s.trim()).filter(Boolean),
       criado,
       dtInicio: criado,                            // Criado em → start of the interval
-      dtFim:    toDate(get(r, ['Finalizado em'])), // Finalizado em → end of the interval
-      mes: ym(criado),
-      dow: criado ? (criado.getDay() + 6) % 7 : -1,
-      finalizado: toDate(get(r, ['Finalizado em'])), // alias for display
+      dtFim:    toDate(getColumnValue(r, ['Finalizado em'])), // Finalizado em → end of the interval
+      mes: toYearMonthKey(criado),
+      finalizado: toDate(getColumnValue(r, ['Finalizado em'])), // alias for display
       vencido:    venc,
-      tIdent:  parseFloat(get(r, ['Tempo total na fase Identificação do problema (dias)']))||null,
-      tDesenv: parseFloat(get(r, ['Tempo total na fase Desenvolvimento da solução (dias)']))||null,
-      tReexec: parseFloat(get(r, ['Tempo total na fase Reexecução (dias)']))||null
+      tIdent:  parseFloat(getColumnValue(r, ['Tempo total na fase Identificação do problema (dias)']))||null,
+      tDesenv: parseFloat(getColumnValue(r, ['Tempo total na fase Desenvolvimento da solução (dias)']))||null,
+      tReexec: parseFloat(getColumnValue(r, ['Tempo total na fase Reexecução (dias)']))||null
     };
   // JUNK FILTER: keeps only rows that have a real code (tickets always have a code).
   // This avoids counting blank rows or footer rows that some exports include.
@@ -1012,9 +1011,9 @@ function areaByKeyword(proc){
 
 function enrichRPAWithArea(){
   if(!App.R.length) return;
-  const botAreas = App.B.filter(b=>b.nome && b.area).map(b => ({nomeNorm: normBotName(b.nome), area:b.area}));
+  const botAreas = App.B.filter(b=>b.nome && b.area).map(b => ({nomeNorm: normalizeBotName(b.nome), area:b.area}));
   App.R.forEach(r => {
-    const procNorm = normBotName(r.processo);
+    const procNorm = normalizeBotName(r.processo);
     let area = '';
     // 1st layer: cross-reference with the bot inventory
     if(procNorm && botAreas.length){
@@ -1040,21 +1039,21 @@ function parseInv(){
   if(!sn){ App.B = []; return; }
   const rows = XLSX.utils.sheet_to_json(wb.Sheets[sn], {defval:''});
   App.B = rows.map(r => ({
-    nome:        String(get(r, ['NomeRPA','NOME DO RPA','Nome do RPA'])).trim(),
-    perimetro:   String(get(r, ['Perimetro','PERIMETRO','Perímetro'])).trim(),
-    area:        String(get(r, ['Area','AREA','Área'])).trim(),
-    status:      String(get(r, ['Status','STATUS'])).trim().toUpperCase(), // PRD/DEV/BACKLOG/CANCELADO
-    anoPrd:      get(r, ['AnoPRD','ANO PRD']), // year the bot went live
-    desc:        String(get(r, ['Descricao','DESCRIÇÃO'])).trim(),
-    dev:         String(get(r, ['Desenvolvedor','DESENVOLVEDOR'])).trim(),
-    suporte:     String(get(r, ['Suporte','SUPORTE / SUSTENTAÇÃO'])).trim(),
-    criticidade: (()=>{ const v = get(r,['Criticidade','CRITICIDADE']); const n = parseInt(v); return isNaN(n)?null:n; })(),
-    freq:        String(get(r, ['Frequencia','FREQUENCIA','Frequência'])).trim().toLowerCase(),
-    fte:         parseFloat(get(r, ['FTE']))||0,               // FTEs saved by this bot
-    vol:         parseFloat(get(r, ['VolumetriaMensal','VOLUMETRIA MENSAL']))||0, // transactions/month
-    nBots:       parseFloat(get(r, ['NumeroBots','NUMERO DE BOTS']))||0,
-    areaCliente: String(get(r, ['AreaCliente','AREA CLIENTE'])).trim(),
-    sap:         String(get(r, ['SAP'])).trim()
+    nome:        String(getColumnValue(r, ['NomeRPA','NOME DO RPA','Nome do RPA'])).trim(),
+    perimetro:   String(getColumnValue(r, ['Perimetro','PERIMETRO','Perímetro'])).trim(),
+    area:        String(getColumnValue(r, ['Area','AREA','Área'])).trim(),
+    status:      String(getColumnValue(r, ['Status','STATUS'])).trim().toUpperCase(), // PRD/DEV/BACKLOG/CANCELADO
+    anoPrd:      getColumnValue(r, ['AnoPRD','ANO PRD']), // year the bot went live
+    desc:        String(getColumnValue(r, ['Descricao','DESCRIÇÃO'])).trim(),
+    dev:         String(getColumnValue(r, ['Desenvolvedor','DESENVOLVEDOR'])).trim(),
+    suporte:     String(getColumnValue(r, ['Suporte','SUPORTE / SUSTENTAÇÃO'])).trim(),
+    criticidade: (()=>{ const rawValue = getColumnValue(r,['Criticidade','CRITICIDADE']); const parsed = parseInt(rawValue); return isNaN(parsed)?null:parsed; })(),
+    freq:        String(getColumnValue(r, ['Frequencia','FREQUENCIA','Frequência'])).trim().toLowerCase(),
+    fte:         parseFloat(getColumnValue(r, ['FTE']))||0,               // FTEs saved by this bot
+    vol:         parseFloat(getColumnValue(r, ['VolumetriaMensal','VOLUMETRIA MENSAL']))||0, // transactions/month
+    nBots:       parseFloat(getColumnValue(r, ['NumeroBots','NUMERO DE BOTS']))||0,
+    areaCliente: String(getColumnValue(r, ['AreaCliente','AREA CLIENTE'])).trim(),
+    sap:         String(getColumnValue(r, ['SAP'])).trim()
   })).filter(b => b.nome);
 }
 
@@ -1079,7 +1078,7 @@ const _chartInstances = {};
 
 // Counter for unique canvas ids per render cycle
 let _chartSeq = 0;
-function _cid(prefix) { return `ch-${prefix}-${++_chartSeq}`; }
+function _generateChartId(prefix) { return `ch-${prefix}-${++_chartSeq}`; }
 
 /*
  * flushCharts() — instantiates all pending charts.
@@ -1101,33 +1100,33 @@ function flushCharts() {
   // Animates freshly rendered KPIs (the data-an attribute avoids re-animating)
   document.querySelectorAll('.knum:not([data-an])').forEach(el => {
     el.dataset.an = '1';
-    _animateNum(el);
+    _animateNumber(el);
   });
 }
 
 /*
- * _animateNum(el) — counts the number from 0 up to the displayed value over ~850ms.
+ * _animateNumber(el) — counts the number from 0 up to the displayed value over ~850ms.
  * Extracts the number from the text (int or float), animates with a cubic
  * ease-out, and restores the exact original text at the end.
  * Values smaller than 2 are skipped (0 and 1 don't need animating).
  */
-function _animateNum(el) {
-  const raw = el.textContent.trim();
-  const m   = raw.match(/^(\d+\.?\d*)(.*)/);
-  if (!m) return;
-  const target  = parseFloat(m[1]);
-  const suffix  = m[2];
-  const isFloat = m[1].includes('.');
+function _animateNumber(el) {
+  const raw   = el.textContent.trim();
+  const match = raw.match(/^(\d+\.?\d*)(.*)/);
+  if (!match) return;
+  const target  = parseFloat(match[1]);
+  const suffix  = match[2];
+  const isFloat = match[1].includes('.');
   if (!target || target < 2) return;
 
   const duration = 850;
   const start    = performance.now();
 
   (function frame(now) {
-    const t     = Math.min((now - start) / duration, 1);
-    const eased = 1 - Math.pow(1 - t, 3); // cubic ease-out: starts fast, decelerates
+    const progress = Math.min((now - start) / duration, 1);
+    const eased = 1 - Math.pow(1 - progress, 3); // cubic ease-out: starts fast, decelerates
     el.textContent = (isFloat ? (target * eased).toFixed(1) : Math.round(target * eased)) + suffix;
-    if (t < 1) requestAnimationFrame(frame);
+    if (progress < 1) requestAnimationFrame(frame);
     else el.textContent = raw; // restores the exact text (avoids residual rounding)
   })(start);
 }
@@ -1139,7 +1138,7 @@ Chart.defaults.color       = '#6B7280';
 
 
 // Saint-Gobain palette in hex (CSS vars don't work inside Chart.js)
-const C = {
+const CHART_COLORS = {
   brand:  '#0F5299',  // dark blue
   accent: '#0195D6',  // bright blue
   teal:   '#4DB1B3',  // teal
@@ -1156,21 +1155,21 @@ const C = {
 };
 
 // Resolves theme CSS variables to hex — needed to pass colors to Chart.js
-function resolveColor(c) {
+function resolveColor(color) {
   const map = {
-    'var(--brand)':  C.brand,
-    'var(--accent)': C.accent,
-    'var(--ok)':     C.ok,
-    'var(--warn)':   C.warn,
-    'var(--err)':    C.err,
-    'var(--info)':   C.brand,
+    'var(--brand)':  CHART_COLORS.brand,
+    'var(--accent)': CHART_COLORS.accent,
+    'var(--ok)':     CHART_COLORS.ok,
+    'var(--warn)':   CHART_COLORS.warn,
+    'var(--err)':    CHART_COLORS.err,
+    'var(--info)':   CHART_COLORS.brand,
     'var(--neu)':    '#9CA3AF',
-    'var(--ink)':    C.ink,
-    'var(--ink2)':   C.ink2,
-    'var(--ink3)':   C.ink3,
-    'var(--ink4)':   C.ink4,
+    'var(--ink)':    CHART_COLORS.ink,
+    'var(--ink2)':   CHART_COLORS.ink2,
+    'var(--ink3)':   CHART_COLORS.ink3,
+    'var(--ink4)':   CHART_COLORS.ink4,
   };
-  return map[c] || c;
+  return map[color] || color;
 }
 
 /*
@@ -1183,7 +1182,7 @@ function donut(data, opts = {}) {
   const totalLabel = opts.total != null ? opts.total : total; // total shown in the center (can be overridden)
   if (!total) return '<div style="font-size:12px;color:var(--ink4)">Sem dados</div>';
 
-  const id = _cid('donut');
+  const id = _generateChartId('donut');
 
   _pendingCharts.push({
     id,
@@ -1206,7 +1205,7 @@ function donut(data, opts = {}) {
           legend: { display: false },
           tooltip: {
             callbacks: {
-              label: ctx => ` ${ctx.label}: ${ctx.parsed}  (${pct(ctx.parsed, total)}%)`
+              label: ctx => ` ${ctx.label}: ${ctx.parsed}  (${calculatePercentage(ctx.parsed, total)}%)`
             }
           }
         }
@@ -1219,7 +1218,7 @@ function donut(data, opts = {}) {
       <span class="dleg-dot" style="background:${d.color}"></span>
       ${d.label}
       <b>${d.value}</b>
-      <span class="dpct">${pct(d.value, total)}%</span>
+      <span class="dpct">${calculatePercentage(d.value, total)}%</span>
     </div>`
   ).join('');
 
@@ -1236,16 +1235,16 @@ function donut(data, opts = {}) {
 }
 
 /*
- * hbars(entries, opts) — horizontal bars via Chart.js
+ * horizontalBars(entries, opts) — horizontal bars via Chart.js
  * entries: array of [label, value]
  * opts: { max, tot, color, showTotal, totLabel, lw }
  * lw: minimum Y-axis width (calculated automatically; opts.lw is used as an extra minimum).
  */
-function hbars(entries, opts = {}) {
+function horizontalBars(entries, opts = {}) {
   const items = entries.slice(0, opts.max || 10);
   if (!items.length) return '<div style="font-size:12px;color:var(--ink4)">Sem dados</div>';
 
-  const id  = _cid('hbar');
+  const id  = _generateChartId('hbar');
   const col = resolveColor(opts.color || 'var(--accent)');
   const tot = opts.tot || null;
 
@@ -1291,14 +1290,14 @@ function hbars(entries, opts = {}) {
         },
         scales: {
           x: {
-            grid:   { color: C.rule },
+            grid:   { color: CHART_COLORS.rule },
             border: { display: false },
             ticks:  { display: false }
           },
           y: {
             grid:   { display: false },
             border: { display: false },
-            ticks:  { color: C.ink2, font: { size: 11 } },
+            ticks:  { color: CHART_COLORS.ink2, font: { size: 11 } },
             afterFit(scale) { if (lw) scale.width = lw; }
           }
         }
@@ -1309,7 +1308,7 @@ function hbars(entries, opts = {}) {
           const { ctx, chartArea, data } = chart;
           const meta = chart.getDatasetMeta(0);
           ctx.save();
-          ctx.fillStyle    = C.ink2;
+          ctx.fillStyle    = CHART_COLORS.ink2;
           ctx.font         = `500 11px 'Inter', system-ui, sans-serif`;
           ctx.textAlign    = 'left';
           ctx.textBaseline = 'middle';
@@ -1319,7 +1318,7 @@ function hbars(entries, opts = {}) {
           data.datasets[0].data.forEach((value, i) => {
             const bar   = meta.data[i];
             const label = tot
-              ? `${value}  (${pct(value, tot)}%)`
+              ? `${value}  (${calculatePercentage(value, tot)}%)`
               : String(value);
             ctx.fillText(label, xBase, bar.y);
           });
@@ -1359,13 +1358,13 @@ function clusteredBars(groups, series){
   const corpo = groups.map(g => {
     const totGrupo = series.reduce((acc,s)=>acc+(g.valores[s.key]||0),0);
     const barras = series.map(s => {
-      const n = g.valores[s.key]||0;
-      if(!n) return ''; // omits zeroed-out series within the group
-      const w = Math.round(n/maxVal*100);
+      const value = g.valores[s.key]||0;
+      if(!value) return ''; // omits zeroed-out series within the group
+      const widthPct = Math.round(value/maxVal*100);
       return `<div class="clu-bar-row">
         <span class="clu-bar-lbl" title="${String(s.label).replace(/"/g,'')}">${s.label}</span>
-        <div class="clu-bar-track"><div class="clu-bar-fill" style="width:${w}%;background:${s.color}"></div></div>
-        <span class="clu-bar-val">${n}</span>
+        <div class="clu-bar-track"><div class="clu-bar-fill" style="width:${widthPct}%;background:${s.color}"></div></div>
+        <span class="clu-bar-val">${value}</span>
       </div>`;
     }).join('');
     return `<div class="clu-group">
@@ -1392,7 +1391,7 @@ function lineChart(points, opts = {}) {
   if (points.length < 2)
     return '<div style="font-size:12px;color:var(--ink4)">Dados insuficientes para tendência</div>';
 
-  const id = _cid('line');
+  const id = _generateChartId('line');
 
   _pendingCharts.push({
     id,
@@ -1402,12 +1401,12 @@ function lineChart(points, opts = {}) {
         labels: points.map(p => p.label),
         datasets: [{
           data:                 points.map(p => p.value),
-          borderColor:          C.brand,
+          borderColor:          CHART_COLORS.brand,
           backgroundColor:      'rgba(15,82,153,0.07)',
           borderWidth:          2,
           pointRadius:          3,
           pointBackgroundColor: '#fff',
-          pointBorderColor:     C.brand,
+          pointBorderColor:     CHART_COLORS.brand,
           pointBorderWidth:     2,
           fill:                 true,
           tension:              0.3,
@@ -1431,15 +1430,15 @@ function lineChart(points, opts = {}) {
           x: {
             grid:   { display: false },
             border: { display: false },
-            ticks:  { color: C.ink4, font: { size: 9 }, maxTicksLimit: 8 }
+            ticks:  { color: CHART_COLORS.ink4, font: { size: 9 }, maxTicksLimit: 8 }
           },
           y: {
             min:    opts.min ?? 0,
             max:    opts.max,
-            grid:   { color: C.rule },
+            grid:   { color: CHART_COLORS.rule },
             border: { display: false },
             ticks: {
-              color:    C.ink4,
+              color:    CHART_COLORS.ink4,
               font:     { size: 9 },
               callback: v => opts.pctAxis ? v + '%' : v
             }
@@ -1453,14 +1452,14 @@ function lineChart(points, opts = {}) {
 }
 
 /*
- * chartVBars(meses, porMes, porMesV) — stacked vertical bars of monthly volume.
+ * verticalBarsChart(meses, porMes, porMesV) — stacked vertical bars of monthly volume.
  * Two datasets: normal tickets (brand blue) and overdue (red), stacked.
  * meses: array of ordered "YYYY-MM" keys
  * porMes / porMesV: objects { "YYYY-MM": count }
  */
-function chartVBars(meses, porMes, porMesV) {
-  const id      = _cid('vbar');
-  const labels  = meses.map(m => ymLabel(m));
+function verticalBarsChart(meses, porMes, porMesV) {
+  const id      = _generateChartId('vbar');
+  const labels  = meses.map(m => toYearMonthLabel(m));
   const totais  = meses.map(m => porMes[m]  || 0);
   const vencArr = meses.map(m => porMesV[m] || 0);
   const normais = totais.map((t, i) => t - vencArr[i]);
@@ -1498,7 +1497,7 @@ function chartVBars(meses, porMes, porMesV) {
             labels: {
               boxWidth: 10, boxHeight: 10,
               borderRadius: 2, useBorderRadius: true,
-              color: C.ink4, padding: 14,
+              color: CHART_COLORS.ink4, padding: 14,
             }
           },
           tooltip: {
@@ -1512,13 +1511,13 @@ function chartVBars(meses, porMes, porMesV) {
             stacked: true,
             grid:    { display: false },
             border:  { display: false },
-            ticks:   { color: C.ink4, font: { size: 9 } }
+            ticks:   { color: CHART_COLORS.ink4, font: { size: 9 } }
           },
           y: {
             stacked: true,
-            grid:    { color: C.rule },
+            grid:    { color: CHART_COLORS.rule },
             border:  { display: false },
-            ticks:   { color: C.ink4 }
+            ticks:   { color: CHART_COLORS.ink4 }
           }
         }
       }
@@ -1557,94 +1556,76 @@ function heatmap(matrix, rowLabels, colLabels, opts={}){
 
 
 /* ============================================================
-   VIEW: GOVERNANCE (executive)
+   ABA: GOVERNANÇA (executiva)
    ============================================================
-   The Governance tab is the unified view of all sources.
-   It combines Projects + Pipefy Improvements + Analytics + RPA Tickets
-   into a single set of KPIs and charts.
+   A aba Governança é a visão unificada de todas as fontes.
+   Combina Projetos + Melhorias Pipefy + Analytics + Chamados RPA
+   num único conjunto de KPIs e gráficos.
    ============================================================ */
 
 /*
- * allActions() — merges the 4 sources into a single "actions" array.
- * Each action has: source, sc (normalized status), frente, owner,
- * dtFim (reference date for filters and charts) and source-specific fields.
+ * todasAcoes() — junta as 4 fontes num único array de "ações".
+ * Cada ação tem: source, sc (status normalizado), frente, owner,
+ * dtFim (data de referência para filtros e gráficos) e campos específicos da fonte.
  *
- * For RPA Tickets:
- *   - sc is derived from the current phase (contains "conclu" → done, else → doing)
- *   - dtFim = ticket completion date
- *   - criado = opening date (used as a refDate fallback)
- *   - vencido = boolean flag from Pipefy
+ * Para Chamados RPA:
+ *   - sc é derivado da fase atual (contém "conclu" → done, senão → doing)
+ *   - dtFim = data de conclusão do chamado
+ *   - criado = data de abertura (usada como fallback de dataReferencia)
+ *   - vencido = flag booleana vinda do Pipefy
  */
-function allActions(){
-  const out = [];
-  App.P.proj.forEach(p => out.push({source:'Projetos', sc:p.sc, frente:p.frente, resp:p.resp, dtFim:p.dtFim, prog:p.prog, prio:null}));
-  App.P.improvements.forEach(m => out.push({source:'Pipefy', sc:m.sc, frente:m.frente, resp:m.resp, dtInicio:m.dtInicio, dtFim:m.dtFim, prog:null, prio:null}));
-  App.P.ana.forEach(a => out.push({source:'Analytics', sc:a.sc, frente:a.frente, resp:a.resp, dtInicio:a.dtInicio, dtFim:a.dtFim, prog:null, prio:a.prio}));
-  App.R.forEach(r => out.push({
+function todasAcoes(){
+  const saida = [];
+  App.P.proj.forEach(p => saida.push({source:'Projetos', sc:p.sc, frente:p.frente, resp:p.resp, dtFim:p.dtFim, prog:p.prog, prio:null}));
+  App.P.improvements.forEach(m => saida.push({source:'Pipefy', sc:m.sc, frente:m.frente, resp:m.resp, dtInicio:m.dtInicio, dtFim:m.dtFim, prog:null, prio:null}));
+  App.P.ana.forEach(a => saida.push({source:'Analytics', sc:a.sc, frente:a.frente, resp:a.resp, dtInicio:a.dtInicio, dtFim:a.dtFim, prog:null, prio:a.prio}));
+  App.R.forEach(r => saida.push({
     source:'Chamados RPA',
     sc: r.fase.toLowerCase().includes('conclu') ? 'done' : 'doing',
-    // frente = bot's main business area (P2P, O2C, R2R, TAX, H2R), resolved by enrichRPAWithArea()
-    // Secondary inventory areas (Arg, CI, IT, PAM…) are not business areas → null
+    // frente = área de negócio principal do bot (P2P, O2C, R2R, TAX, H2R), resolvida por enriquecerRPAComArea()
+    // Áreas secundárias do inventário (Arg, CI, IT, PAM…) não são áreas de negócio → null
     frente: ['P2P','O2C','R2R','TAX','H2R'].includes(r.area) ? r.area : null,
     resp:r.solicitante,
     dtInicio:r.criado, dtFim:r.dtFim, criado:r.criado,
     prog:null, prio:null, vencido:r.vencido
   }));
-  return out;
+  return saida;
 }
 
-// Filtered version: applies the global date filter before returning
-function allActionsFiltered(){
-  return applyDate(allActions());
-}
-
-/*
- * isLate(a) — determines whether an action is overdue.
- * Returns: true (overdue), false (not overdue), null (no basis to calculate)
- *
- * Rules per source:
- *   RPA Tickets: overdue if vencido=true AND not completed
- *   Projects: overdue if the deadline passed AND not completed/cancelled/monitoring
- *   Pipefy/Analytics: returns null (no deadline field in the base → excluded from the calc)
- *
- * The null vs false distinction matters: null means "unknown",
- * not "not overdue". This keeps sources without a deadline from dragging the % down.
- */
-function isLate(a){
-  if(a.source === 'Chamados RPA') return a.vencido && a.sc !== 'done';
-  if(a.source === 'Projetos' && a.dtFim) return a.dtFim < HOJE && a.sc !== 'done' && a.sc !== 'cancel' && a.sc !== 'monitor';
-  return null;
+// Versão filtrada: aplica o filtro global de data antes de retornar
+function todasAcoesFiltradas(){
+  return filtrarPorPeriodo(todasAcoes());
 }
 
 /*
- * buildGovernance() — Control Panel (executive view).
+ * construirGovernanca() — Painel de Controle (visão executiva).
  *
- * Reads:  App.P.improvements, App.P.proj, App.P.ana, App.R (all sources)
- * Writes: #gov-content
- * Calls:  allActionsFiltered(), buildHeatmap(), flushCharts()
- * Called by: generate() and renderAll() (when the date filter changes)
+ * Lê:      App.P.improvements, App.P.proj, App.P.ana, App.R (todas as fontes)
+ * Escreve: #gov-content
+ * Chama:   todasAcoesFiltradas(), construirMapaCalor(), flushCharts()
+ * Chamada por: generate() e renderAll() (quando o filtro de data muda)
  *
- * Produces:
- *  - Composition KPIs: Completed / In progress / Backlog / Other
- *  - Unified status donut with an "Impediments" segment
- *  - Bars by owner (CoE team) and by area
- *  - Priority × area heatmap (Analytics)
- *  - Line chart of % completed over time
+ * Produz:
+ *  - KPIs de composição: Concluídas / Em andamento / Backlog / Outros
+ *  - Donut de status unificado com um segmento "Impedimentos"
+ *  - Barras por responsável (equipe CoE) e por área
+ *  - Heatmap prioridade × área (Analytics)
+ *  - Gráfico de linha da % concluída ao longo do tempo
  */
-function buildGovernance(){
-  const any = App.loaded.gov || App.loaded.rpa;
-  document.getElementById('gov-empty').style.display = any ? 'none' : 'block';
-  document.getElementById('gov-content').style.display = any ? 'block' : 'none';
-  if(!any) return;
+function construirGovernanca(){
+  const qualquer = App.loaded.gov || App.loaded.rpa;
+  document.getElementById('gov-empty').style.display = qualquer ? 'none' : 'block';
+  document.getElementById('gov-content').style.display = qualquer ? 'block' : 'none';
+  if(!qualquer) return;
 
-  const {kept:A, noDate} = allActionsFiltered();
+  const {kept:acoes, noDate} = todasAcoesFiltradas();
 
-  // Available areas (only items with an area defined — RPA tickets have no area)
-  const todasFrentes = [...new Set(A.filter(a => a.frente).map(a => a.frente))].sort();
-  // Validate: if the stored area no longer exists in the current data, reset it
+  // Áreas disponíveis (só itens com uma área definida — chamados RPA não têm área)
+  const todasFrentes = [...new Set(acoes.filter(a => a.frente).map(a => a.frente))].sort();
+  // Valida: se a área guardada não existe mais nos dados atuais, reseta
   const frenteAtiva  = App.govFrente && todasFrentes.includes(App.govFrente) ? App.govFrente : '';
   if (!frenteAtiva) App.govFrente = '';
-  const acoesFiltradas = frenteAtiva ? A.filter(a => a.frente === frenteAtiva) : A;
+  const acoesFiltradas = frenteAtiva ? acoes.filter(a => a.frente === frenteAtiva) : acoes;
 
   const total = acoesFiltradas.length;
   const sc = statusCounts(acoesFiltradas);
@@ -1656,7 +1637,7 @@ function buildGovernance(){
   const nBlocked = sc.blocked;
   const nMonitor = sc.monitor;
   const nVendor  = sc.vendor;
-  // builds the description of what goes into "Other" (only categories with count > 0)
+  // monta a descrição do que entra em "Outros" (só categorias com contagem > 0)
   const outrosDesc = [
     nCancel?`${nCancel} cancel.`:'',
     nBlocked?`${nBlocked} bloq.`:'',
@@ -1664,11 +1645,11 @@ function buildGovernance(){
     nVendor?`${nVendor} suporte`:''
   ].filter(Boolean).join(' · ');
 
-  // Active-filter notice — shows the period, total actions in range, and how many were excluded
-  let dateNote = '';
+  // Aviso de filtro ativo — mostra o período, o total de ações no recorte e quantas ficaram de fora
+  let notaData = '';
   if(App.dateRange.mode !== 'all'){
     const fmt = d => d ? d.toLocaleDateString('pt-BR') : '∞';
-    dateNote = `<div class="note" style="background:var(--neu-bg);color:var(--ink3)"><i class="ti ti-calendar-stats"></i><div>
+    notaData = `<div class="note" style="background:var(--neu-bg);color:var(--ink3)"><i class="ti ti-calendar-stats"></i><div>
       Período <b>${fmt(App.dateRange.from)} → ${fmt(App.dateRange.to)}</b>: <b>${total} ações</b> no recorte.`+
       (noDate>0 ? ` (${noDate} ações sem data não entram no filtro.)` : '')+
       ` Para ver tudo, limpe os campos de data no topo.
@@ -1676,14 +1657,14 @@ function buildGovernance(){
       </div></div>`;
   }
 
-  const sources = ['Projetos','Pipefy','Analytics','Chamados RPA'];
-  const bySource = sources.map(source => {
-    const subAcoes = acoesFiltradas.filter(a => a.source === source);
-    const subDone  = subAcoes.filter(a => a.sc === 'done').length;
-    return {f: source, total: subAcoes.length, done: subDone};
+  const fontes = ['Projetos','Pipefy','Analytics','Chamados RPA'];
+  const porFonte = fontes.map(fonte => {
+    const subAcoes = acoesFiltradas.filter(a => a.source === fonte);
+    const subConcluidas = subAcoes.filter(a => a.sc === 'done').length;
+    return {f: fonte, total: subAcoes.length, done: subConcluidas};
   }).filter(x => x.total > 0);
 
-  // Area filter chips — no inline onclick, listeners added after innerHTML
+  // Chips de filtro por área — sem onclick inline, listeners adicionados depois do innerHTML
   const frenteChips = todasFrentes.length > 1
     ? `<div class="filters" id="gov-frente-chips" style="margin-bottom:16px">
         <span style="font-size:11px;color:var(--ink4);text-transform:uppercase;letter-spacing:.04em">Frente</span>
@@ -1694,31 +1675,31 @@ function buildGovernance(){
       </div>` : '';
 
 
-  // Composition KPIs
+  // KPIs de composição
   let html = `<div class="sh">Painel de Controle — visão executiva</div>
-  ${frenteChips}${dateNote}
-  ${aiBar('gov')}
+  ${frenteChips}${notaData}
+  ${barraAnalise('gov')}
   <div class="krow k5">
-    <div class="kpi il">${kpiIcon('list')}<div class="knum">${total}</div><div class="klbl">Total de ações CoE</div>
-      <div class="ksub">${sources.filter(f=>A.some(a=>a.source===f)).length} fontes integradas</div></div>
-    <div class="kpi gl">${kpiIcon('check')}<div class="knum">${pct(done,total)}%</div><div class="klbl">Concluídas</div>
+    <div class="kpi il">${iconeKpi('list')}<div class="knum">${total}</div><div class="klbl">Total de ações CoE</div>
+      <div class="ksub">${fontes.filter(f=>acoes.some(a=>a.source===f)).length} fontes integradas</div></div>
+    <div class="kpi gl">${iconeKpi('check')}<div class="knum">${calculatePercentage(done,total)}%</div><div class="klbl">Concluídas</div>
       <div class="ksub">${done} de ${total}</div></div>
-    <div class="kpi">${kpiIcon('clock')}<div class="knum">${pct(doing,total)}%</div><div class="klbl">Em andamento</div>
+    <div class="kpi">${iconeKpi('clock')}<div class="knum">${calculatePercentage(doing,total)}%</div><div class="klbl">Em andamento</div>
       <div class="ksub">${doing} de ${total}</div></div>
-    <div class="kpi">${kpiIcon('stack')}<div class="knum">${pct(backlog,total)}%</div><div class="klbl">Backlog / não iniciadas</div>
+    <div class="kpi">${iconeKpi('stack')}<div class="knum">${calculatePercentage(backlog,total)}%</div><div class="klbl">Backlog / não iniciadas</div>
       <div class="ksub">${backlog} de ${total}</div></div>
-    <div class="kpi">${kpiIcon('dots')}<div class="knum">${pct(outros,total)}%</div><div class="klbl">Outros</div>
+    <div class="kpi">${iconeKpi('dots')}<div class="knum">${calculatePercentage(outros,total)}%</div><div class="klbl">Outros</div>
       <div class="ksub">${outrosDesc||'—'}</div></div>
   </div>`;
 
 
-  // Status donut — merges Encerramento + Monitoramento into a single slice
-  // ("Em encerramento" = final phase / delivered) and uses a deliberate palette:
-  //   dark green = done · light green = closing (final phase) ·
-  //   blue = in progress · gray = not started · amber = blocked ·
-  //   red = cancelled · purple = vendor support.
-  // Ordered from most advanced/positive to least. The total shown matches
-  // "Total de ações CoE" because every status is included.
+  // Donut de status — junta Encerramento + Monitoramento numa única fatia
+  // ("Em encerramento" = fase final / entregue) e usa uma paleta deliberada:
+  //   verde escuro = concluído · verde claro = encerramento (fase final) ·
+  //   azul = em andamento · cinza = não iniciado · âmbar = bloqueado ·
+  //   vermelho = cancelado · roxo = suporte fornecedor.
+  // Ordenado do mais avançado/positivo pro menos. O total mostrado bate com
+  // "Total de ações CoE" porque todo status está incluído.
   const scAll = count(acoesFiltradas, a => a.sc);
   const donutDefs = [
     {label:'Concluído',       value: scAll.done    || 0,                          color:'#4DB1B3'},
@@ -1730,7 +1711,7 @@ function buildGovernance(){
   ];
   const donutData = donutDefs.filter(d => d.value > 0);
 
-  // Details what makes up "Impedimentos" (only shows categories with a value > 0)
+  // Detalha o que compõe "Impedimentos" (só mostra categorias com valor > 0)
   const impedimentosDesc = [
     scAll.blocked ? `${scAll.blocked} bloqueado${scAll.blocked > 1 ? 's' : ''}` : '',
     scAll.cancel  ? `${scAll.cancel} cancelado${scAll.cancel  > 1 ? 's' : ''}` : '',
@@ -1738,31 +1719,31 @@ function buildGovernance(){
     scAll.other   ? `${scAll.other} outro${scAll.other > 1 ? 's' : ''}`         : '',
   ].filter(Boolean).join(' · ');
 
-  // Total actions per CoE team owner (ALL — open, completed, cancelled).
-  // Shows ONLY the CoE team (see COE_TEAM), summed by standardized name.
-  // IMPORTANT: each source has its own owner field:
-  //   - Projetos/Pipefy/Analytics: 'resp' field (1 owner per item)
-  //   - RPA Tickets: 'responsaveis' field (list — who works the ticket, not the
-  //     requester; a ticket can have several owners, each one counts).
-  // Respects each source's period filter (applyDate).
+  // Total de ações por responsável da equipe CoE (TODAS — abertas, concluídas, canceladas).
+  // Mostra SÓ a equipe CoE (ver COE_TEAM), somada pelo nome padronizado.
+  // IMPORTANTE: cada fonte tem seu próprio campo de responsável:
+  //   - Projetos/Pipefy/Analytics: campo 'resp' (1 responsável por item)
+  //   - Chamados RPA: campo 'responsaveis' (lista — quem atende o chamado, não
+  //     quem solicitou; um chamado pode ter vários responsáveis, cada um conta).
+  // Respeita o filtro de período de cada fonte (filtrarPorPeriodo).
   const respCoE = {};
-  const addResp = nomeRaw => {
-    const nome = getStandardCoeName(nomeRaw);
+  const addResp = nomeBruto => {
+    const nome = nomePadraoCoe(nomeBruto);
     if(nome) respCoE[nome] = (respCoE[nome]||0) + 1;
   };
-  // When an area filter is active: filters each source by area; RPA has no area → excluded
-  applyDate(App.P.proj).kept.filter(p => !frenteAtiva || p.frente === frenteAtiva).forEach(p => addResp(p.resp));
-  applyDate(App.P.improvements).kept.filter(m => !frenteAtiva || m.frente === frenteAtiva).forEach(m => addResp(m.resp));
-  applyDate(App.P.ana).kept.filter(a => !frenteAtiva || a.frente === frenteAtiva).forEach(a => addResp(a.resp));
-  // RPA: always included (no filter), or when the bot's area matches the active area
-  applyDate(App.R).kept.filter(r => !frenteAtiva || r.area === frenteAtiva).forEach(r => (r.responsaveis||[]).forEach(addResp));
+  // Quando um filtro de área está ativo: filtra cada fonte por área; RPA não tem área → excluído
+  filtrarPorPeriodo(App.P.proj).kept.filter(p => !frenteAtiva || p.frente === frenteAtiva).forEach(p => addResp(p.resp));
+  filtrarPorPeriodo(App.P.improvements).kept.filter(m => !frenteAtiva || m.frente === frenteAtiva).forEach(m => addResp(m.resp));
+  filtrarPorPeriodo(App.P.ana).kept.filter(a => !frenteAtiva || a.frente === frenteAtiva).forEach(a => addResp(a.resp));
+  // RPA: sempre incluído (sem filtro), ou quando a área do bot bate com a área ativa
+  filtrarPorPeriodo(App.R).kept.filter(r => !frenteAtiva || r.area === frenteAtiva).forEach(r => (r.responsaveis||[]).forEach(addResp));
   const respTop = Object.entries(respCoE).sort((a,b) => b[1]-a[1]);
-  const totalRespCoE = respTop.reduce((s,e)=>s+e[1],0); // base for the percentage
+  const totalRespCoE = respTop.reduce((s,e)=>s+e[1],0); // base pra porcentagem
 
-  // "By area" always shows the full picture (A, not acoesFiltradas) for comparison
-  const frCount = count(A.filter(a => a.frente), a => a.frente);
-  const fonteInfo = bySource.map(x =>
-    `<span><b style="color:var(--ink2)">${x.f}</b> ${x.total} <span style="color:var(--ink4)">(${pct(x.done,x.total)}% concl.)</span></span>`
+  // "Por área" sempre mostra o panorama completo (acoes, não acoesFiltradas) pra comparação
+  const frCount = count(acoes.filter(a => a.frente), a => a.frente);
+  const fonteInfo = porFonte.map(x =>
+    `<span><b style="color:var(--ink2)">${x.f}</b> ${x.total} <span style="color:var(--ink4)">(${calculatePercentage(x.done,x.total)}% concl.)</span></span>`
   ).join(' &thinsp;·&thinsp; ');
   html += `<div class="g3">
     <div class="card"><div class="card-title"><i class="ti ti-chart-pie"></i> Status das ações</div>
@@ -1772,13 +1753,13 @@ function buildGovernance(){
       </div>` : ''}
       <div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--rule);font-size:11px;color:var(--ink3);line-height:2">${fonteInfo}</div></div>
     <div class="card"><div class="card-title"><i class="ti ti-user-bolt"></i> Por responsável <span class="rt">equipe CoE</span></div>
-      ${respTop.length ? hbars(respTop, {max:12, lw:130, tot:totalRespCoE}) : '<div style="font-size:12px;color:var(--ink4)">Sem dados da equipe CoE.</div>'}</div>
+      ${respTop.length ? horizontalBars(respTop, {max:12, lw:130, tot:totalRespCoE}) : '<div style="font-size:12px;color:var(--ink4)">Sem dados da equipe CoE.</div>'}</div>
     <div class="card"><div class="card-title"><i class="ti ti-building"></i> Por frente</div>
-      ${hbars(Object.entries(frCount).sort((a,b)=>b[1]-a[1]), {max:8, lw:60, tot:Object.values(frCount).reduce((s,v)=>s+v,0)})}</div>
+      ${horizontalBars(Object.entries(frCount).sort((a,b)=>b[1]-a[1]), {max:8, lw:60, tot:Object.values(frCount).reduce((s,v)=>s+v,0)})}</div>
   </div>`;
 
-  // Diagnostic footer — shows where each number comes from (audit trail).
-  // Helps quickly spot if any source has an unexpected count.
+  // Rodapé de diagnóstico — mostra de onde vem cada número (trilha de auditoria).
+  // Ajuda a identificar rapidamente se alguma fonte tem uma contagem inesperada.
   const diag = [
     `Pipefy: ${App.P.improvements.length}`,
     `Projetos: ${App.P.proj.length}`,
@@ -1791,9 +1772,9 @@ function buildGovernance(){
 
   document.getElementById('gov-content').innerHTML = html;
 
-  // Area chip listeners — no inline onclick, zero escaping risk
+  // Listeners dos chips de área — sem onclick inline, risco zero de escaping
   document.querySelectorAll('[data-gf]').forEach(btn => {
-    btn.addEventListener('click', () => { App.govFrente = btn.dataset.gf; buildGovernance(); });
+    btn.addEventListener('click', () => { App.govFrente = btn.dataset.gf; construirGovernanca(); });
   });
 
   flushCharts();
@@ -1801,14 +1782,14 @@ function buildGovernance(){
 
 
 /*
- * buildHeatmap() — heatmap of open Analytics actions by priority × area.
- * Rows = priorities 1 to 4. Columns = areas.
- * Cells with more open actions turn more red.
- * Only shown if there is Analytics data with priority filled in.
+ * construirMapaCalor() — heatmap das ações Analytics em aberto por prioridade × área.
+ * Linhas = prioridades 1 a 4. Colunas = áreas.
+ * Células com mais ações em aberto ficam mais vermelhas.
+ * Só aparece se houver dados de Analytics com prioridade preenchida.
  */
-function buildHeatmap(){
-  const {kept:anaF} = applyDate(App.P.ana);
-  const {kept:projF} = applyDate(App.P.proj);
+function construirMapaCalor(){
+  const {kept:anaF} = filtrarPorPeriodo(App.P.ana);
+  const {kept:projF} = filtrarPorPeriodo(App.P.proj);
   const frentes = [...new Set([...anaF,...projF].map(x=>x.frente).filter(Boolean))].sort();
   if(!anaF.length || !frentes.length) return '';
   const prios = [1,2,3,4];
@@ -1820,49 +1801,6 @@ function buildHeatmap(){
     <span class="rt">foco executivo</span></div>
     <div style="overflow-x:auto">${heatmap(matrix, prios.map(p=>`Prioridade ${p}`), frentes)}</div></div>`;
 }
-
-// TODO: revisar — buildEvolutionChart() não é chamada em nenhum lugar do
-// código atual (nem por buildGovernance, apesar do que dizia o comentário
-// antigo). Pode ser código morto; confirmar com o time antes de remover.
-/*
- * buildEvolutionChart(A) — line chart: cumulative % completed, month by month.
- *
- * HOW IT WORKS:
- *   1. Filters to only actions with dtFim set (without a date, it can't be placed in time)
- *   2. Filters to only months UP TO the current month (avoids plotting future months
- *      with zero completions, which would artificially flatten the curve and cause
- *      the "stuck" chart visual bug)
- *   3. For each month, counts how many actions have sc='done' and dtFim in that month
- *   4. Accumulates progressively: each point shows the total completed up to that month
- *   5. Divides by the total actions with a date (fixed denominator) to get the percentage
- *
- * WHY THE CHART MIGHT STOP BEFORE TODAY:
- *   If the latest completion recorded in the spreadsheet was in Apr/26, the last point
- *   will be Apr/26. The chart advances automatically once the base is updated with
- *   more recent completions.
- */
-function buildEvolutionChart(A){
-  const comData = A.filter(a => a.dtFim);
-  if(comData.length < 3) return ''; // not enough for a useful chart
-  const mesAtual = ym(HOJE);
-  // excludes future dates (deadlines of projects not yet delivered)
-  const passadas = comData.filter(a => ym(a.dtFim) <= mesAtual);
-  if(passadas.length < 3) return '';
-  const meses = [...new Set(passadas.map(a => ym(a.dtFim)))].sort().filter(m => m <= mesAtual);
-  if(meses.length < 2) return '';
-  const denom = passadas.length; // denominator: total actions with a date in the period
-  let acum = 0;
-  const pts = meses.map(m => {
-    acum += passadas.filter(a => a.sc==='done' && ym(a.dtFim)===m).length;
-    return {label: ymLabel(m), value: pct(acum, denom)};
-  });
-  const ultimoPct = pts[pts.length-1].value;
-  return `<div class="card"><div class="card-title"><i class="ti ti-trending-up"></i> Evolução do % concluído
-    <span class="rt">para comitê</span></div>
-    ${lineChart(pts, {pctAxis:true, max:100, fmt:v=>v+'%'})}
-    <div style="font-size:10px;color:var(--ink4);margin-top:8px">Conclusões acumuladas sobre ${denom} ações com data de conclusão registrada, de ${pts[0].label} a ${pts[pts.length-1].label}. Atinge ${ultimoPct}% no período medido.</div></div>`;
-}
-
 
 /* ============================================================
    VIEW: PROJECTS
@@ -1889,7 +1827,7 @@ function buildEvolutionChart(A){
  *  - Automatic 0-100 risk score per project
  */
 function buildProjects(){
-  const {kept:P, noDate} = applyDate(App.P.proj);
+  const {kept:P, noDate} = filtrarPorPeriodo(App.P.proj);
   document.getElementById('proj-empty').style.display = (P.length||noDate) ? 'none' : 'block';
   document.getElementById('proj-content').style.display = (P.length||noDate) ? 'block' : 'none';
   if(!P.length && !noDate) return;
@@ -1899,8 +1837,8 @@ function buildProjects(){
   const doing   = P.filter(p => p.sc==='doing').length;    // em execução
   // Encerramento + Monitoramento agrupados (ambos = projeto entregue / em fase final)
   const finalizando = P.filter(p => p.sc==='closing' || p.sc==='monitor').length;
-  const atrasados = P.filter(isProjectOverdue);                // prazo vencido e não entregue
-  const criticos = P.filter(p => getProjectRisk(p).level==='high').length; // risco alto
+  const atrasados = P.filter(projetoAtrasado);                // prazo vencido e não entregue
+  const criticos = P.filter(p => riscoProjeto(p).level==='high').length; // risco alto
 
   const dnProj = App.dateRange.mode !== 'all'
     ? `<div class="note" style="background:var(--neu-bg);color:var(--ink3)"><i class="ti ti-calendar-stats"></i><div>
@@ -1910,15 +1848,15 @@ function buildProjects(){
 
   let html = `<div class="sh">Projetos</div>
   ${dnProj}
-  ${aiBar('proj')}
+  ${barraAnalise('proj')}
   <div class="krow k5">
-    <div class="kpi">${kpiIcon('folders')}<div class="knum">${P.length}</div><div class="klbl">Total</div></div>
-    <div class="kpi il">${kpiIcon('play')}<div class="knum">${doing}</div><div class="klbl">Em execução</div></div>
-    <div class="kpi gl">${kpiIcon('flag')}<div class="knum">${finalizando}</div><div class="klbl">Em fase final</div>
+    <div class="kpi">${iconeKpi('folders')}<div class="knum">${P.length}</div><div class="klbl">Total</div></div>
+    <div class="kpi il">${iconeKpi('play')}<div class="knum">${doing}</div><div class="klbl">Em execução</div></div>
+    <div class="kpi gl">${iconeKpi('flag')}<div class="knum">${finalizando}</div><div class="klbl">Em fase final</div>
       <div class="ksub">encerramento / monit.</div></div>
-    <div class="kpi dl">${kpiIcon('clock')}<div class="knum">${atrasados.length}</div><div class="klbl">Atrasados</div>
+    <div class="kpi dl">${iconeKpi('clock')}<div class="knum">${atrasados.length}</div><div class="klbl">Atrasados</div>
       <div class="ksub">prazo vencido</div></div>
-    <div class="kpi wl">${kpiIcon('flame')}<div class="knum">${criticos}</div><div class="klbl">Risco alto</div>
+    <div class="kpi wl">${iconeKpi('flame')}<div class="knum">${criticos}</div><div class="klbl">Risco alto</div>
       <div class="ksub">score de risco</div></div>
   </div>`;
 
@@ -1939,7 +1877,7 @@ function buildProjects(){
     <div class="card"><div class="card-title"><i class="ti ti-chart-pie"></i> Por status</div>
       ${donut(donutProj)}</div>
     <div class="card"><div class="card-title"><i class="ti ti-building"></i> Por frente / área cliente</div>
-      ${Object.keys(frCount).length ? hbars(Object.entries(frCount).sort((a,b)=>b[1]-a[1]),{max:8,lw:80,tot:P.length}) : '<div style="font-size:12px;color:var(--ink4)">Sem dados de área</div>'}</div>
+      ${Object.keys(frCount).length ? horizontalBars(Object.entries(frCount).sort((a,b)=>b[1]-a[1]),{max:8,lw:80,tot:P.length}) : '<div style="font-size:12px;color:var(--ink4)">Sem dados de área</div>'}</div>
   </div>`;
 
   html += `<div class="note" style="background:var(--neu-bg);border-color:var(--rule);color:var(--ink3)"><i class="ti ti-info-circle"></i><div>
@@ -1980,7 +1918,7 @@ function buildProjects(){
  * Keeps the expanded-projects state (App.projOpen) across re-renders.
  */
 function renderProjectList(){
-  const {kept: projetos} = applyDate(App.P.proj);
+  const {kept: projetos} = filtrarPorPeriodo(App.P.proj);
   const textoBusca       = (document.getElementById('proj-q')?.value||'').toLowerCase();
   const filterPessoa     = document.getElementById('proj-fp')?.value||'';
   const filterStatus     = document.getElementById('proj-fs')?.value||'';
@@ -1992,12 +1930,12 @@ function renderProjectList(){
     (!filterPessoa || p.resp===filterPessoa) &&
     (!filterStatus || p.statusRaw===filterStatus) &&
     (!filterFrente || p.frente===filterFrente) &&
-    (!chips.atraso || isProjectOverdue(p)) &&
-    (!chips.risco  || getProjectRisk(p).level==='high')
+    (!chips.atraso || projetoAtrasado(p)) &&
+    (!chips.risco  || riscoProjeto(p).level==='high')
   );
   // ordena por score de risco (mais crítico primeiro); empate vai pelo mais avançado
   vis.sort((a,b) => {
-    const scoreA = getProjectRisk(a).score, scoreB = getProjectRisk(b).score;
+    const scoreA = riscoProjeto(a).score, scoreB = riscoProjeto(b).score;
     if(scoreB !== scoreA) return scoreB - scoreA;
     return (b.prog||0) - (a.prog||0);
   });
@@ -2006,8 +1944,8 @@ function renderProjectList(){
   if(!App.projOpen) App.projOpen = new Set();
   let itensProjeto = vis.map(p => {
     const badgeClass  = STATUS_BADGE[p.sc];
-    const estaAtrasado = isProjectOverdue(p);
-    const risco        = getProjectRisk(p); // { score, level, reasons }
+    const estaAtrasado = projetoAtrasado(p);
+    const risco        = riscoProjeto(p); // { score, level, reasons }
     const key          = String(p.num||p.titulo); // chave única para o estado aberto/fechado
     const open         = App.projOpen.has(key);
     // indicador de status: bolinha colorida em CSS puro (não depende de fonte de ícone)
@@ -2072,23 +2010,23 @@ function toggleProject(key){
 }
 
 /*
- * projectDetails(p) — generates the HTML for a project's expanded details panel.
+ * projectDetails(project) — generates the HTML for a project's expanded details panel.
  * Only renders the field blocks that are filled in on the spreadsheet.
  * Empty fields don't show up (not even as an empty placeholder).
  * The layout is a 2-column grid (or 1 column on mobile).
  */
-function projectDetails(p){
+function projectDetails(project){
   const fmt = txt => String(txt||'').trim().replace(/\n/g,'<br>');
   const blocks = [];
-  if(p.resp)        blocks.push({lbl:'Responsável',             val:p.resp});
-  if(p.dtFim)       blocks.push({lbl:'Prazo de conclusão',      val:`${p.dtFim.toLocaleDateString('pt-BR')}${isProjectOverdue(p)?' &nbsp;<span style="color:var(--err)">⚠ prazo vencido</span>':''}`});
-  if(p.descricao)   blocks.push({lbl:'Descrição',              val:fmt(p.descricao)});
-  if(p.equipes)     blocks.push({lbl:'Equipes envolvidas',     val:fmt(p.equipes)});
-  if(p.focal)       blocks.push({lbl:'Ponto focal',            val:p.focal});
-  if(p.atvConcl)    blocks.push({lbl:'Atividades concluídas',  val:fmt(p.atvConcl)});
-  if(p.atvAndam)    blocks.push({lbl:'Atividades em andamento',val:fmt(p.atvAndam)});
-  if(p.proximos)    blocks.push({lbl:'Próximos passos',        val:fmt(p.proximos)});
-  if(p.comentarios) blocks.push({lbl:'Comentários',           val:fmt(p.comentarios)});
+  if(project.resp)        blocks.push({lbl:'Responsável',             val:project.resp});
+  if(project.dtFim)       blocks.push({lbl:'Prazo de conclusão',      val:`${project.dtFim.toLocaleDateString('pt-BR')}${projetoAtrasado(project)?' &nbsp;<span style="color:var(--err)">⚠ prazo vencido</span>':''}`});
+  if(project.descricao)   blocks.push({lbl:'Descrição',              val:fmt(project.descricao)});
+  if(project.equipes)     blocks.push({lbl:'Equipes envolvidas',     val:fmt(project.equipes)});
+  if(project.focal)       blocks.push({lbl:'Ponto focal',            val:project.focal});
+  if(project.atvConcl)    blocks.push({lbl:'Atividades concluídas',  val:fmt(project.atvConcl)});
+  if(project.atvAndam)    blocks.push({lbl:'Atividades em andamento',val:fmt(project.atvAndam)});
+  if(project.proximos)    blocks.push({lbl:'Próximos passos',        val:fmt(project.proximos)});
+  if(project.comentarios) blocks.push({lbl:'Comentários',           val:fmt(project.comentarios)});
   if(!blocks.length) return `<div class="proj-detail"><div style="font-size:12px;color:var(--ink4);font-style:italic">Sem detalhes preenchidos na planilha.</div></div>`;
   return `<div class="proj-detail">` + blocks.map(b =>
     `<div class="pd-block"><div class="pd-lbl">${b.lbl}</div><div class="pd-val">${b.val}</div></div>`
@@ -2097,66 +2035,66 @@ function projectDetails(p){
 
 
 /*
- * buildImprovementEvolutionChart(M) — line chart: Completed × Backlog × Forecast.
+ * construirGraficoEvolucaoMelhorias(M) — gráfico de linha: Concluídas × Backlog × Previsão.
  *
- * Line 1 — Completed/month: items with sc='done' grouped by dtFim
- * Line 2 — Backlog/month: reconstructed historically as
- *           items_todo_today + items_completed_after_that_month
- * Line 3 — Forecast (future): average of the last 3 months projected forward
+ * Linha 1 — Concluídas/mês: itens com sc='done' agrupados por dtFim
+ * Linha 2 — Backlog/mês: reconstruído historicamente como
+ *           itens_backlog_hoje + itens_concluidos_depois_daquele_mes
+ * Linha 3 — Previsão (futuro): média dos últimos 3 meses projetada adiante
  *
- * Dashed red vertical line marks the current month (past/future divider).
- * Returns '' if there isn't enough data (< 3 months with completions).
+ * Linha vertical tracejada vermelha marca o mês atual (divisor passado/futuro).
+ * Retorna '' se não houver dados suficientes (< 3 meses com conclusões).
  */
-// Calculates the data for the three series of the improvement evolution chart.
-// Returns null if there isn't enough data (< 3 completed or < 2 historical months).
-function calcImprovementEvolutionData(improvements) {
-  const completed = improvements.filter(m => m.sc === 'done' && m.dtFim);
-  if (completed.length < 3) return null;
+// Calcula os dados das três séries do gráfico de evolução de melhorias.
+// Retorna null se não houver dados suficientes (< 3 concluídas ou < 2 meses históricos).
+function calcularDadosEvolucaoMelhorias(melhorias) {
+  const concluidas = melhorias.filter(m => m.sc === 'done' && m.dtFim);
+  if (concluidas.length < 3) return null;
 
-  const byMonth        = {};
-  completed.forEach(m => { const k = ym(m.dtFim); byMonth[k] = (byMonth[k] || 0) + 1; });
-  const currentMonth    = ym(HOJE);
-  const historicalMonths = Object.keys(byMonth).sort().filter(k => k <= currentMonth);
-  if (historicalMonths.length < 2) return null;
+  const porMes        = {};
+  concluidas.forEach(m => { const chaveMes = toYearMonthKey(m.dtFim); porMes[chaveMes] = (porMes[chaveMes] || 0) + 1; });
+  const mesAtual    = toYearMonthKey(HOJE);
+  const mesesHistoricos = Object.keys(porMes).sort().filter(k => k <= mesAtual);
+  if (mesesHistoricos.length < 2) return null;
 
-  const advanceMonth = k => {
-    const [y, mo] = k.split('-').map(Number);
-    return mo === 12 ? `${y + 1}-01` : `${y}-${String(mo + 1).padStart(2, '0')}`;
+  const avancarMes = chaveMes => {
+    const [ano, mes] = chaveMes.split('-').map(Number);
+    return mes === 12 ? `${ano + 1}-01` : `${ano}-${String(mes + 1).padStart(2, '0')}`;
   };
 
-  // Final deadline = October of the current year (or the next one, if October already passed)
-  const [curY, curMo] = currentMonth.split('-').map(Number);
-  const OCT_DEADLINE = `${curMo <= 10 ? curY : curY + 1}-10`;
+  // Prazo final = outubro do ano corrente (ou o seguinte, se outubro já passou)
+  const [anoAtual, mesNum] = mesAtual.split('-').map(Number);
+  const PRAZO_OUTUBRO = `${mesNum <= 10 ? anoAtual : anoAtual + 1}-10`;
 
-  let rangeEnd = currentMonth;
-  for (let i = 0; i < 6; i++) rangeEnd = advanceMonth(rangeEnd);
-  if (rangeEnd > OCT_DEADLINE) rangeEnd = OCT_DEADLINE;
+  let fimIntervalo = mesAtual;
+  for (let i = 0; i < 6; i++) fimIntervalo = avancarMes(fimIntervalo);
+  if (fimIntervalo > PRAZO_OUTUBRO) fimIntervalo = PRAZO_OUTUBRO;
 
-  const allMonths = [];
-  let cur = historicalMonths[0];
-  while (cur <= rangeEnd) { allMonths.push(cur); cur = advanceMonth(cur); }
+  const todosMeses = [];
+  let atual = mesesHistoricos[0];
+  while (atual <= fimIntervalo) { todosMeses.push(atual); atual = avancarMes(atual); }
 
-  const currentTodoItems  = improvements.filter(m => m.sc === 'todo').length;
-  const futureMonths      = allMonths.filter(m => m >= currentMonth);
-  const forecastPerMonth  = futureMonths.length > 0 ? Math.max(1, Math.round(currentTodoItems / futureMonths.length)) : 1;
+  const itensBacklogAtual = melhorias.filter(m => m.sc === 'todo').length;
+  const mesesFuturos      = todosMeses.filter(m => m >= mesAtual);
+  const previsaoPorMes    = mesesFuturos.length > 0 ? Math.max(1, Math.round(itensBacklogAtual / mesesFuturos.length)) : 1;
 
   return {
-    labels:         allMonths.map(m => ymLabel(m)),
-    currentIndex:   allMonths.indexOf(currentMonth),
-    currentTodoItems,
-    futureMonths,
-    forecastPerMonth,
-    completedData: allMonths.map(m => m <= currentMonth ? (byMonth[m] || 0) : null),
-    backlogData:   allMonths.map(m => {
-      if (m > currentMonth) return null;
-      return currentTodoItems + completed.filter(c => ym(c.dtFim) > m).length;
+    labels:         todosMeses.map(m => toYearMonthLabel(m)),
+    currentIndex:   todosMeses.indexOf(mesAtual),
+    currentTodoItems: itensBacklogAtual,
+    futureMonths:     mesesFuturos,
+    forecastPerMonth: previsaoPorMes,
+    completedData: todosMeses.map(m => m <= mesAtual ? (porMes[m] || 0) : null),
+    backlogData:   todosMeses.map(m => {
+      if (m > mesAtual) return null;
+      return itensBacklogAtual + concluidas.filter(c => toYearMonthKey(c.dtFim) > m).length;
     }),
-    forecastData:  allMonths.map(m => m >= currentMonth ? forecastPerMonth : null),
+    forecastData:  todosMeses.map(m => m >= mesAtual ? previsaoPorMes : null),
   };
 }
 
-// Chart.js plugins for the evolution chart: point labels and the current-month line.
-function improvementEvolutionPlugins(currentIndex) {
+// Plugins do Chart.js para o gráfico de evolução: rótulos dos pontos e a linha do mês atual.
+function pluginsEvolucaoMelhorias(currentIndex) {
   const dataLabels = {
     id: 'dataLabels',
     afterDatasetsDraw(chart) {
@@ -2164,7 +2102,7 @@ function improvementEvolutionPlugins(currentIndex) {
       data.datasets.forEach((dataset, i) => {
         const meta = chart.getDatasetMeta(i);
         if (meta.hidden) return;
-        const above = i !== 2; // Forecast (i===2) sits below to avoid overlap
+        const acima = i !== 2; // Previsão (i===2) fica embaixo pra evitar sobreposição
         meta.data.forEach((el, j) => {
           const value = dataset.data[j];
           if (value == null) return;
@@ -2172,40 +2110,40 @@ function improvementEvolutionPlugins(currentIndex) {
           ctx.fillStyle    = dataset.borderColor;
           ctx.font         = `bold 10px Inter, system-ui, sans-serif`;
           ctx.textAlign    = 'center';
-          ctx.textBaseline = above ? 'bottom' : 'top';
-          ctx.fillText(value, el.x, el.y + (above ? -5 : 5));
+          ctx.textBaseline = acima ? 'bottom' : 'top';
+          ctx.fillText(value, el.x, el.y + (acima ? -5 : 5));
           ctx.restore();
         });
       });
     }
   };
-  const todayLine = {
+  const linhaHoje = {
     id: 'todayLine',
     afterDraw(chart) {
       if (currentIndex < 0) return;
       const { ctx, chartArea, scales } = chart;
-      const x = scales.x.getPixelForValue(chart.data.labels[currentIndex]);
+      const xPixel = scales.x.getPixelForValue(chart.data.labels[currentIndex]);
       ctx.save();
       ctx.beginPath();
       ctx.setLineDash([6, 4]);
-      ctx.strokeStyle = C.err;
+      ctx.strokeStyle = CHART_COLORS.err;
       ctx.lineWidth   = 1.5;
-      ctx.moveTo(x, chartArea.top);
-      ctx.lineTo(x, chartArea.bottom);
+      ctx.moveTo(xPixel, chartArea.top);
+      ctx.lineTo(xPixel, chartArea.bottom);
       ctx.stroke();
       ctx.restore();
     }
   };
-  return [dataLabels, todayLine];
+  return [dataLabels, linhaHoje];
 }
 
-function buildImprovementEvolutionChart(improvements) {
-  const evol = calcImprovementEvolutionData(improvements);
-  if (!evol) return '';
+function construirGraficoEvolucaoMelhorias(melhorias) {
+  const evolucao = calcularDadosEvolucaoMelhorias(melhorias);
+  if (!evolucao) return '';
 
   const { labels, currentIndex, currentTodoItems, futureMonths, forecastPerMonth,
-          completedData, backlogData, forecastData } = evol;
-  const id = _cid('mel-evol');
+          completedData, backlogData, forecastData } = evolucao;
+  const id = _generateChartId('mel-evol');
 
   _pendingCharts.push({
     id,
@@ -2217,34 +2155,34 @@ function buildImprovementEvolutionChart(improvements) {
           {
             label:               'Concluídas',
             data:                completedData,
-            borderColor:         C.ink,
+            borderColor:         CHART_COLORS.ink,
             backgroundColor:     'transparent',
             borderWidth:         2,
             pointRadius:         4,
-            pointBackgroundColor: C.ink,
+            pointBackgroundColor: CHART_COLORS.ink,
             tension:             0.1,
             spanGaps:            false,
           },
           {
             label:               'Backlog',
             data:                backlogData,
-            borderColor:         C.ink,
+            borderColor:         CHART_COLORS.ink,
             backgroundColor:     'transparent',
             borderWidth:         2,
             borderDash:          [6, 4],
             pointRadius:         3,
-            pointBackgroundColor: C.ink,
+            pointBackgroundColor: CHART_COLORS.ink,
             tension:             0.1,
             spanGaps:            false,
           },
           {
             label:               'Previsão',
             data:                forecastData,
-            borderColor:         C.err,
+            borderColor:         CHART_COLORS.err,
             backgroundColor:     'transparent',
             borderWidth:         1.5,
             pointRadius:         3,
-            pointBackgroundColor: C.err,
+            pointBackgroundColor: CHART_COLORS.err,
             tension:             0,
             spanGaps:            false,
           }
@@ -2257,7 +2195,7 @@ function buildImprovementEvolutionChart(improvements) {
         plugins: {
           legend: {
             position: 'top',
-            labels: { color: C.ink3, boxWidth: 20, boxHeight: 2, padding: 20, font: { size: 11 } }
+            labels: { color: CHART_COLORS.ink3, boxWidth: 20, boxHeight: 2, padding: 20, font: { size: 11 } }
           },
           tooltip: {
             callbacks: {
@@ -2271,16 +2209,16 @@ function buildImprovementEvolutionChart(improvements) {
           x: {
             grid:   { display: false },
             border: { display: false },
-            ticks:  { color: C.ink4, font: { size: 10 }, maxTicksLimit: 14 }
+            ticks:  { color: CHART_COLORS.ink4, font: { size: 10 }, maxTicksLimit: 14 }
           },
           y: {
-            grid:   { color: C.rule },
+            grid:   { color: CHART_COLORS.rule },
             border: { display: false },
-            ticks:  { color: C.ink4, font: { size: 10 } }
+            ticks:  { color: CHART_COLORS.ink4, font: { size: 10 } }
           }
         }
       },
-      plugins: improvementEvolutionPlugins(currentIndex)
+      plugins: pluginsEvolucaoMelhorias(currentIndex)
     }
   });
 
@@ -2296,61 +2234,61 @@ function buildImprovementEvolutionChart(improvements) {
 
 
 /*
- * overviewByArea(M) — "Overview por categoria" table on the Pipefy Improvements tab.
+ * visaoGeralPorArea(M) — tabela "Overview por categoria" da aba Pipefy Melhorias.
  *
- * Rows    = business areas (P2P, O2C, TAX…), in the standard order + extras at the end.
- * Columns = Improvements (total) + breakdown by status.
+ * Linhas  = áreas de negócio (P2P, O2C, TAX…), na ordem padrão + extras no final.
+ * Colunas = Melhorias (total) + detalhamento por status.
  *
- * "Dev + Planej." and "Validação" are both sc='doing', distinguished by statusRaw:
- *   Validação    → statusRaw contains "validação" or "aguardando"
- *   Dev + Planej → sc='doing' and not validation
+ * "Dev + Planej." e "Validação" são as duas fatias de sc='doing', diferenciadas pelo statusRaw:
+ *   Validação    → statusRaw contém "validação" ou "aguardando"
+ *   Dev + Planej → sc='doing' e não é validação
  */
-function overviewByArea(improvements) {
-  const isValidation = m => {
-    const statusText = (m.statusRaw || '').toLowerCase();
-    return statusText.includes('validação') || statusText.includes('validacao') || statusText.includes('aguardando');
+function visaoGeralPorArea(melhorias) {
+  const ehValidacao = melhoria => {
+    const textoStatus = (melhoria.statusRaw || '').toLowerCase();
+    return textoStatus.includes('validação') || textoStatus.includes('validacao') || textoStatus.includes('aguardando');
   };
 
-  const COLUMNS = [
+  const COLUNAS = [
     { label: 'Melhorias',     fn: null,                                      cls: '' },
     { label: 'Backlog',       fn: m => m.sc === 'todo',                      cls: '' },
-    { label: 'Dev + Planej.', fn: m => m.sc === 'doing' && !isValidation(m), cls: '' },
-    { label: 'Validação',     fn: m => isValidation(m),                     cls: '' },
+    { label: 'Dev + Planej.', fn: m => m.sc === 'doing' && !ehValidacao(m),  cls: '' },
+    { label: 'Validação',     fn: m => ehValidacao(m),                      cls: '' },
     { label: 'Pipefy',        fn: m => m.sc === 'vendor',                    cls: '' },
     { label: 'Bloqueado',     fn: m => m.sc === 'blocked',                   cls: '' },
     { label: 'Concluídos',    fn: m => m.sc === 'done',                      cls: 'ov-done' },
     { label: 'Cancelados',    fn: m => m.sc === 'cancel',                    cls: 'ov-cancel' },
   ];
 
-  const ORDER  = ['COE','P2P','O2C','R2R','TAX','H2R'];
-  const COLORS = { COE:'#0195D6', P2P:'#E83430', O2C:'#4DB1B3', R2R:'#E66407', TAX:'#0F5299', H2R:'#8B6FD4' };
+  const ORDEM  = ['COE','P2P','O2C','R2R','TAX','H2R'];
+  const CORES = { COE:'#0195D6', P2P:'#E83430', O2C:'#4DB1B3', R2R:'#E66407', TAX:'#0F5299', H2R:'#8B6FD4' };
 
-  const todasFrentes = [...new Set(improvements.map(m => m.frente).filter(Boolean))];
+  const todasFrentes = [...new Set(melhorias.map(m => m.frente).filter(Boolean))];
   const frentes = [
-    ...ORDER.filter(f => todasFrentes.includes(f)),
-    ...todasFrentes.filter(f => !ORDER.includes(f)).sort(),
+    ...ORDEM.filter(f => todasFrentes.includes(f)),
+    ...todasFrentes.filter(f => !ORDEM.includes(f)).sort(),
   ];
   if (!frentes.length) return '';
 
-  const cell = n => n
-    ? `<td>${n}</td>`
+  const celula = value => value
+    ? `<td>${value}</td>`
     : `<td class="ov-zero">—</td>`;
 
-  const rows = frentes.map(frente => {
-    const itens = improvements.filter(m => m.frente === frente);
-    const cor   = COLORS[frente] || 'var(--ink3)';
-    const cols  = COLUMNS.map((c, i) => cell(i === 0 ? itens.length : itens.filter(c.fn).length)).join('');
+  const linhas = frentes.map(frente => {
+    const itens = melhorias.filter(m => m.frente === frente);
+    const cor   = CORES[frente] || 'var(--ink3)';
+    const cols  = COLUNAS.map((c, i) => celula(i === 0 ? itens.length : itens.filter(c.fn).length)).join('');
     return `<tr>
       <td><span class="ov-badge" style="background:${cor}">${frente}</span></td>
       ${cols}
     </tr>`;
   }).join('');
 
-  const totals = COLUMNS.map((c, i) =>
-    `<td>${i === 0 ? improvements.length : improvements.filter(c.fn).length}</td>`
+  const totais = COLUNAS.map((c, i) =>
+    `<td>${i === 0 ? melhorias.length : melhorias.filter(c.fn).length}</td>`
   ).join('');
 
-  const headers = COLUMNS.map(c =>
+  const cabecalhos = COLUNAS.map(c =>
     `<th class="${c.cls}">${c.label}</th>`
   ).join('');
 
@@ -2363,11 +2301,11 @@ function overviewByArea(improvements) {
     </div>
     <div style="overflow-x:auto">
       <table class="ov-table">
-        <thead><tr><th></th>${headers}</tr></thead>
-        <tbody>${rows}</tbody>
+        <thead><tr><th></th>${cabecalhos}</tr></thead>
+        <tbody>${linhas}</tbody>
         <tfoot><tr>
           <td style="text-align:left">Total</td>
-          ${totals}
+          ${totais}
         </tr></tfoot>
       </table>
     </div>
@@ -2376,185 +2314,185 @@ function overviewByArea(improvements) {
 
 
 /* ============================================================
-   VIEW: PIPEFY IMPROVEMENTS
+   ABA: MELHORIAS PIPEFY
    ============================================================
-   DATE FILTER: uses DataConclusaoRealDesenvolvimento.
-   Most backlog/planning improvements do NOT have this date.
-   When filtering by period, they are excluded — correct, documented behavior.
-   To see every improvement, use the Status filter inside the tab.
+   FILTRO DE DATA: usa DataConclusaoRealDesenvolvimento.
+   A maioria das melhorias em backlog/planejamento NÃO tem essa data.
+   Ao filtrar por período, elas ficam de fora — comportamento correto e documentado.
+   Pra ver todas as melhorias, use o filtro de Status dentro da aba.
    ============================================================ */
 /*
- * buildImprovements() — Pipefy Improvements tab.
+ * construirMelhorias() — aba Pipefy Melhorias.
  *
- * Reads:  App.P.improvements
- * Writes: #mel-content
- * Called by: generate() and renderAll()
+ * Lê:      App.P.improvements
+ * Escreve: #mel-content
+ * Chamada por: generate() e renderAll()
  *
- * ATTENTION — special date-filter logic:
- *   Uses dtInicio + dtFim (development interval), not a single date.
- *   Backlog improvements without a date are ALWAYS included, even with an
- *   active filter (they represent pending work, not history).
+ * ATENÇÃO — lógica especial de filtro de data:
+ *   Usa dtInicio + dtFim (intervalo de desenvolvimento), não uma data única.
+ *   Melhorias de backlog sem data são SEMPRE incluídas, mesmo com um
+ *   filtro ativo (representam trabalho pendente, não histórico).
  *
- * Produces:
- *  - KPIs: total, completed, backlog, blocked, distinct flows
- *  - Status donut, bars by area, complexity and owner
+ * Produz:
+ *  - KPIs: total, concluídas, backlog, bloqueadas, fluxos distintos
+ *  - Donut de status, barras por área, complexidade e responsável
  */
-function buildImprovements(){
-  const {kept: filteredImprovements} = applyDate(App.P.improvements);
-  // Backlog without a date = pending work, not history. Always included.
-  const backlogWithoutDate = App.dateRange.mode !== 'all'
+function construirMelhorias(){
+  const {kept: melhoriasFiltradas} = filtrarPorPeriodo(App.P.improvements);
+  // Backlog sem data = trabalho pendente, não histórico. Sempre incluído.
+  const backlogSemData = App.dateRange.mode !== 'all'
     ? App.P.improvements.filter(m => !m.dtInicio && !m.dtFim && m.sc === 'todo')
     : [];
-  const improvements = [...filteredImprovements, ...backlogWithoutDate];
+  const melhorias = [...melhoriasFiltradas, ...backlogSemData];
   document.getElementById('mel-empty').style.display  = App.P.improvements.length ? 'none' : 'block';
   document.getElementById('mel-content').style.display = App.P.improvements.length ? 'block' : 'none';
   if(!App.P.improvements.length) return;
-  const sc      = statusCounts(improvements);
+  const sc      = statusCounts(melhorias);
   const done    = sc.done;
   const backlog = sc.todo;
   const blocked = sc.blocked;
 
-  let dateNote = '';
+  let notaData = '';
   if(App.dateRange.mode !== 'all'){
-    dateNote = `<div class="note" style="background:var(--neu-bg);color:var(--ink3)"><i class="ti ti-calendar-stats"></i><div>
-      Período aplicado: <b>${improvements.length} melhorias</b> no recorte${backlogWithoutDate.length > 0 ? ` (inclui <b>${backlogWithoutDate.length} backlog</b> sem data)` : ''}.
+    notaData = `<div class="note" style="background:var(--neu-bg);color:var(--ink3)"><i class="ti ti-calendar-stats"></i><div>
+      Período aplicado: <b>${melhorias.length} melhorias</b> no recorte${backlogSemData.length > 0 ? ` (inclui <b>${backlogSemData.length} backlog</b> sem data)` : ''}.
       <br><span style="font-size:10px;opacity:.6;font-style:italic">Referência de data: início e conclusão do desenvolvimento — inclui melhorias ativas no período, mesmo que iniciadas antes dele</span>
       </div></div>`;
   }
 
-  // "Fluxos (processos)" = number of distinct NomeFluxo in the current range
-  const uniqueFlows = new Set(App.P.improvements.map(m => m.fluxo).filter(Boolean)).size;
+  // "Fluxos (processos)" = número de NomeFluxo distintos no recorte atual
+  const fluxosUnicos = new Set(App.P.improvements.map(m => m.fluxo).filter(Boolean)).size;
 
-  // Data quality: completed without dtFim = a spreadsheet fill-in error.
-  // Non-completed items without dtFim are correct (still in progress/backlog).
-  const completedWithoutDate = App.P.improvements.filter(m => m.sc==='done' && !m.dtFim).length;
+  // Qualidade de dados: concluída sem dtFim = erro de preenchimento na planilha.
+  // Itens não concluídos sem dtFim estão corretos (ainda em andamento/backlog).
+  const concluidasSemData = App.P.improvements.filter(m => m.sc==='done' && !m.dtFim).length;
 
-  let html = dateNote + `<div class="sh">Pipefy — Melhorias & Ajustes</div>
-  ${aiBar('mel')}
+  let html = notaData + `<div class="sh">Pipefy — Melhorias & Ajustes</div>
+  ${barraAnalise('mel')}
   <div class="krow k5">
-    <div class="kpi">${kpiIcon('message')}<div class="knum">${App.P.improvements.length}</div><div class="klbl">Total melhorias</div>${App.dateRange.mode !== 'all' ? `<div class="ksub">${improvements.length} no recorte</div>` : ''}</div>
-    <div class="kpi gl">${kpiIcon('check')}<div class="knum">${done}</div><div class="klbl">Concluídas</div><div class="ksub">${pct(done,App.P.improvements.length)}% do total</div></div>
-    <div class="kpi">${kpiIcon('stack')}<div class="knum">${backlog}</div><div class="klbl">Backlog</div></div>
-    <div class="kpi wl">${kpiIcon('lock')}<div class="knum">${blocked}</div><div class="klbl">Bloqueadas</div></div>
-    <div class="kpi il">${kpiIcon('branch')}<div class="knum">${uniqueFlows}</div><div class="klbl">Fluxos (processos)</div><div class="ksub">distintos no recorte</div></div>
+    <div class="kpi">${iconeKpi('message')}<div class="knum">${App.P.improvements.length}</div><div class="klbl">Total melhorias</div>${App.dateRange.mode !== 'all' ? `<div class="ksub">${melhorias.length} no recorte</div>` : ''}</div>
+    <div class="kpi gl">${iconeKpi('check')}<div class="knum">${done}</div><div class="klbl">Concluídas</div><div class="ksub">${calculatePercentage(done,App.P.improvements.length)}% do total</div></div>
+    <div class="kpi">${iconeKpi('stack')}<div class="knum">${backlog}</div><div class="klbl">Backlog</div></div>
+    <div class="kpi wl">${iconeKpi('lock')}<div class="knum">${blocked}</div><div class="klbl">Bloqueadas</div></div>
+    <div class="kpi il">${iconeKpi('branch')}<div class="knum">${fluxosUnicos}</div><div class="klbl">Fluxos (processos)</div><div class="ksub">distintos no recorte</div></div>
   </div>
-  ${completedWithoutDate > 0 ? `<div class="note" style="background:var(--neu-bg);color:var(--ink3)"><i class="ti ti-alert-triangle" style="color:var(--warn)"></i><div>
-    <b>${completedWithoutDate} melhorias marcadas como concluídas não têm data de conclusão preenchida.</b>
+  ${concluidasSemData > 0 ? `<div class="note" style="background:var(--neu-bg);color:var(--ink3)"><i class="ti ti-alert-triangle" style="color:var(--warn)"></i><div>
+    <b>${concluidasSemData} melhorias marcadas como concluídas não têm data de conclusão preenchida.</b>
     Isso é um erro de preenchimento na planilha — preencher o campo <i>DataConclusaoRealDesenvolvimento</i> permite análise temporal correta dessas entregas.
   </div></div>` : ''}`;
 
   html += `<div class="two">
     <div class="card"><div class="card-title"><i class="ti ti-chart-pie"></i> Status</div>
-      ${donut(['done','doing','todo','vendor','blocked','cancel'].map(k=>({label:STATUS_PT[k],value:improvements.filter(m=>m.sc===k).length,color:STATUS_COLOR[k]})).filter(d=>d.value), {total:App.P.improvements.length})}</div>
+      ${donut(['done','doing','todo','vendor','blocked','cancel'].map(k=>({label:STATUS_PT[k],value:melhorias.filter(m=>m.sc===k).length,color:STATUS_COLOR[k]})).filter(d=>d.value), {total:App.P.improvements.length})}</div>
     <div class="card"><div class="card-title"><i class="ti ti-building"></i> Por frente</div>
-      ${hbars(sortedCountEntries(improvements, m=>m.frente),{max:8,lw:60,tot:improvements.length})}</div>
+      ${horizontalBars(sortedCountEntries(melhorias, m=>m.frente),{max:8,lw:60,tot:melhorias.length})}</div>
   </div>`;
   html += `<div class="two">
     <div class="card"><div class="card-title"><i class="ti ti-stack-2"></i> Por complexidade</div>
-      ${hbars(sortedCountEntries(improvements.filter(m=>m.complex), m=>m.complex),{max:6,lw:90})}</div>
+      ${horizontalBars(sortedCountEntries(melhorias.filter(m=>m.complex), m=>m.complex),{max:6,lw:90})}</div>
     <div class="card"><div class="card-title"><i class="ti ti-user-code"></i> Por responsável</div>
       ${(() => {
-        const dados = sortedCountEntries(improvements.filter(m=>m.resp && isPipefyTeamMember(m.resp)), m=>m.resp);
-        return hbars(dados,{max:8,lw:130});
+        const dados = sortedCountEntries(melhorias.filter(m=>m.resp && isPipefyTeamMember(m.resp)), m=>m.resp);
+        return horizontalBars(dados,{max:8,lw:130});
       })()}</div>
   </div>`;
-  html += buildImprovementEvolutionChart(improvements);
-  html += overviewByArea(improvements);
+  html += construirGraficoEvolucaoMelhorias(melhorias);
+  html += visaoGeralPorArea(melhorias);
   html += '<div id="mel-atividades"></div>';
   document.getElementById('mel-content').innerHTML = html;
   flushCharts();
-  setBadge('nb-mel', improvements.length, '');
-  renderImprovementActivitiesSection();
+  setBadge('nb-mel', melhorias.length, '');
+  renderizarSecaoAtividadesMelhorias();
 }
 
 
 /* ============================================================
-   IMPROVEMENTS — MANUAL ACTIVITY LOG
+   MELHORIAS — REGISTRO MANUAL DE ATIVIDADES
    ============================================================
-   "Atividades" card at the end of the Pipefy Improvements tab.
+   Card "Atividades" no final da aba Pipefy Melhorias.
 
-   Unlike the rest of the tab (which comes entirely from the spreadsheet),
-   these records are created and maintained manually by the team inside
-   the site itself. They exist because the tracking presented to
-   management is organized by topic/initiative (ex: "Anticipos v1",
-   "Miscelaneas v1"), and those topics have no 1:1 correspondence with
-   rows in the Pipefy_Melhorias spreadsheet — so this table can't be
-   calculated from App.P.improvements like the rest of the tab.
+   Diferente do resto da aba (que vem inteiramente da planilha), esses
+   registros são criados e mantidos manualmente pela equipe dentro do
+   próprio site. Eles existem porque o acompanhamento apresentado para
+   a gestão é organizado por tema/iniciativa (ex: "Anticipos v1",
+   "Miscelaneas v1"), e esses temas não têm correspondência 1:1 com
+   linhas da planilha Pipefy_Melhorias — então essa tabela não pode ser
+   calculada a partir de App.P.improvements como o resto da aba.
 
-   PERSISTENCE:
+   PERSISTÊNCIA:
    Records are saved to the browser's localStorage (key
-   IMPROVEMENT_ACTIVITIES_STORAGE_KEY), not to any spreadsheet and not
+   CHAVE_ARMAZENAMENTO_ATIVIDADES_MELHORIAS), not to any spreadsheet and not
    to a server — consistent with SYNAPSE's 100% local architecture (see
-   README). This means:
-     - They survive reloading the page and regenerating the dashboard
-       with a different spreadsheet (they don't depend on the loaded Excel).
-     - They stay restricted to this browser/computer — they don't show up
-       for someone opening the site on another machine.
-     - They are deleted if the user clears the site's browsing data.
+   README). Isso significa que:
+     - Sobrevivem a recarregar a página e regerar o dashboard com uma
+       planilha diferente (não dependem do Excel carregado).
+     - Ficam restritos a este navegador/computador — não aparecem para
+       quem abre o site em outra máquina.
+     - São apagados se o usuário limpar os dados de navegação do site.
 
-   Exports (indirectly, via window — see the end of the file):
-     renderImprovementActivitiesSection() — called by buildImprovements()
-     openActivityForm(activityId?)
-     closeActivityForm()
-     closeActivityFormOnOutsideClick(event)
-     saveActivityForm(event)
-     confirmDeleteActivity(activityId)
+   Exportações (indiretamente, via window — ver o final do arquivo):
+     renderizarSecaoAtividadesMelhorias() — chamada por construirMelhorias()
+     abrirFormularioAtividade(activityId?)
+     fecharFormularioAtividade()
+     fecharFormularioAtividadeAoClicarFora(event)
+     salvarFormularioAtividade(event)
+     confirmarExclusaoAtividade(activityId)
    ============================================================ */
 
-const IMPROVEMENT_ACTIVITIES_STORAGE_KEY = 'synapse.melhorias.atividades';
+const CHAVE_ARMAZENAMENTO_ATIVIDADES_MELHORIAS = 'synapse.melhorias.atividades';
 
 /*
- * A record in the "Atividades" table on the Pipefy Improvements tab.
+ * Um registro na tabela "Atividades" da aba Pipefy Melhorias.
  *
  * @typedef {Object} ActivityRecord
- * @property {string} id            unique record identifier
- * @property {string} tema          topic/initiative name (ex: "Anticipos v1")
- * @property {string} atividade     current stage (ex: "Em desenvolvimento")
- * @property {string} observacao    free-form notes on progress
- * @property {string} responsavel   person or team responsible
+ * @property {string} id            identificador único do registro
+ * @property {string} tema          nome do tema/iniciativa (ex: "Anticipos v1")
+ * @property {string} atividade     etapa atual (ex: "Em desenvolvimento")
+ * @property {string} observacao    anotações livres sobre o andamento
+ * @property {string} responsavel   pessoa ou equipe responsável
  */
 
 /*
- * loadImprovementActivities()
- * Reads the list of saved records from localStorage. Returns an empty
- * array both when nothing was ever saved and when the saved content is
- * corrupted — in the second case the error is only logged to the
- * console, without interrupting the dashboard's loading.
+ * carregarAtividadesMelhorias()
+ * Lê a lista de registros salvos do localStorage. Retorna um array
+ * vazio tanto quando nunca foi salvo nada quanto quando o conteúdo
+ * salvo está corrompido — nesse segundo caso o erro só é logado no
+ * console, sem interromper o carregamento do dashboard.
  */
-function loadImprovementActivities() {
-  const savedContent = localStorage.getItem(IMPROVEMENT_ACTIVITIES_STORAGE_KEY);
-  if (!savedContent) return [];
+function carregarAtividadesMelhorias() {
+  const conteudoSalvo = localStorage.getItem(CHAVE_ARMAZENAMENTO_ATIVIDADES_MELHORIAS);
+  if (!conteudoSalvo) return [];
 
   try {
-    const savedRecords = JSON.parse(savedContent);
-    return Array.isArray(savedRecords) ? savedRecords : [];
-  } catch (readError) {
-    console.warn('Não foi possível ler as atividades salvas de Melhorias:', readError);
+    const registrosSalvos = JSON.parse(conteudoSalvo);
+    return Array.isArray(registrosSalvos) ? registrosSalvos : [];
+  } catch (erroLeitura) {
+    console.warn('Não foi possível ler as atividades salvas de Melhorias:', erroLeitura);
     return [];
   }
 }
 
 /*
- * saveImprovementActivities(activityRecords)
- * Writes the full list of records to localStorage. There is no partial
- * update: every create/edit/delete operation rereads the whole list,
- * changes what's needed, and writes it all back.
+ * salvarAtividadesMelhorias(registrosAtividades)
+ * Escreve a lista completa de registros no localStorage. Não há
+ * atualização parcial: toda operação de criar/editar/excluir relê a
+ * lista inteira, muda o que precisa e escreve tudo de volta.
  */
-function saveImprovementActivities(activityRecords) {
+function salvarAtividadesMelhorias(registrosAtividades) {
   localStorage.setItem(
-    IMPROVEMENT_ACTIVITIES_STORAGE_KEY,
-    JSON.stringify(activityRecords)
+    CHAVE_ARMAZENAMENTO_ATIVIDADES_MELHORIAS,
+    JSON.stringify(registrosAtividades)
   );
 }
 
 /*
- * generateActivityId()
- * Uses crypto.randomUUID() when available. As a fallback (very old
- * browsers or a non-HTTPS context), generates an id from the current
- * timestamp + a random number — good enough here because these records
- * never leave the user's own browser.
+ * gerarIdAtividade()
+ * Usa crypto.randomUUID() quando disponível. Como alternativa (navegadores
+ * muito antigos ou contexto sem HTTPS), gera um id a partir do timestamp
+ * atual + um número aleatório — suficiente aqui porque esses registros
+ * nunca saem do navegador do próprio usuário.
  */
-function generateActivityId() {
+function gerarIdAtividade() {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
     return crypto.randomUUID();
   }
@@ -2562,88 +2500,88 @@ function generateActivityId() {
 }
 
 /*
- * escapeHtmlText(text)
- * The fields in this table are free text typed by the user (especially
- * "Observação"). Without escaping, characters like < and > would break
- * the table's HTML when rendered. Round-tripping through a temporary
- * element is the standard way the browser does this escaping correctly.
+ * escaparTextoHtml(texto)
+ * Os campos dessa tabela são texto livre digitado pelo usuário (especialmente
+ * "Observação"). Sem escapar, caracteres como < e > quebrariam o HTML da
+ * tabela ao renderizar. Passar por um elemento temporário é a forma padrão
+ * do navegador fazer esse escape corretamente.
  */
-function escapeHtmlText(text) {
-  const tempElement = document.createElement('div');
-  tempElement.textContent = text || '';
-  return tempElement.innerHTML;
+function escaparTextoHtml(texto) {
+  const elementoTemp = document.createElement('div');
+  elementoTemp.textContent = texto || '';
+  return elementoTemp.innerHTML;
 }
 
 /*
- * addImprovementActivity(formData)
- * Creates a new record from the form data and appends it to the
- * persisted list.
+ * adicionarAtividadeMelhoria(dadosFormulario)
+ * Cria um registro novo a partir dos dados do formulário e adiciona
+ * à lista persistida.
  */
-function addImprovementActivity(formData) {
-  const records = loadImprovementActivities();
-  records.push({ id: generateActivityId(), ...formData });
-  saveImprovementActivities(records);
+function adicionarAtividadeMelhoria(dadosFormulario) {
+  const registros = carregarAtividadesMelhorias();
+  registros.push({ id: gerarIdAtividade(), ...dadosFormulario });
+  salvarAtividadesMelhorias(registros);
 }
 
 /*
- * updateImprovementActivity(activityId, formData)
- * Replaces the fields of an existing record with the new form values.
- * Does nothing if the id isn't found (the record may have been deleted
- * in another browser tab, for example).
+ * atualizarAtividadeMelhoria(idAtividade, dadosFormulario)
+ * Substitui os campos de um registro existente pelos novos valores do
+ * formulário. Não faz nada se o id não for encontrado (o registro pode
+ * ter sido excluído em outra aba do navegador, por exemplo).
  */
-function updateImprovementActivity(activityId, formData) {
-  const records = loadImprovementActivities();
-  const recordIndex = records.findIndex(record => record.id === activityId);
-  if (recordIndex === -1) return;
+function atualizarAtividadeMelhoria(idAtividade, dadosFormulario) {
+  const registros = carregarAtividadesMelhorias();
+  const indiceRegistro = registros.findIndex(registro => registro.id === idAtividade);
+  if (indiceRegistro === -1) return;
 
-  records[recordIndex] = { ...records[recordIndex], ...formData };
-  saveImprovementActivities(records);
+  registros[indiceRegistro] = { ...registros[indiceRegistro], ...dadosFormulario };
+  salvarAtividadesMelhorias(registros);
 }
 
 /*
- * deleteImprovementActivity(activityId)
- * Permanently removes a record from the persisted list.
+ * excluirAtividadeMelhoria(idAtividade)
+ * Remove permanentemente um registro da lista persistida.
  */
-function deleteImprovementActivity(activityId) {
-  const remainingRecords = loadImprovementActivities()
-    .filter(record => record.id !== activityId);
-  saveImprovementActivities(remainingRecords);
+function excluirAtividadeMelhoria(idAtividade) {
+  const registrosRestantes = carregarAtividadesMelhorias()
+    .filter(registro => registro.id !== idAtividade);
+  salvarAtividadesMelhorias(registrosRestantes);
 }
 
 /*
- * buildActivityTableRow(record)
- * Generates a <tr> row for the activities table, with the edit and
- * delete buttons in the last column.
+ * construirLinhaTabelaAtividade(registro)
+ * Gera uma linha <tr> para a tabela de atividades, com os botões de
+ * editar e excluir na última coluna.
  */
-function buildActivityTableRow(record) {
+function construirLinhaTabelaAtividade(registro) {
   return `<tr>
-    <td>${escapeHtmlText(record.tema)}</td>
-    <td>${escapeHtmlText(record.atividade)}</td>
-    <td style="white-space:pre-wrap">${escapeHtmlText(record.observacao)}</td>
-    <td>${escapeHtmlText(record.responsavel)}</td>
+    <td>${escaparTextoHtml(registro.tema)}</td>
+    <td>${escaparTextoHtml(registro.atividade)}</td>
+    <td style="white-space:pre-wrap">${escaparTextoHtml(registro.observacao)}</td>
+    <td>${escaparTextoHtml(registro.responsavel)}</td>
     <td style="text-align:right;white-space:nowrap">
-      <button type="button" class="icon-button" title="Editar atividade" onclick="openActivityForm('${record.id}')"><i class="ti ti-pencil"></i></button>
-      <button type="button" class="icon-button icon-button-perigo" title="Excluir atividade" onclick="confirmDeleteActivity('${record.id}')"><i class="ti ti-trash"></i></button>
+      <button type="button" class="icon-button" title="Editar atividade" onclick="abrirFormularioAtividade('${registro.id}')"><i class="ti ti-pencil"></i></button>
+      <button type="button" class="icon-button icon-button-perigo" title="Excluir atividade" onclick="confirmarExclusaoAtividade('${registro.id}')"><i class="ti ti-trash"></i></button>
     </td>
   </tr>`;
 }
 
 /*
- * buildActivityForm()
- * Builds the modal (hidden by default) used both to create and to edit
- * a record. The same form serves both cases: the hidden
- * "campo-atividade-id" field is empty when creating and filled in when
- * editing — that value is what saveActivityForm() uses to decide
- * between adding or updating.
+ * construirFormularioAtividade()
+ * Monta o modal (escondido por padrão) usado tanto pra criar quanto pra
+ * editar um registro. O mesmo formulário serve os dois casos: o campo
+ * oculto "campo-atividade-id" fica vazio ao criar e preenchido ao
+ * editar — esse valor é o que salvarFormularioAtividade() usa pra decidir
+ * entre adicionar ou atualizar.
  */
-function buildActivityForm() {
-  return `<div class="modal-fundo oculto" id="fundo-formulario-atividade" onclick="closeActivityFormOnOutsideClick(event)">
+function construirFormularioAtividade() {
+  return `<div class="modal-fundo oculto" id="fundo-formulario-atividade" onclick="fecharFormularioAtividadeAoClicarFora(event)">
     <div class="modal-caixa">
       <div class="modal-cabecalho">
         <span class="modal-titulo" id="titulo-formulario-atividade">Adicionar atividade</span>
-        <button type="button" class="modal-botao-fechar" onclick="closeActivityForm()" aria-label="Fechar">×</button>
+        <button type="button" class="modal-botao-fechar" onclick="fecharFormularioAtividade()" aria-label="Fechar">×</button>
       </div>
-      <form id="formulario-atividade" onsubmit="saveActivityForm(event)">
+      <form id="formulario-atividade" onsubmit="salvarFormularioAtividade(event)">
         <input type="hidden" id="campo-atividade-id">
         <label class="modal-campo">
           <span>Tema</span>
@@ -2662,7 +2600,7 @@ function buildActivityForm() {
           <input type="text" id="campo-atividade-responsavel" placeholder="Ex: Equipe de Projetos Saint Gobain / P2P" required maxlength="120">
         </label>
         <div class="modal-rodape">
-          <button type="button" class="btn" onclick="closeActivityForm()">Cancelar</button>
+          <button type="button" class="btn" onclick="fecharFormularioAtividade()">Cancelar</button>
           <button type="submit" class="btn primary">Salvar</button>
         </div>
       </form>
@@ -2671,18 +2609,18 @@ function buildActivityForm() {
 }
 
 /*
- * buildImprovementActivitiesSection()
- * Builds the whole "Atividades" card: title, add button, table
- * (or empty-list message) and the create/edit modal.
+ * construirSecaoAtividadesMelhorias()
+ * Monta o card "Atividades" inteiro: título, botão de adicionar, tabela
+ * (ou mensagem de lista vazia) e o modal de criar/editar.
  */
-function buildImprovementActivitiesSection() {
-  const records = loadImprovementActivities();
+function construirSecaoAtividadesMelhorias() {
+  const registros = carregarAtividadesMelhorias();
 
-  const tableBody = records.length
+  const corpoTabela = registros.length
     ? `<table class="tbl"><thead><tr>
          <th>Tema</th><th>Atividade</th><th>Observação</th><th>Responsável</th><th></th>
        </tr></thead>
-       <tbody>${records.map(buildActivityTableRow).join('')}</tbody></table>`
+       <tbody>${registros.map(construirLinhaTabelaAtividade).join('')}</tbody></table>`
     : `<div class="empty" style="padding:32px 20px"><i class="ti ti-clipboard-list"></i>Nenhuma atividade registrada ainda.</div>`;
 
   return `<div class="card">
@@ -2691,102 +2629,102 @@ function buildImprovementActivitiesSection() {
       <span class="rt">registro manual, salvo neste navegador</span>
     </div>
     <div style="margin-bottom:14px">
-      <button type="button" class="btn primary" onclick="openActivityForm()"><i class="ti ti-plus"></i> Adicionar atividade</button>
+      <button type="button" class="btn primary" onclick="abrirFormularioAtividade()"><i class="ti ti-plus"></i> Adicionar atividade</button>
     </div>
-    ${tableBody}
+    ${corpoTabela}
   </div>
-  ${buildActivityForm()}`;
+  ${construirFormularioAtividade()}`;
 }
 
 /*
- * renderImprovementActivitiesSection()
- * Recreates only the content of the #mel-atividades container. Called by
- * buildImprovements() when assembling the tab, and again after any
- * add/edit/delete — without needing to recalculate the rest of the
- * Improvements tab's KPIs and charts.
+ * renderizarSecaoAtividadesMelhorias()
+ * Recria só o conteúdo do container #mel-atividades. Chamada por
+ * construirMelhorias() ao montar a aba, e de novo depois de qualquer
+ * adição/edição/exclusão — sem precisar recalcular o resto dos KPIs
+ * e gráficos da aba Melhorias.
  */
-function renderImprovementActivitiesSection() {
+function renderizarSecaoAtividadesMelhorias() {
   const container = document.getElementById('mel-atividades');
-  if (container) container.innerHTML = buildImprovementActivitiesSection();
+  if (container) container.innerHTML = construirSecaoAtividadesMelhorias();
 }
 
 /*
- * openActivityForm(activityId)
- * With no argument, opens the modal blank (create mode). With the id of
- * an existing record, opens the modal filled with its current values
- * (edit mode).
+ * abrirFormularioAtividade(idAtividade)
+ * Sem argumento, abre o modal em branco (modo criação). Com o id de
+ * um registro existente, abre o modal preenchido com os valores atuais
+ * (modo edição).
  */
-function openActivityForm(activityId) {
-  const existingRecord = activityId
-    ? loadImprovementActivities().find(record => record.id === activityId)
+function abrirFormularioAtividade(idAtividade) {
+  const registroExistente = idAtividade
+    ? carregarAtividadesMelhorias().find(registro => registro.id === idAtividade)
     : null;
 
   document.getElementById('titulo-formulario-atividade').textContent =
-    existingRecord ? 'Editar atividade' : 'Adicionar atividade';
-  document.getElementById('campo-atividade-id').value         = existingRecord ? existingRecord.id : '';
-  document.getElementById('campo-atividade-tema').value        = existingRecord ? existingRecord.tema : '';
-  document.getElementById('campo-atividade-etapa').value       = existingRecord ? existingRecord.atividade : '';
-  document.getElementById('campo-atividade-observacao').value  = existingRecord ? existingRecord.observacao : '';
-  document.getElementById('campo-atividade-responsavel').value = existingRecord ? existingRecord.responsavel : '';
+    registroExistente ? 'Editar atividade' : 'Adicionar atividade';
+  document.getElementById('campo-atividade-id').value         = registroExistente ? registroExistente.id : '';
+  document.getElementById('campo-atividade-tema').value        = registroExistente ? registroExistente.tema : '';
+  document.getElementById('campo-atividade-etapa').value       = registroExistente ? registroExistente.atividade : '';
+  document.getElementById('campo-atividade-observacao').value  = registroExistente ? registroExistente.observacao : '';
+  document.getElementById('campo-atividade-responsavel').value = registroExistente ? registroExistente.responsavel : '';
 
   document.getElementById('fundo-formulario-atividade').classList.remove('oculto');
 }
 
 /*
- * closeActivityForm()
- * Just hides the modal — any typed data is discarded, since nothing is
- * saved before the form is submitted.
+ * fecharFormularioAtividade()
+ * Só esconde o modal — qualquer dado digitado é descartado, já que nada
+ * é salvo antes do formulário ser enviado.
  */
-function closeActivityForm() {
+function fecharFormularioAtividade() {
   document.getElementById('fundo-formulario-atividade').classList.add('oculto');
 }
 
 /*
- * closeActivityFormOnOutsideClick(event)
- * The modal covers the whole screen with a dimmed background
- * (#fundo-formulario-atividade) behind the white box. Clicking that
- * background closes the modal; clicking inside the box (or its fields)
- * should not close it — hence the click-target check.
+ * fecharFormularioAtividadeAoClicarFora(event)
+ * O modal cobre a tela inteira com um fundo escurecido
+ * (#fundo-formulario-atividade) atrás da caixa branca. Clicar nesse
+ * fundo fecha o modal; clicar dentro da caixa (ou nos campos) não deve
+ * fechar — daí a checagem do alvo do clique.
  */
-function closeActivityFormOnOutsideClick(event) {
-  if (event.target.id === 'fundo-formulario-atividade') closeActivityForm();
+function fecharFormularioAtividadeAoClicarFora(event) {
+  if (event.target.id === 'fundo-formulario-atividade') fecharFormularioAtividade();
 }
 
 /*
- * saveActivityForm(event)
- * Submit handler for the modal's form. Decides between create or update
- * based on the hidden "campo-atividade-id" field: empty means a new
- * record; filled in means editing an existing one.
+ * salvarFormularioAtividade(event)
+ * Handler de submit do formulário do modal. Decide entre criar ou
+ * atualizar com base no campo oculto "campo-atividade-id": vazio
+ * significa um registro novo; preenchido significa editar um existente.
  */
-function saveActivityForm(event) {
+function salvarFormularioAtividade(event) {
   event.preventDefault();
 
-  const activityId = document.getElementById('campo-atividade-id').value;
-  const formData = {
+  const idAtividade = document.getElementById('campo-atividade-id').value;
+  const dadosFormulario = {
     tema:        document.getElementById('campo-atividade-tema').value.trim(),
     atividade:   document.getElementById('campo-atividade-etapa').value.trim(),
     observacao:  document.getElementById('campo-atividade-observacao').value.trim(),
     responsavel: document.getElementById('campo-atividade-responsavel').value.trim()
   };
 
-  if (activityId) updateImprovementActivity(activityId, formData);
-  else addImprovementActivity(formData);
+  if (idAtividade) atualizarAtividadeMelhoria(idAtividade, dadosFormulario);
+  else adicionarAtividadeMelhoria(dadosFormulario);
 
-  closeActivityForm();
-  renderImprovementActivitiesSection();
+  fecharFormularioAtividade();
+  renderizarSecaoAtividadesMelhorias();
 }
 
 /*
- * confirmDeleteActivity(activityId)
- * Asks for native browser confirmation before deleting. There is no
- * trash bin or "undo" for these records — hence the explicit confirmation.
+ * confirmarExclusaoAtividade(idAtividade)
+ * Pede confirmação nativa do navegador antes de excluir. Não há lixeira
+ * nem "desfazer" pra esses registros — daí a confirmação explícita.
  */
-function confirmDeleteActivity(activityId) {
-  const userConfirmed = window.confirm('Excluir esta atividade? Essa ação não pode ser desfeita.');
-  if (!userConfirmed) return;
+function confirmarExclusaoAtividade(idAtividade) {
+  const usuarioConfirmou = window.confirm('Excluir esta atividade? Essa ação não pode ser desfeita.');
+  if (!usuarioConfirmou) return;
 
-  deleteImprovementActivity(activityId);
-  renderImprovementActivitiesSection();
+  excluirAtividadeMelhoria(idAtividade);
+  renderizarSecaoAtividadesMelhorias();
 }
 
 
@@ -2798,7 +2736,7 @@ function confirmDeleteActivity(activityId) {
    Many activities have no date filled in — the interface shows how many were excluded.
    ============================================================ */
 /*
- * buildAna() — Analytics tab.
+ * buildAnalytics() — Analytics tab.
  *
  * Reads:  App.P.ana
  * Writes: #ana-content
@@ -2812,10 +2750,10 @@ function confirmDeleteActivity(activityId) {
  * Produces:
  *  - KPIs: total, completed, in progress, not started
  *  - Status donut, bars by priority, area and owner
- *  - Priority × area heatmap (via buildHeatmap(), called directly here)
+ *  - Priority × area heatmap (via construirMapaCalor(), called directly here)
  */
-function buildAna(){
-  const {kept:A, noDate} = applyDate(App.P.ana);
+function buildAnalytics(){
+  const {kept:A, noDate} = filtrarPorPeriodo(App.P.ana);
   document.getElementById('ana-empty').style.display  = App.P.ana.length ? 'none' : 'block';
   document.getElementById('ana-content').style.display = App.P.ana.length ? 'block' : 'none';
   if(!App.P.ana.length) return;
@@ -2841,25 +2779,25 @@ function buildAna(){
   // only priorities 1 to 5 (values outside that range are dropped from the chart)
   const prioCount = count(A.filter(a => a.prio && a.prio>=1 && a.prio<=5), a => 'Prioridade '+a.prio);
   let html = dateNote + `<div class="sh">Analytics</div>
-  ${aiBar('ana')}
+  ${barraAnalise('ana')}
   <div class="krow">
-    <div class="kpi">${kpiIcon('chartbar')}<div class="knum">${A.length}</div><div class="klbl">Total</div></div>
-    <div class="kpi gl">${kpiIcon('check')}<div class="knum">${done}</div><div class="klbl">Concluídas</div><div class="ksub">${pct(done,A.length)}%</div></div>
-    <div class="kpi il">${kpiIcon('clock')}<div class="knum">${doing}</div><div class="klbl">Em andamento</div></div>
-    <div class="kpi">${kpiIcon('minus')}<div class="knum">${todo}</div><div class="klbl">Não iniciadas</div></div>
+    <div class="kpi">${iconeKpi('chartbar')}<div class="knum">${A.length}</div><div class="klbl">Total</div></div>
+    <div class="kpi gl">${iconeKpi('check')}<div class="knum">${done}</div><div class="klbl">Concluídas</div><div class="ksub">${calculatePercentage(done,A.length)}%</div></div>
+    <div class="kpi il">${iconeKpi('clock')}<div class="knum">${doing}</div><div class="klbl">Em andamento</div></div>
+    <div class="kpi">${iconeKpi('minus')}<div class="knum">${todo}</div><div class="klbl">Não iniciadas</div></div>
   </div>`;
   html += `<div class="g3">
     <div class="card"><div class="card-title"><i class="ti ti-chart-pie"></i> Status</div>
       ${donut(['done','doing','todo','blocked','cancel'].map(k=>({label:STATUS_PT[k],value:A.filter(a=>a.sc===k).length,color:STATUS_COLOR[k]})).filter(d=>d.value))}</div>
     <div class="card"><div class="card-title"><i class="ti ti-flag"></i> Por prioridade</div>
-      ${hbars(Object.entries(prioCount).sort((a,b)=>{const na=+a[0].match(/\d+/),nb=+b[0].match(/\d+/);return na-nb;}),{max:10,lw:90})}</div>
+      ${horizontalBars(Object.entries(prioCount).sort((a,b)=>{const na=+a[0].match(/\d+/),nb=+b[0].match(/\d+/);return na-nb;}),{max:10,lw:90})}</div>
     <div class="card"><div class="card-title"><i class="ti ti-building"></i> Por frente</div>
-      ${hbars(sortedCountEntries(A.filter(a=>a.frente), a=>a.frente),{max:8,lw:60,tot:A.length})}</div>
+      ${horizontalBars(sortedCountEntries(A.filter(a=>a.frente), a=>a.frente),{max:8,lw:60,tot:A.length})}</div>
   </div>`;
   html += `<div class="two">
     <div class="card"><div class="card-title"><i class="ti ti-user"></i> Por responsável</div>
-      ${hbars(sortedCountEntries(A.filter(a=>a.resp), a=>a.resp),{max:8,lw:140})}</div>
-    ${buildHeatmap()}
+      ${horizontalBars(sortedCountEntries(A.filter(a=>a.resp), a=>a.resp),{max:8,lw:140})}</div>
+    ${construirMapaCalor()}
   </div>`;
   document.getElementById('ana-content').innerHTML = html;
   flushCharts();
@@ -2868,8 +2806,8 @@ function buildAna(){
 
 // Helper: atualiza o badge numérico de uma aba no menu de navegação
 function setBadge(id, txt, cls){
-  const e = document.getElementById(id);
-  if(e){ e.textContent=txt; e.className='nb'+(cls?' '+cls:''); }
+  const element = document.getElementById(id);
+  if(element){ element.textContent=txt; element.className='nb'+(cls?' '+cls:''); }
 }
 
 
@@ -2901,7 +2839,7 @@ function setBadge(id, txt, cls){
  *   6. List sub-tab        → htmlLista + renderRPAList()
  */
 function buildRPATickets(){
-  const {kept: chamados, noDate} = applyDate(App.R);
+  const {kept: chamados, noDate} = filtrarPorPeriodo(App.R);
   const emptyEl = document.getElementById('rpa-empty');
   emptyEl.style.display  = App.R.length ? 'none' : 'block';
   document.getElementById('rpa-content').style.display = App.R.length ? 'block' : 'none';
@@ -2938,7 +2876,7 @@ function buildRPATickets(){
     <span style="font-size:11px;color:var(--ink4);margin-left:auto" id="rpa-fs-count"></span>
   </div>`;
 
-  let htmlVisao = dateNote + aiBar('rpa') + filtroStatus + `<div id="rpa-visao-kpis"></div>`;
+  let htmlVisao = dateNote + barraAnalise('rpa') + filtroStatus + `<div id="rpa-visao-kpis"></div>`;
   document.getElementById('rpage-visao').innerHTML = htmlVisao;
   // the KPIs and charts are rendered by renderRPAStatus (it respects the status filter)
   renderRPAStatus();
@@ -2955,8 +2893,8 @@ function rpaLabelWithArea(chamados) {
   const areaPorProc = {};
   chamados.forEach(r => { if(r.processo && !areaPorProc[r.processo]) areaPorProc[r.processo] = r.area; });
   return proc => {
-    const a = areaPorProc[proc];
-    return a && a !== '(não mapeada)' ? `${proc}  ·  ${a}` : proc;
+    const area = areaPorProc[proc];
+    return area && area !== '(não mapeada)' ? `${proc}  ·  ${area}` : proc;
   };
 }
 
@@ -2966,7 +2904,7 @@ function buildRPATabTopBots(chamados, labelComArea) {
     .map(([proc, n]) => [labelComArea(proc), n]);
   document.getElementById('rpage-bots').innerHTML =
     `<div class="card"><div class="card-title"><i class="ti ti-trophy"></i> Top bots por nº de manutenções<span class="rt">${procList.length} processos</span></div>
-      ${hbars(procList,{max:15,lw:300,color:'var(--err)',fixedLabel:true})}</div>`;
+      ${horizontalBars(procList,{max:15,lw:300,color:'var(--err)',fixedLabel:true})}</div>`;
   flushCharts();
 }
 
@@ -3055,17 +2993,17 @@ function buildRPATabTime(chamados, labelComArea) {
 
   const notaTempoMedio = `<div class="note" style="margin-top:14px;margin-bottom:0;background:var(--neu-bg);color:var(--ink3)"><i class="ti ti-info-circle"></i><div>Soma dos dias em <b>Identificação</b> + <b>Desenvolvimento</b> dividida pelo nº de chamados do bot. Só bots com <b>3+ chamados</b> entram (evita distorção de amostra única).</div></div>`;
   const cardTempoMedio = `<div class="card"><div class="card-title"><i class="ti ti-clock"></i> Tempo médio por bot<span class="rt">dias · 3+ chamados</span></div>
-    ${hbars(procAvg,{max:12,lw:200,color:'var(--warn)'})}${notaTempoMedio}</div>`;
+    ${horizontalBars(procAvg,{max:12,lw:200,color:'var(--warn)'})}${notaTempoMedio}</div>`;
 
   let html = `<div class="krow">
-    <div class="kpi">${kpiIcon('clock')}<div class="knum sm">${avgField(chamados,'tIdent')}</div><div class="klbl">Média dias · Identificação</div></div>
-    <div class="kpi">${kpiIcon('clock')}<div class="knum sm">${avgField(chamados,'tDesenv')}</div><div class="klbl">Média dias · Desenvolvimento</div></div>
-    <div class="kpi">${kpiIcon('clock')}<div class="knum sm">${avgField(chamados,'tReexec')}</div><div class="klbl">Média dias · Reexecução</div></div>
-    <div class="kpi">${kpiIcon('chartbar')}<div class="knum sm">${chamados.filter(r=>r.tIdent!=null||r.tDesenv!=null).length}</div><div class="klbl">Chamados com tempo medido</div></div>
+    <div class="kpi">${iconeKpi('clock')}<div class="knum sm">${averageField(chamados,'tIdent')}</div><div class="klbl">Média dias · Identificação</div></div>
+    <div class="kpi">${iconeKpi('clock')}<div class="knum sm">${averageField(chamados,'tDesenv')}</div><div class="klbl">Média dias · Desenvolvimento</div></div>
+    <div class="kpi">${iconeKpi('clock')}<div class="knum sm">${averageField(chamados,'tReexec')}</div><div class="klbl">Média dias · Reexecução</div></div>
+    <div class="kpi">${iconeKpi('chartbar')}<div class="knum sm">${chamados.filter(r=>r.tIdent!=null||r.tDesenv!=null).length}</div><div class="klbl">Chamados com tempo medido</div></div>
   </div>`;
   if (procUm.length) {
     html += `<div class="two">${cardTempoMedio}<div class="card"><div class="card-title"><i class="ti ti-clock-hour-4"></i> Bots com 1 chamado<span class="rt">dias · ${procUm.length} bots</span></div>
-      ${hbars(procUm,{max:20,lw:200,color:'#5aa0a0'})}
+      ${horizontalBars(procUm,{max:20,lw:200,color:'#5aa0a0'})}
       <div class="note" style="margin-top:14px;margin-bottom:0;background:var(--neu-bg);color:var(--ink3)"><i class="ti ti-info-circle"></i><div>Um único chamado — não é média, serve de referência.</div></div></div></div>`;
   } else {
     html += cardTempoMedio;
@@ -3092,7 +3030,7 @@ function buildRPATabList(chamados, total, venc) {
  * Includes: KPIs, monthly volume, opened by weekday (Mon-Fri) and tickets by area.
  */
 function renderRPAStatus(){
-  const {kept: chamadosFiltrados} = applyDate(App.R);   // já filtrado pelo período global
+  const {kept: chamadosFiltrados} = filtrarPorPeriodo(App.R);   // já filtrado pelo período global
   const faseSelecionada = document.getElementById('rpa-fs')?.value || '';
   const chamados = faseSelecionada ? chamadosFiltrados.filter(r => r.fase === faseSelecionada) : chamadosFiltrados;
 
@@ -3101,18 +3039,18 @@ function renderRPAStatus(){
   const concl      = chamados.filter(r => r.fase.toLowerCase().includes('conclu')).length;
   const abertos    = total - concl;
   const reexec     = chamados.filter(r => r.problema.toLowerCase().includes('reexecu')).length;
-  const pctVenc    = pct(venc, total);
+  const pctVenc    = calculatePercentage(venc, total);
   const procUnicos = new Set(chamados.map(r => r.processo).filter(p => p && p !== '(sem processo)')).size;
 
   const cnt = document.getElementById('rpa-fs-count');
   if(cnt) cnt.textContent = faseSelecionada ? `${total} chamados em "${faseSelecionada}"` : `${total} chamados`;
 
   let htmlKpis = `<div class="krow k5">
-    <div class="kpi">${kpiIcon('ticket')}<div class="knum">${total}</div><div class="klbl">Total chamados</div><div class="ksub">${procUnicos} processos distintos</div></div>
-    <div class="kpi gl">${kpiIcon('check')}<div class="knum">${concl}</div><div class="klbl">Concluídos</div><div class="ksub">${pct(concl,total)}%</div></div>
-    <div class="kpi il">${kpiIcon('clock')}<div class="knum">${abertos}</div><div class="klbl">Abertos</div></div>
-    <div class="kpi dl">${kpiIcon('alert')}<div class="knum">${venc}</div><div class="klbl">Vencidos</div><div class="ksub">${pctVenc}% do total</div></div>
-    <div class="kpi wl">${kpiIcon('refresh')}<div class="knum">${reexec}</div><div class="klbl">Reexecuções</div></div>
+    <div class="kpi">${iconeKpi('ticket')}<div class="knum">${total}</div><div class="klbl">Total chamados</div><div class="ksub">${procUnicos} processos distintos</div></div>
+    <div class="kpi gl">${iconeKpi('check')}<div class="knum">${concl}</div><div class="klbl">Concluídos</div><div class="ksub">${calculatePercentage(concl,total)}%</div></div>
+    <div class="kpi il">${iconeKpi('clock')}<div class="knum">${abertos}</div><div class="klbl">Abertos</div></div>
+    <div class="kpi dl">${iconeKpi('alert')}<div class="knum">${venc}</div><div class="klbl">Vencidos</div><div class="ksub">${pctVenc}% do total</div></div>
+    <div class="kpi wl">${iconeKpi('refresh')}<div class="knum">${reexec}</div><div class="klbl">Reexecuções</div></div>
   </div>`;
 
   // Monthly volume (stacked bars: normal tickets + overdue)
@@ -3124,7 +3062,7 @@ function renderRPAStatus(){
     }
   });
   const meses = Object.keys(porMes).sort().slice(-12);
-  const vol   = chartVBars(meses, porMes, porMesV);
+  const vol   = verticalBarsChart(meses, porMes, porMesV);
 
   // Monthly volume + phase donut side by side (time view + current state)
   htmlKpis += `<div class="two">
@@ -3150,7 +3088,7 @@ function renderRPAStatus(){
   areaEntries.sort((a,b)=>b[1]-a[1]);
   if(outrosArea > 0) areaEntries.push(['Outros', outrosArea]); // "Outros" sempre por último
   htmlKpis += `<div class="card"><div class="card-title"><i class="ti ti-building"></i> Tickets por área</div>
-    ${hbars(areaEntries,{max:12,lw:120,tot:total,fixedLabel:true})}</div>`;
+    ${horizontalBars(areaEntries,{max:12,lw:120,tot:total,fixedLabel:true})}</div>`;
 
   document.getElementById('rpa-visao-kpis').innerHTML = htmlKpis;
   flushCharts();
@@ -3162,9 +3100,9 @@ function renderRPAStatus(){
  * Shows up to 1000 tickets; warns if there are more.
  */
 function renderRPAList(){
-  const {kept: chamados} = applyDate(App.R);
-  const q = (document.getElementById('rsearch')?.value||'').toLowerCase();
-  const vis = q ? chamados.filter(r=>(r.cod+r.processo+r.solicitante+r.problema).toLowerCase().includes(q)) : chamados;
+  const {kept: chamados} = filtrarPorPeriodo(App.R);
+  const query = (document.getElementById('rsearch')?.value||'').toLowerCase();
+  const vis = query ? chamados.filter(r=>(r.cod+r.processo+r.solicitante+r.problema).toLowerCase().includes(query)) : chamados;
   const cnt = document.getElementById('rlista-count');
   if(cnt) cnt.textContent = vis.length+' chamados';
   let linhasChamados = vis.slice(0,1000).map(r => {
@@ -3174,7 +3112,7 @@ function renderRPAList(){
       <td style="font-size:11px">${r.processo}</td>
       <td style="font-size:11px;color:var(--ink3)">${r.problema}</td>
       <td><span class="badge ${concl?'ok':'info'}" style="font-size:9px">${r.fase}</span></td>
-      <td style="font-size:11px;color:var(--ink4)">${ymLabel(r.mes)}</td>
+      <td style="font-size:11px;color:var(--ink4)">${toYearMonthLabel(r.mes)}</td>
       <td style="padding-right:20px">${r.vencido?'<span class="badge red">Vencido</span>':'<span class="badge neu">No prazo</span>'}</td></tr>`;
   }).join('');
   if(vis.length > 1000) linhasChamados += `<tr><td colspan="6" style="text-align:center;padding:16px;color:var(--ink4);font-size:12px">Exibindo 1000 de ${vis.length} — use a busca para refinar</td></tr>`;
@@ -3212,21 +3150,21 @@ function renderRPAList(){
 function buildBots(){
   // Special AnoPRD filter (extracts just the year from the selected date range)
   const dr = App.dateRange;
-  let B = App.B;
+  let bots = App.B;
   let dateNote = '';
   if(dr.mode !== 'all'){
     const yFrom = dr.from ? dr.from.getFullYear() : null;
     const yTo   = dr.to   ? dr.to.getFullYear()   : null;
-    B = App.B.filter(b => {
-      const y = parseInt(b.anoPrd);
-      if(isNaN(y)) return false;            // sem AnoPRD: fica fora do filtro
-      if(yFrom!=null && y<yFrom) return false;
-      if(yTo!=null   && y>yTo)   return false;
+    bots = App.B.filter(b => {
+      const prdYear = parseInt(b.anoPrd);
+      if(isNaN(prdYear)) return false;            // sem AnoPRD: fica fora do filtro
+      if(yFrom!=null && prdYear<yFrom) return false;
+      if(yTo!=null   && prdYear>yTo)   return false;
       return true;
     });
     const semAno = App.B.filter(b => isNaN(parseInt(b.anoPrd))).length;
     dateNote = `<div class="note" style="background:var(--neu-bg);color:var(--ink3)"><i class="ti ti-calendar-stats"></i><div>
-      Período aplicado: <b>${B.length} bots</b> que entraram em produção entre ${yFrom||'∞'} e ${yTo||'∞'}.` +
+      Período aplicado: <b>${bots.length} bots</b> que entraram em produção entre ${yFrom||'∞'} e ${yTo||'∞'}.` +
       (semAno>0 ? ` ${semAno} bots sem ano de PRD não entram no filtro.` : '') +
       `<br><span style="font-size:10px;opacity:.6;font-style:italic">Referência de data: ano de entrada em produção (AnoPRD) — filtra por ano, não por data exata</span>
       </div></div>`;
@@ -3235,21 +3173,21 @@ function buildBots(){
   document.getElementById('bots-content').style.display = App.B.length ? 'block' : 'none';
   if(!App.B.length) return;
 
-  const prd       = B.filter(b=>b.status==='PRD').length;
-  const dev       = B.filter(b=>b.status==='DEV').length;
-  const backlog   = B.filter(b=>b.status==='BACKLOG').length;
-  const cancel    = B.filter(b=>b.status==='CANCELADO'||b.status==='DESATIVADO').length;
+  const prd       = bots.filter(b=>b.status==='PRD').length;
+  const dev       = bots.filter(b=>b.status==='DEV').length;
+  const backlog   = bots.filter(b=>b.status==='BACKLOG').length;
+  const cancel    = bots.filter(b=>b.status==='CANCELADO'||b.status==='DESATIVADO').length;
 
   let html = dateNote + `<div class="sh">Inventário de Bots — RPA</div>
-  ${aiBar('bots')}
+  ${barraAnalise('bots')}
   <div class="krow">
-    <div class="kpi">${kpiIcon('robot')}<div class="knum">${B.length}</div><div class="klbl">Total de bots</div></div>
-    <div class="kpi gl">${kpiIcon('rocket')}<div class="knum">${prd}</div><div class="klbl">Em produção</div><div class="ksub">${pct(prd,B.length)}% do total</div></div>
-    <div class="kpi wl">${kpiIcon('code')}<div class="knum">${dev}</div><div class="klbl">Em desenvolvimento</div></div>
-    <div class="kpi">${kpiIcon('stack')}<div class="knum">${backlog}</div><div class="klbl">Backlog</div></div>
+    <div class="kpi">${iconeKpi('robot')}<div class="knum">${bots.length}</div><div class="klbl">Total de bots</div></div>
+    <div class="kpi gl">${iconeKpi('rocket')}<div class="knum">${prd}</div><div class="klbl">Em produção</div><div class="ksub">${calculatePercentage(prd,bots.length)}% do total</div></div>
+    <div class="kpi wl">${iconeKpi('code')}<div class="knum">${dev}</div><div class="klbl">Em desenvolvimento</div></div>
+    <div class="kpi">${iconeKpi('stack')}<div class="knum">${backlog}</div><div class="klbl">Backlog</div></div>
   </div>`;
 
-  const prdBots = B.filter(b=>b.status==='PRD');
+  const prdBots = bots.filter(b=>b.status==='PRD');
   // The 5 main business areas stay visible; the rest (MEX, PAM, IT, etc.)
   // are summed into "Outros" so the bars' total matches the total bots in PRD.
   const AREAS_PRINCIPAIS = MAIN_RPA_AREAS;
@@ -3264,13 +3202,13 @@ function buildBots(){
   if(outrosPrd > 0) areaBots.push(['Outros', outrosPrd]); // "Outros" por último
   html += `<div class="two">
     <div class="card"><div class="card-title"><i class="ti ti-building"></i> Bots em PRD por área</div>
-      ${hbars(areaBots,{max:6,lw:60,tot:prd})}</div>
+      ${horizontalBars(areaBots,{max:6,lw:60,tot:prd})}</div>
     <div class="card"><div class="card-title"><i class="ti ti-world"></i> Por perímetro</div>
       ${donut(Object.entries(count(prdBots,b=>b.perimetro)).map(([k,v],i)=>({label:k,value:v,color:['var(--info)','var(--ok)','var(--warn)','var(--err)'][i%4]})))}</div>
   </div>`;
   html += `<div class="two">
     <div class="card"><div class="card-title"><i class="ti ti-alert-octagon"></i> Por criticidade</div>
-      ${hbars([1,2,3,4].map(c=>['Criticidade '+c,prdBots.filter(b=>b.criticidade===c).length]).filter(e=>e[1]),{max:4,lw:100})}
+      ${horizontalBars([1,2,3,4].map(c=>['Criticidade '+c,prdBots.filter(b=>b.criticidade===c).length]).filter(e=>e[1]),{max:4,lw:100})}
       <div class="note" style="margin-top:14px;margin-bottom:0;background:var(--neu-bg);color:var(--ink3)"><i class="ti ti-info-circle"></i><div>
         <b>Critérios de criticidade:</b><br>
         <b>1 — Crítica:</b> processo essencial; falha gera impacto financeiro/fiscal imediato ou para a operação.<br>
@@ -3278,18 +3216,18 @@ function buildBots(){
         <b>3 — Média:</b> processo recorrente; falha tem impacto moderado e contornável.<br>
         <b>4 — Baixa:</b> processo de apoio; falha tem baixo impacto e pode esperar.</div></div></div>
     <div class="card"><div class="card-title"><i class="ti ti-repeat"></i> Por frequência</div>
-      ${hbars(sortedCountEntries(prdBots.filter(b=>b.freq), b=>b.freq),{max:6,lw:80})}</div>
+      ${horizontalBars(sortedCountEntries(prdBots.filter(b=>b.freq), b=>b.freq),{max:6,lw:80})}</div>
   </div>`;
 
   // Inventory × tickets cross-reference (only if the RPA report is loaded)
-  if(App.R.length) html += buildBotsCruzamento(B);
+  if(App.R.length) html += buildBotsCruzamento(bots);
 
   // List filtered by status and area
   html += `<div class="filters" style="margin-top:8px">
     <label>Status</label><select id="bot-fs" onchange="renderBotsList()"><option value="">Todos</option>
       <option>PRD</option><option>DEV</option><option>BACKLOG</option><option>CANCELADO</option><option>DESATIVADO</option></select>
     <label>Área</label><select id="bot-fa" onchange="renderBotsList()"><option value="">Todas</option>
-      ${[...new Set(B.map(b=>b.area))].filter(Boolean).sort().map(a=>`<option>${a}</option>`).join('')}</select></div>
+      ${[...new Set(bots.map(b=>b.area))].filter(Boolean).sort().map(a=>`<option>${a}</option>`).join('')}</select></div>
     <div class="card np"><div class="ilist" id="bots-list" style="border:none;border-radius:0"></div></div>`;
   document.getElementById('bots-content').innerHTML = html;
   flushCharts();
@@ -3306,8 +3244,8 @@ function buildBots(){
  * is very different from the process name in Pipefy, the cross-reference can miss it.
  */
 function buildBotsCruzamento(Bf){
-  const norm = normBotName;
-  const {kept:Rf} = applyDate(App.R); // also applies the date filter to the tickets
+  const norm = normalizeBotName;
+  const {kept:Rf} = filtrarPorPeriodo(App.R); // also applies the date filter to the tickets
   const chamPorProc = count(Rf, r => r.processo);
   const rows = Bf.filter(b => b.status === 'PRD').map(b => {
     const botNameNorm = norm(b.nome);
@@ -3348,20 +3286,20 @@ function renderBotsList(){
     const yFrom = dr.from ? dr.from.getFullYear() : null;
     const yTo   = dr.to   ? dr.to.getFullYear()   : null;
     source = App.B.filter(b=>{
-      const y = parseInt(b.anoPrd);
-      if(isNaN(y)) return false;
-      if(yFrom!=null && y<yFrom) return false;
-      if(yTo!=null   && y>yTo)   return false;
+      const prdYear = parseInt(b.anoPrd);
+      if(isNaN(prdYear)) return false;
+      if(yFrom!=null && prdYear<yFrom) return false;
+      if(yTo!=null   && prdYear>yTo)   return false;
       return true;
     });
   }
   if(!App.botsOpen) App.botsOpen = new Set();
-  let B = source.filter(b => (!filterStatus||b.status===filterStatus) && (!filterArea||b.area===filterArea));
+  let bots = source.filter(b => (!filterStatus||b.status===filterStatus) && (!filterArea||b.area===filterArea));
   const sb = {PRD:'ok', DEV:'info', BACKLOG:'neu', CANCELADO:'red', DESATIVADO:'red'};
   const botDot = {PRD:'#4DB1B3', DEV:'#0195D6', BACKLOG:'#9CA3AF', CANCELADO:'#C5284C', DESATIVADO:'#E83430'};
   const critLabel = {1:'Crítica',2:'Alta',3:'Média',4:'Baixa'};
   const critBadge = {1:'err',2:'warn',3:'neu',4:'neu'};
-  let itensBots = B.slice(0,200).map(b => {
+  let itensBots = bots.slice(0,200).map(b => {
     const key = b.nome;
     const open = App.botsOpen.has(key);
     const safeKey = key.replace(/'/g,"\\'").replace(/"/g,'&quot;');
@@ -3391,7 +3329,7 @@ function renderBotsList(){
       ${open ? botDetails(b) : ''}
     </div>`;
   }).join('');
-  if(B.length>200) itensBots += `<div class="icard" style="justify-content:center;color:var(--ink4);font-size:12px">Exibindo 200 de ${B.length}</div>`;
+  if(bots.length>200) itensBots += `<div class="icard" style="justify-content:center;color:var(--ink4);font-size:12px">Exibindo 200 de ${bots.length}</div>`;
   const listaBots = document.getElementById('bots-list');
   if(listaBots) listaBots.innerHTML = itensBots || '<div class="empty" style="padding:24px">Nenhum bot neste filtro</div>';
 }
@@ -3404,20 +3342,20 @@ function toggleBot(key){
   renderBotsList();
 }
 
-function botDetails(b){
+function botDetails(bot){
   const row = (lbl, val) => val ? `<div class="pd-block"><div class="pd-lbl">${lbl}</div><div class="pd-val">${val}</div></div>` : '';
   const critDesc = {1:'Falha gera impacto financeiro/fiscal imediato ou para a operação.',2:'Processo com prazo sensível — falha causa atraso relevante.',3:'Falha tem impacto moderado e contornável.',4:'Processo de apoio — falha tem baixo impacto.'};
-  const critTxt = b.criticidade ? `${b.criticidade} — ${['Crítica','Alta','Média','Baixa'][b.criticidade-1]||''}: ${critDesc[b.criticidade]||''}` : '';
+  const critTxt = bot.criticidade ? `${bot.criticidade} — ${['Crítica','Alta','Média','Baixa'][bot.criticidade-1]||''}: ${critDesc[bot.criticidade]||''}` : '';
   return `<div class="proj-detail">
-    ${row('Desenvolvedor', b.dev)}
-    ${row('Suporte / Sustentação', b.suporte)}
-    ${row('Descrição', b.desc)}
-    ${row('Área cliente', b.areaCliente)}
-    ${row('Sistema SAP', b.sap)}
+    ${row('Desenvolvedor', bot.dev)}
+    ${row('Suporte / Sustentação', bot.suporte)}
+    ${row('Descrição', bot.desc)}
+    ${row('Área cliente', bot.areaCliente)}
+    ${row('Sistema SAP', bot.sap)}
     ${row('Criticidade', critTxt)}
-    ${row('FTEs economizados', b.fte ? b.fte+' FTE' : '')}
-    ${row('Volumetria mensal', b.vol ? b.vol.toLocaleString('pt-BR')+' transações/mês' : '')}
-    ${row('Nº de robôs', b.nBots ? String(b.nBots) : '')}
+    ${row('FTEs economizados', bot.fte ? bot.fte+' FTE' : '')}
+    ${row('Volumetria mensal', bot.vol ? bot.vol.toLocaleString('pt-BR')+' transações/mês' : '')}
+    ${row('Nº de robôs', bot.nBots ? String(bot.nBots) : '')}
   </div>`;
 }
 
@@ -3447,27 +3385,27 @@ function setQuickRange(mode){
     return;
   }
 
-  const y = HOJE.getFullYear();
-  const m = HOJE.getMonth();
+  const year = HOJE.getFullYear();
+  const month = HOJE.getMonth();
   let from, to;
   if(mode==='month'){
-    from = new Date(y, m, 1);
-    to   = new Date(y, m+1, 0); // last day of the current month
+    from = new Date(year, month, 1);
+    to   = new Date(year, month+1, 0); // last day of the current month
   } else if(mode==='quarter'){
-    const q = Math.floor(m/3);  // 0,1,2,3
-    from = new Date(y, q*3, 1);
-    to   = new Date(y, q*3+3, 0); // last day of the quarter
+    const quarter = Math.floor(month/3);  // 0,1,2,3
+    from = new Date(year, quarter*3, 1);
+    to   = new Date(year, quarter*3+3, 0); // last day of the quarter
   } else if(mode==='year'){
-    from = new Date(y, 0, 1);
-    to   = new Date(y, 11, 31);
+    from = new Date(year, 0, 1);
+    to   = new Date(year, 11, 31);
   }
   const iso = toIsoDate;
   document.getElementById('df-from').value = iso(from);
   document.getElementById('df-to').value   = iso(to);
   // marks the active chip
   ['month','quarter','year'].forEach(k=>{
-    const c = document.getElementById('dfc-'+k);
-    if(c) c.classList.toggle('active', k===mode);
+    const chip = document.getElementById('dfc-'+k);
+    if(chip) chip.classList.toggle('active', k===mode);
   });
   applyDateFilter(true); // true = don't clear the chips (already marked above)
 }
@@ -3491,7 +3429,7 @@ function applyDateFilter(fromChip){
   // a manual change in the fields unmarks the quick shortcuts
   if(fromChip!==true){
     ['month','quarter','year'].forEach(k=>{
-      const c=document.getElementById('dfc-'+k); if(c) c.classList.remove('active');
+      const chip=document.getElementById('dfc-'+k); if(chip) chip.classList.remove('active');
     });
   }
   const wrap = document.getElementById('date-filter');
@@ -3504,7 +3442,7 @@ function clearDateFilter(){
   document.getElementById('df-from').value = '';
   document.getElementById('df-to').value   = '';
   ['month','quarter','year'].forEach(k=>{
-    const c=document.getElementById('dfc-'+k); if(c) c.classList.remove('active');
+    const chip=document.getElementById('dfc-'+k); if(chip) chip.classList.remove('active');
   });
   applyDateFilter();
 }
@@ -3515,10 +3453,10 @@ function clearDateFilter(){
  * Each build*() function applies the date filter internally before calculating.
  */
 function renderAll(){
-  buildGovernance();
+  construirGovernanca();
   if(App.P.proj.length) buildProjects();
-  if(App.P.improvements.length) buildImprovements();
-  if(App.P.ana.length) buildAna();
+  if(App.P.improvements.length) construirMelhorias();
+  if(App.P.ana.length) buildAnalytics();
   if(App.R.length) buildRPATickets();
   if(App.B.length) buildBots();
   updateDateBadge();
@@ -3543,368 +3481,368 @@ function updateDateBadge(){
 
 
 /* ============================================================
-   AUTOMATIC ANALYSIS ("AI" of computed insights)
+   ANÁLISE AUTOMÁTICA ("IA" de insights calculados)
    ============================================================
-   Generates analytical readings from the data, 100% in the browser —
-   nothing is sent to any server. This is not a language model: these
-   are programmed analyses (concentration, trend, bottlenecks, outliers)
-   that produce dynamic sentences, always recalculated according to the
-   spreadsheet and the active period filter.
+   Gera leituras analíticas a partir dos dados, 100% no navegador —
+   nada é enviado a nenhum servidor. Isso não é um modelo de linguagem:
+   são análises programadas (concentração, tendência, gargalos, outliers)
+   que produzem frases dinâmicas, sempre recalculadas de acordo com a
+   planilha e o filtro de período ativo.
 
-   Each tab has an analyze<Tab>() function that returns a list of
-   insights in the format { type, text }, where type ∈ {pos, neg, warn, neu}
-   controls the color/icon. generateAnalysis() builds the panel and aiBar() the button.
+   Cada aba tem uma função analisar<Aba>() que retorna uma lista de
+   observações no formato { type, text }, onde type ∈ {pos, neg, warn, neu}
+   controla a cor/ícone. gerarAnalise() monta o painel e barraAnalise() o botão.
    ============================================================ */
 
-// Icon (inline SVG) for the "spark/analysis" button — doesn't depend on an external font
-const AI_SPARK = '<svg class="ai-spark" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.9 5.8L20 11l-6.1 2.2L12 19l-1.9-5.8L4 11l6.1-2.2z"/></svg>';
+// Ícone (SVG inline) do botão "faísca/análise" — não depende de fonte externa
+const FAISCA_IA = '<svg class="ai-spark" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.9 5.8L20 11l-6.1 2.2L12 19l-1.9-5.8L4 11l6.1-2.2z"/></svg>';
 
 /*
- * aiBar(tab) — generates the HTML for a tab's "Gerar análise" button.
- * The panel container's id is ai-panel-<tab>, filled in by generateAnalysis().
+ * barraAnalise(aba) — gera o HTML do botão "Gerar análise" de uma aba.
+ * O id do container do painel é ai-panel-<aba>, preenchido por gerarAnalise().
  */
-function aiBar(tab){
+function barraAnalise(aba){
   return `<div class="ai-bar">
-    <button class="ai-btn" id="ai-btn-${tab}" onclick="generateAnalysis('${tab}')">${AI_SPARK} Gerar análise</button>
+    <button class="ai-btn" id="ai-btn-${aba}" onclick="gerarAnalise('${aba}')">${FAISCA_IA} Gerar análise</button>
     <span class="ai-hint">leitura automática dos números deste recorte · 100% local</span>
-  </div><div id="ai-panel-${tab}"></div>`;
+  </div><div id="ai-panel-${aba}"></div>`;
 }
 
 /*
- * generateAnalysis(tab) — computes the tab's insights and renders the panel.
- * Shows a brief "analyzing" state (purely visual) and then the result.
- * Clicking again collapses the panel (toggle).
+ * gerarAnalise(aba) — calcula as observações da aba e renderiza o painel.
+ * Mostra um estado breve de "analisando" (puramente visual) e depois o resultado.
+ * Clicar de novo recolhe o painel (toggle).
  */
-function generateAnalysis(tab){
-  const panel = document.getElementById('ai-panel-'+tab);
-  const btn = document.getElementById('ai-btn-'+tab);
-  if(!panel) return;
-  // toggle: if already open, collapse it
-  if(panel.dataset.open === '1'){
-    panel.innerHTML = ''; panel.dataset.open = '0';
+function gerarAnalise(aba){
+  const painel = document.getElementById('ai-panel-'+aba);
+  const botao = document.getElementById('ai-btn-'+aba);
+  if(!painel) return;
+  // toggle: se já está aberto, recolhe
+  if(painel.dataset.open === '1'){
+    painel.innerHTML = ''; painel.dataset.open = '0';
     return;
   }
-  if(btn) btn.classList.add('loading');
-  // small delay just to give a sense of processing (doesn't block anything)
+  if(botao) botao.classList.add('loading');
+  // pequeno atraso só pra dar uma sensação de processamento (não bloqueia nada)
   setTimeout(() => {
-    const fn = {
-      gov: analyzeGovernance, proj: analyzeProjects, mel: analyzeImprovements,
-      ana: analyzeAnalytics, rpa: analyzeRPA, bots: analyzeBots
-    }[tab];
-    const insights = (fn ? fn() : []).filter(Boolean);
-    const corpo = insights.length
-      ? insights.map(i => `<div class="ai-item ${i.type}"><div class="ai-ico">${i.ico||'•'}</div><div>${i.text}</div></div>`).join('')
+    const funcao = {
+      gov: analisarGovernanca, proj: analisarProjetos, mel: analisarMelhorias,
+      ana: analisarAnalytics, rpa: analisarRPA, bots: analisarBots
+    }[aba];
+    const observacoes = (funcao ? funcao() : []).filter(Boolean);
+    const corpo = observacoes.length
+      ? observacoes.map(i => `<div class="ai-item ${i.type}"><div class="ai-ico">${i.ico||'•'}</div><div>${i.text}</div></div>`).join('')
       : `<div class="ai-item neu"><div class="ai-ico">•</div><div>Não há dados suficientes neste recorte para gerar uma análise. Tente limpar o filtro de período.</div></div>`;
-    panel.innerHTML = `<div class="ai-panel">
-      <div class="ai-panel-head">${AI_SPARK}<span class="ai-panel-title">Análise automática</span>
-        <span class="ai-panel-sub">${insights.length} ${insights.length===1?'observação':'observações'} · recalculado dos dados atuais</span></div>
+    painel.innerHTML = `<div class="ai-panel">
+      <div class="ai-panel-head">${FAISCA_IA}<span class="ai-panel-title">Análise automática</span>
+        <span class="ai-panel-sub">${observacoes.length} ${observacoes.length===1?'observação':'observações'} · recalculado dos dados atuais</span></div>
       ${corpo}</div>`;
-    panel.dataset.open = '1';
-    if(btn) btn.classList.remove('loading');
+    painel.dataset.open = '1';
+    if(botao) botao.classList.remove('loading');
   }, 280);
 }
 
-// helper: largest {key,value} entry of a count object
-function topEntry(obj, exclude=[]){
-  const e = Object.entries(obj).filter(([k]) => !exclude.includes(k)).sort((a,b)=>b[1]-a[1]);
-  return e[0] || null;
+// helper: maior entrada {chave,valor} de um objeto de contagem
+function maiorEntrada(objeto, excluidos=[]){
+  const entradas = Object.entries(objeto).filter(([k]) => !excluidos.includes(k)).sort((a,b)=>b[1]-a[1]);
+  return entradas[0] || null;
 }
 
-/* --- Analysis: GOVERNANCE --- */
-function analyzeGovernance(){
-  const {kept:A} = allActionsFiltered();
-  const tot = A.length;
-  if(!tot) return [];
-  const ins = [];
-  const sc      = statusCounts(A);
+/* --- Análise: GOVERNANÇA --- */
+function analisarGovernanca(){
+  const {kept:acoes} = todasAcoesFiltradas();
+  const total = acoes.length;
+  if(!total) return [];
+  const observacoes = [];
+  const sc      = statusCounts(acoes);
   const done    = sc.done;
   const doing   = sc.doing + sc.closing;
   const backlog = sc.todo;
-  const rate = pct(done,tot);
+  const taxa = calculatePercentage(done,total);
 
-  // 1. General completion reading
-  ins.push({type: rate>=60?'pos':(rate>=35?'neu':'warn'), ico:'%',
-    text:`<b>${rate}% das ${tot} ações estão concluídas</b> (${done}). Em andamento: ${doing}. Backlog/não iniciadas: ${backlog} (${pct(backlog,tot)}%).`});
+  // 1. Leitura geral de conclusão
+  observacoes.push({type: taxa>=60?'pos':(taxa>=35?'neu':'warn'), ico:'%',
+    text:`<b>${taxa}% das ${total} ações estão concluídas</b> (${done}). Em andamento: ${doing}. Backlog/não iniciadas: ${backlog} (${calculatePercentage(backlog,total)}%).`});
 
-  // 2. Which source concentrates the most open backlog
-  const sources = ['Projetos','Pipefy','Analytics','Chamados RPA'];
-  const backlogBySource = {};
-  sources.forEach(f => { backlogBySource[f] = A.filter(a=>a.source===f && (a.sc==='todo'||a.sc==='doing'||a.sc==='closing')).length; });
-  const topBacklog = topEntry(backlogBySource);
-  if(topBacklog && topBacklog[1]>0){
-    ins.push({type:'neu', ico:'≡',
-      text:`A fonte com mais ações em aberto é <b>${topBacklog[0]}</b>, com ${topBacklog[1]} ${topBacklog[1]===1?'ação':'ações'} (em andamento ou backlog).`});
+  // 2. Qual fonte concentra mais backlog em aberto
+  const fontes = ['Projetos','Pipefy','Analytics','Chamados RPA'];
+  const backlogPorFonte = {};
+  fontes.forEach(f => { backlogPorFonte[f] = acoes.filter(a=>a.source===f && (a.sc==='todo'||a.sc==='doing'||a.sc==='closing')).length; });
+  const maiorBacklog = maiorEntrada(backlogPorFonte);
+  if(maiorBacklog && maiorBacklog[1]>0){
+    observacoes.push({type:'neu', ico:'≡',
+      text:`A fonte com mais ações em aberto é <b>${maiorBacklog[0]}</b>, com ${maiorBacklog[1]} ${maiorBacklog[1]===1?'ação':'ações'} (em andamento ou backlog).`});
   }
 
-  // 3. Concentration of open actions by owner (CoE team only, same as the chart)
-  const openByOwner = {};
-  A.filter(a=>a.resp && a.sc!=='done' && a.sc!=='cancel').forEach(a=>{
-    const nome = getStandardCoeName(a.resp);
-    if(nome) openByOwner[nome] = (openByOwner[nome]||0)+1;
+  // 3. Concentração de ações abertas por responsável (só equipe CoE, igual ao gráfico)
+  const abertasPorResponsavel = {};
+  acoes.filter(a=>a.resp && a.sc!=='done' && a.sc!=='cancel').forEach(a=>{
+    const nome = nomePadraoCoe(a.resp);
+    if(nome) abertasPorResponsavel[nome] = (abertasPorResponsavel[nome]||0)+1;
   });
-  const totalOpen = Object.values(openByOwner).reduce((s,v)=>s+v,0);
-  const topOwner = topEntry(openByOwner);
-  if(topOwner && totalOpen>0){
-    // 30% threshold: one person carrying >30% of open actions is a possible bottleneck.
-    // Below that it's just "highest individual load" — informative, not a problem.
-    ins.push({type: topOwner[1]/totalOpen>0.3?'warn':'neu', ico:'@',
-      text:`Na equipe CoE, <b>${topOwner[0]}</b> concentra ${topOwner[1]} ações abertas (${pct(topOwner[1],totalOpen)}% do total da equipe) — ${topOwner[1]/totalOpen>0.3?'possível gargalo de capacidade':'maior carga individual'}.`});
+  const totalAberto = Object.values(abertasPorResponsavel).reduce((s,v)=>s+v,0);
+  const maiorResponsavel = maiorEntrada(abertasPorResponsavel);
+  if(maiorResponsavel && totalAberto>0){
+    // limiar de 30%: uma pessoa carregando >30% das ações abertas é um possível gargalo.
+    // Abaixo disso é só "maior carga individual" — informativo, não um problema.
+    observacoes.push({type: maiorResponsavel[1]/totalAberto>0.3?'warn':'neu', ico:'@',
+      text:`Na equipe CoE, <b>${maiorResponsavel[0]}</b> concentra ${maiorResponsavel[1]} ações abertas (${calculatePercentage(maiorResponsavel[1],totalAberto)}% do total da equipe) — ${maiorResponsavel[1]/totalAberto>0.3?'possível gargalo de capacidade':'maior carga individual'}.`});
   }
 
-  // 4. Cancelled (flagged if relevant)
-  // 5% threshold: below that is normal planning noise; above it deserves a process review.
-  const cancel = A.filter(a=>a.sc==='cancel').length;
-  if(cancel>0 && pct(cancel,tot)>=5){
-    ins.push({type:'warn', ico:'×',
-      text:`<b>${cancel} ações canceladas</b> (${pct(cancel,tot)}% do total) — vale revisar o motivo para reduzir retrabalho de planejamento.`});
+  // 4. Canceladas (sinalizado se relevante)
+  // limiar de 5%: abaixo disso é ruído normal de planejamento; acima merece revisão de processo.
+  const cancelados = acoes.filter(a=>a.sc==='cancel').length;
+  if(cancelados>0 && calculatePercentage(cancelados,total)>=5){
+    observacoes.push({type:'warn', ico:'×',
+      text:`<b>${cancelados} ações canceladas</b> (${calculatePercentage(cancelados,total)}% do total) — vale revisar o motivo para reduzir retrabalho de planejamento.`});
   }
-  return ins;
+  return observacoes;
 }
 
-/* --- Analysis: PROJECTS --- */
-function analyzeProjects(){
-  const {kept:P} = applyDate(App.P.proj);
-  const tot = P.length;
-  if(!tot) return [];
-  const ins = [];
-  const exec = P.filter(p=>p.sc==='doing').length;
-  const fin = P.filter(p=>p.sc==='closing'||p.sc==='monitor').length;
-  const overdue = P.filter(isProjectOverdue);
+/* --- Análise: PROJETOS --- */
+function analisarProjetos(){
+  const {kept:projetos} = filtrarPorPeriodo(App.P.proj);
+  const total = projetos.length;
+  if(!total) return [];
+  const observacoes = [];
+  const emExecucao = projetos.filter(p=>p.sc==='doing').length;
+  const emFaseFinal = projetos.filter(p=>p.sc==='closing'||p.sc==='monitor').length;
+  const atrasados = projetos.filter(projetoAtrasado);
 
-  // 1. General status
-  ins.push({type:'neu', ico:'≡',
-    text:`<b>${tot} projetos</b> no recorte: ${exec} em execução, ${fin} em fase final (encerramento/monitoramento).`});
+  // 1. Status geral
+  observacoes.push({type:'neu', ico:'≡',
+    text:`<b>${total} projetos</b> no recorte: ${emExecucao} em execução, ${emFaseFinal} em fase final (encerramento/monitoramento).`});
 
-  // 2. Overdue — a NAMED list of which ones (sorted by days overdue)
-  if(overdue.length>0){
-    const withDays = overdue.map(p => ({
+  // 2. Atrasados — uma lista NOMEADA de quais são (ordenados por dias de atraso)
+  if(atrasados.length>0){
+    const comDias = atrasados.map(p => ({
       titulo: p.titulo,
       dias: daysBetween(HOJE, p.dtFim),
-      fase: getProjectPhase(p.statusRaw), statusRaw: p.statusRaw
+      fase: faseProjeto(p.statusRaw), statusRaw: p.statusRaw
     })).sort((a,b)=>b.dias-a.dias);
-    const list = withDays.map(p => `<b>${p.titulo}</b> (${p.dias}d, ${p.statusRaw})`).join('; ');
-    ins.push({type:'neg', ico:'!',
-      text:`<b>${overdue.length} ${overdue.length===1?'projeto atrasado':'projetos atrasados'}</b>: ${list}.`});
+    const lista = comDias.map(p => `<b>${p.titulo}</b> (${p.dias}d, ${p.statusRaw})`).join('; ');
+    observacoes.push({type:'neg', ico:'!',
+      text:`<b>${atrasados.length} ${atrasados.length===1?'projeto atrasado':'projetos atrasados'}</b>: ${lista}.`});
   } else {
-    ins.push({type:'pos', ico:'✓', text:`Nenhum projeto com prazo vencido neste recorte.`});
+    observacoes.push({type:'pos', ico:'✓', text:`Nenhum projeto com prazo vencido neste recorte.`});
   }
 
-  // 3. Most critical project by the automatic risk score
-  const withRisk = P.map(p => ({p, r:getProjectRisk(p)})).filter(x=>x.r.score>0).sort((a,b)=>b.r.score-a.r.score);
-  if(withRisk.length){
-    const top = withRisk[0];
-    const levelPt = {high:'alto', medium:'médio', low:'baixo'}[top.r.level];
-    ins.push({type: top.r.level==='high'?'neg':'warn', ico:'▲',
-      text:`Projeto mais crítico: <b>${top.p.titulo}</b> (risco ${levelPt}, score ${top.r.score}) — ${top.r.reasons.join(', ')}.`});
-    const highRiskCount = withRisk.filter(x=>x.r.level==='high').length;
-    if(highRiskCount>1){
-      ins.push({type:'warn', ico:'▲',
-        text:`<b>${highRiskCount} projetos</b> estão em risco alto e merecem atenção prioritária.`});
+  // 3. Projeto mais crítico pelo score de risco automático
+  const comRisco = projetos.map(p => ({project: p, risk: riscoProjeto(p)})).filter(x=>x.risk.score>0).sort((a,b)=>b.risk.score-a.risk.score);
+  if(comRisco.length){
+    const maisCritico = comRisco[0];
+    const nivelPt = {high:'alto', medium:'médio', low:'baixo'}[maisCritico.risk.level];
+    observacoes.push({type: maisCritico.risk.level==='high'?'neg':'warn', ico:'▲',
+      text:`Projeto mais crítico: <b>${maisCritico.project.titulo}</b> (risco ${nivelPt}, score ${maisCritico.risk.score}) — ${maisCritico.risk.reasons.join(', ')}.`});
+    const contagemRiscoAlto = comRisco.filter(x=>x.risk.level==='high').length;
+    if(contagemRiscoAlto>1){
+      observacoes.push({type:'warn', ico:'▲',
+        text:`<b>${contagemRiscoAlto} projetos</b> estão em risco alto e merecem atenção prioritária.`});
     }
   }
 
-  // 4. Area with the most projects
-  const byArea = count(P.filter(p=>p.frente), p=>p.frente);
-  const topArea = topEntry(byArea);
-  if(topArea){
-    ins.push({type:'neu', ico:'#',
-      text:`A frente com mais projetos é <b>${topArea[0]}</b> (${topArea[1]}).`});
+  // 4. Frente com mais projetos
+  const porArea = count(projetos.filter(p=>p.frente), p=>p.frente);
+  const maiorArea = maiorEntrada(porArea);
+  if(maiorArea){
+    observacoes.push({type:'neu', ico:'#',
+      text:`A frente com mais projetos é <b>${maiorArea[0]}</b> (${maiorArea[1]}).`});
   }
 
-  // 5. Not-started projects
-  // 30% threshold: if more than 30% of the portfolio hasn't started, the pipeline is backed up.
-  const notStarted = P.filter(p=>p.sc==='todo').length;
-  if(notStarted>0){
-    ins.push({type: pct(notStarted,tot)>30?'warn':'neu', ico:'○',
-      text:`<b>${notStarted} ${notStarted===1?'projeto não iniciado':'projetos não iniciados'}</b> (${pct(notStarted,tot)}% da carteira) aguardando início.`});
+  // 5. Projetos não iniciados
+  // limiar de 30%: se mais de 30% da carteira não começou, o pipeline está represado.
+  const naoIniciados = projetos.filter(p=>p.sc==='todo').length;
+  if(naoIniciados>0){
+    observacoes.push({type: calculatePercentage(naoIniciados,total)>30?'warn':'neu', ico:'○',
+      text:`<b>${naoIniciados} ${naoIniciados===1?'projeto não iniciado':'projetos não iniciados'}</b> (${calculatePercentage(naoIniciados,total)}% da carteira) aguardando início.`});
   }
-  return ins;
+  return observacoes;
 }
 
-/* --- Analysis: PIPEFY IMPROVEMENTS --- */
-function analyzeImprovements(){
-  const {kept: melhorias} = applyDate(App.P.improvements);
-  const tot = melhorias.length;
-  if(!tot) return [];
-  const ins = [];
+/* --- Análise: MELHORIAS PIPEFY --- */
+function analisarMelhorias(){
+  const {kept: melhorias} = filtrarPorPeriodo(App.P.improvements);
+  const total = melhorias.length;
+  if(!total) return [];
+  const observacoes = [];
   const sc      = statusCounts(melhorias);
   const done    = sc.done;
   const backlog = sc.todo;
   const blocked = sc.blocked;
 
-  ins.push({type: pct(done,tot)>=60?'pos':'neu', ico:'%',
-    text:`<b>${pct(done,tot)}% das ${tot} melhorias concluídas</b> (${done}). Backlog: ${backlog}.`});
+  observacoes.push({type: calculatePercentage(done,total)>=60?'pos':'neu', ico:'%',
+    text:`<b>${calculatePercentage(done,total)}% das ${total} melhorias concluídas</b> (${done}). Backlog: ${backlog}.`});
 
-  // dominant complexity
-  const byComplexity = count(melhorias.filter(m=>m.complex), m=>m.complex);
-  const topComplexity = topEntry(byComplexity);
-  if(topComplexity){
-    ins.push({type:'neu', ico:'≡',
-      text:`Complexidade predominante: <b>${topComplexity[0]}</b> (${topComplexity[1]} melhorias, ${pct(topComplexity[1],tot)}%).`});
+  // complexidade predominante
+  const porComplexidade = count(melhorias.filter(m=>m.complex), m=>m.complex);
+  const maiorComplexidade = maiorEntrada(porComplexidade);
+  if(maiorComplexidade){
+    observacoes.push({type:'neu', ico:'≡',
+      text:`Complexidade predominante: <b>${maiorComplexidade[0]}</b> (${maiorComplexidade[1]} melhorias, ${calculatePercentage(maiorComplexidade[1],total)}%).`});
   }
 
-  // area with the most improvements
-  const byArea = count(melhorias.filter(m=>m.frente), m=>m.frente);
-  const topArea = topEntry(byArea);
-  if(topArea){
-    ins.push({type:'neu', ico:'#',
-      text:`A frente que mais demanda melhorias é <b>${topArea[0]}</b> (${topArea[1]}).`});
+  // área que mais demanda melhorias
+  const porArea = count(melhorias.filter(m=>m.frente), m=>m.frente);
+  const maiorArea = maiorEntrada(porArea);
+  if(maiorArea){
+    observacoes.push({type:'neu', ico:'#',
+      text:`A frente que mais demanda melhorias é <b>${maiorArea[0]}</b> (${maiorArea[1]}).`});
   }
 
   if(blocked>0){
-    ins.push({type:'warn', ico:'!',
+    observacoes.push({type:'warn', ico:'!',
       text:`<b>${blocked} ${blocked===1?'melhoria bloqueada':'melhorias bloqueadas'}</b> — vale destravar para liberar o fluxo.`});
   }
-  return ins;
+  return observacoes;
 }
 
-/* --- Analysis: ANALYTICS --- */
-function analyzeAnalytics(){
-  const {kept:A} = applyDate(App.P.ana);
-  const tot = A.length;
-  if(!tot) return [];
-  const ins = [];
-  const done = A.filter(a=>a.sc==='done').length;
+/* --- Análise: ANALYTICS --- */
+function analisarAnalytics(){
+  const {kept:atividades} = filtrarPorPeriodo(App.P.ana);
+  const total = atividades.length;
+  if(!total) return [];
+  const observacoes = [];
+  const done = atividades.filter(a=>a.sc==='done').length;
 
-  ins.push({type: pct(done,tot)>=50?'pos':'neu', ico:'%',
-    text:`<b>${pct(done,tot)}% das ${tot} atividades concluídas</b> (${done}).`});
+  observacoes.push({type: calculatePercentage(done,total)>=50?'pos':'neu', ico:'%',
+    text:`<b>${calculatePercentage(done,total)}% das ${total} atividades concluídas</b> (${done}).`});
 
-  // priority 1 still open — alert
-  const openP1 = A.filter(a=>a.prio===1 && a.sc!=='done' && a.sc!=='cancel').length;
-  if(openP1>0){
-    ins.push({type:'neg', ico:'!',
-      text:`<b>${openP1} ${openP1===1?'atividade de Prioridade 1 em aberto':'atividades de Prioridade 1 em aberto'}</b> — foco máximo de atenção.`});
+  // prioridade 1 ainda aberta — alerta
+  const p1Abertas = atividades.filter(a=>a.prio===1 && a.sc!=='done' && a.sc!=='cancel').length;
+  if(p1Abertas>0){
+    observacoes.push({type:'neg', ico:'!',
+      text:`<b>${p1Abertas} ${p1Abertas===1?'atividade de Prioridade 1 em aberto':'atividades de Prioridade 1 em aberto'}</b> — foco máximo de atenção.`});
   }
 
-  // most in-demand area
-  const byArea = count(A.filter(a=>a.frente), a=>a.frente);
-  const topArea = topEntry(byArea);
-  if(topArea){
-    ins.push({type:'neu', ico:'#',
-      text:`A frente com mais atividades de Analytics é <b>${topArea[0]}</b> (${topArea[1]}).`});
+  // área com mais demanda
+  const porArea = count(atividades.filter(a=>a.frente), a=>a.frente);
+  const maiorArea = maiorEntrada(porArea);
+  if(maiorArea){
+    observacoes.push({type:'neu', ico:'#',
+      text:`A frente com mais atividades de Analytics é <b>${maiorArea[0]}</b> (${maiorArea[1]}).`});
   }
 
-  // without a date (transparency)
-  const withoutDate = A.filter(a=>!a.dtFim && !a.dtInicio).length;
-  if(withoutDate>0){
-    ins.push({type:'neu', ico:'○',
-      text:`${withoutDate} de ${tot} atividades não têm data registrada, então não entram nos cálculos por período.`});
+  // sem data (transparência)
+  const semData = atividades.filter(a=>!a.dtFim && !a.dtInicio).length;
+  if(semData>0){
+    observacoes.push({type:'neu', ico:'○',
+      text:`${semData} de ${total} atividades não têm data registrada, então não entram nos cálculos por período.`});
   }
-  return ins;
+  return observacoes;
 }
 
-/* --- Analysis: RPA TICKETS --- */
-function analyzeRPA(){
-  const {kept: chamados} = applyDate(App.R);
-  const tot = chamados.length;
-  if(!tot) return [];
-  const ins = [];
-  const overdue = chamados.filter(r=>r.vencido).length;
-  const done = chamados.filter(r=>r.fase.toLowerCase().includes('conclu')).length;
+/* --- Análise: CHAMADOS RPA --- */
+function analisarRPA(){
+  const {kept: chamados} = filtrarPorPeriodo(App.R);
+  const total = chamados.length;
+  if(!total) return [];
+  const observacoes = [];
+  const vencidos = chamados.filter(r=>r.vencido).length;
+  const concluidos = chamados.filter(r=>r.fase.toLowerCase().includes('conclu')).length;
 
-  // 1. Concentration in the top bots
-  // 40% threshold: if 3 processes (out of dozens) concentrate >40% of tickets,
-  // stabilizing them has a disproportionate impact on the total support volume.
-  const byProcess = count(chamados.filter(r=>r.processo!=='(sem processo)'), r=>r.processo);
-  const sorted = Object.entries(byProcess).sort((a,b)=>b[1]-a[1]);
-  const totalProcess = sorted.reduce((s,e)=>s+e[1],0);
-  if(sorted.length>=3){
-    const top3 = sorted.slice(0,3);
-    const top3Sum = top3.reduce((s,e)=>s+e[1],0);
-    ins.push({type: top3Sum/totalProcess>0.4?'warn':'neu', ico:'≡',
-      text:`Os 3 processos com mais manutenções (<b>${top3.map(e=>e[0]).join(', ')}</b>) concentram <b>${pct(top3Sum,totalProcess)}%</b> dos chamados. Estabilizá-los reduz bastante o volume de suporte.`});
+  // 1. Concentração nos top bots
+  // limiar de 40%: se 3 processos (de dezenas) concentram >40% dos chamados,
+  // estabilizá-los tem um impacto desproporcional no volume total de suporte.
+  const porProcesso = count(chamados.filter(r=>r.processo!=='(sem processo)'), r=>r.processo);
+  const ordenados = Object.entries(porProcesso).sort((a,b)=>b[1]-a[1]);
+  const totalProcesso = ordenados.reduce((s,e)=>s+e[1],0);
+  if(ordenados.length>=3){
+    const top3 = ordenados.slice(0,3);
+    const somaTop3 = top3.reduce((s,e)=>s+e[1],0);
+    observacoes.push({type: somaTop3/totalProcesso>0.4?'warn':'neu', ico:'≡',
+      text:`Os 3 processos com mais manutenções (<b>${top3.map(e=>e[0]).join(', ')}</b>) concentram <b>${calculatePercentage(somaTop3,totalProcesso)}%</b> dos chamados. Estabilizá-los reduz bastante o volume de suporte.`});
   }
 
-  // 2. SLA overdue rate
-  // Threshold: >25% = critical (red), >0% = attention (orange), 0% = good (green).
-  ins.push({type: pct(overdue,tot)>25?'neg':(pct(overdue,tot)>0?'warn':'pos'), ico: pct(overdue,tot)>25?'!':'%',
-    text:`<b>${pct(overdue,tot)}% dos ${tot} chamados venceram o prazo</b> (${overdue}). Concluídos: ${pct(done,tot)}%.`});
+  // 2. Taxa de chamados vencidos (SLA)
+  // Limiar: >25% = crítico (vermelho), >0% = atenção (laranja), 0% = bom (verde).
+  observacoes.push({type: calculatePercentage(vencidos,total)>25?'neg':(calculatePercentage(vencidos,total)>0?'warn':'pos'), ico: calculatePercentage(vencidos,total)>25?'!':'%',
+    text:`<b>${calculatePercentage(vencidos,total)}% dos ${total} chamados venceram o prazo</b> (${vencidos}). Concluídos: ${calculatePercentage(concluidos,total)}%.`});
 
-  // 3. Most common problem
-  const byProblem = count(chamados, r=>r.problema);
-  const topProblem = topEntry(byProblem, ['']);
-  if(topProblem && topProblem[0]){
-    ins.push({type:'neu', ico:'?',
-      text:`Problema mais frequente: <b>"${topProblem[0]}"</b> (${topProblem[1]} chamados, ${pct(topProblem[1],tot)}%).`});
+  // 3. Problema mais comum
+  const porProblema = count(chamados, r=>r.problema);
+  const maiorProblema = maiorEntrada(porProblema, ['']);
+  if(maiorProblema && maiorProblema[0]){
+    observacoes.push({type:'neu', ico:'?',
+      text:`Problema mais frequente: <b>"${maiorProblema[0]}"</b> (${maiorProblema[1]} chamados, ${calculatePercentage(maiorProblema[1],total)}%).`});
   }
 
-  // 4. Month-over-month trend: compares the average of the 1st half of the period with the 2nd half.
-  // 15% threshold: variations below that are normal fluctuation; above it is a real trend.
-  // Splitting into two halves works with any number of available months.
-  const byMonth = {};
-  chamados.forEach(r=>{ if(r.mes) byMonth[r.mes]=(byMonth[r.mes]||0)+1; });
-  const months = Object.keys(byMonth).sort();
-  if(months.length>=4){
-    const half = Math.floor(months.length/2);
-    const recent = months.slice(-half).reduce((s,m)=>s+byMonth[m],0)/half; // 2nd-half average
-    const older  = months.slice(0,half).reduce((s,m)=>s+byMonth[m],0)/half; // 1st-half average
-    const change = older>0 ? Math.round((recent-older)/older*100) : 0; // % change
-    if(Math.abs(change)>=15){
-      ins.push({type: change>0?'warn':'pos', ico: change>0?'↑':'↓',
-        text:`O volume de chamados está <b>${change>0?'subindo':'caindo'}</b>: média recente ${recent.toFixed(0)}/mês vs ${older.toFixed(0)}/mês no início do período (${change>0?'+':''}${change}%).`});
+  // 4. Tendência mês a mês: compara a média da 1ª metade do período com a 2ª metade.
+  // limiar de 15%: variações abaixo disso são flutuação normal; acima é uma tendência real.
+  // Dividir em duas metades funciona com qualquer número de meses disponíveis.
+  const porMes = {};
+  chamados.forEach(r=>{ if(r.mes) porMes[r.mes]=(porMes[r.mes]||0)+1; });
+  const meses = Object.keys(porMes).sort();
+  if(meses.length>=4){
+    const metade = Math.floor(meses.length/2);
+    const recente = meses.slice(-metade).reduce((s,m)=>s+porMes[m],0)/metade; // média da 2ª metade
+    const anterior  = meses.slice(0,metade).reduce((s,m)=>s+porMes[m],0)/metade; // média da 1ª metade
+    const variacao = anterior>0 ? Math.round((recente-anterior)/anterior*100) : 0; // variação %
+    if(Math.abs(variacao)>=15){
+      observacoes.push({type: variacao>0?'warn':'pos', ico: variacao>0?'↑':'↓',
+        text:`O volume de chamados está <b>${variacao>0?'subindo':'caindo'}</b>: média recente ${recente.toFixed(0)}/mês vs ${anterior.toFixed(0)}/mês no início do período (${variacao>0?'+':''}${variacao}%).`});
     }
   }
 
-  // 5. Area that opens the most tickets (if mapped)
-  const byArea = count(chamados.filter(r=>r.area && r.area!=='(não mapeada)'), r=>r.area);
-  const topArea = topEntry(byArea);
-  if(topArea){
-    ins.push({type:'neu', ico:'#',
-      text:`A área que mais abre chamados é <b>${topArea[0]}</b> (${topArea[1]}).`});
+  // 5. Área que mais abre chamados (se mapeada)
+  const porArea = count(chamados.filter(r=>r.area && r.area!=='(não mapeada)'), r=>r.area);
+  const maiorArea = maiorEntrada(porArea);
+  if(maiorArea){
+    observacoes.push({type:'neu', ico:'#',
+      text:`A área que mais abre chamados é <b>${maiorArea[0]}</b> (${maiorArea[1]}).`});
   }
-  return ins;
+  return observacoes;
 }
 
-/* --- Analysis: BOT INVENTORY --- */
-function analyzeBots(){
-  // bots use the AnoPRD filter; here we analyze the full loaded set
+/* --- Análise: INVENTÁRIO DE BOTS --- */
+function analisarBots(){
+  // bots usam o filtro de AnoPRD; aqui analisamos o conjunto completo carregado
   const bots = App.B;
   if(!bots.length) return [];
-  const ins = [];
+  const observacoes = [];
   const prd     = bots.filter(b=>b.status==='PRD').length;
   const dev     = bots.filter(b=>b.status==='DEV').length;
   const backlog = bots.filter(b=>b.status==='BACKLOG').length;
 
-  ins.push({type:'neu', ico:'≡',
-    text:`<b>${bots.length} bots no inventário</b>: ${prd} em produção (${pct(prd,bots.length)}%), ${dev} em desenvolvimento, ${backlog} em backlog.`});
+  observacoes.push({type:'neu', ico:'≡',
+    text:`<b>${bots.length} bots no inventário</b>: ${prd} em produção (${calculatePercentage(prd,bots.length)}%), ${dev} em desenvolvimento, ${backlog} em backlog.`});
 
-  // coverage by area (among the main business areas)
-  const prdBots = bots.filter(b=>b.status==='PRD');
-  const byArea = count(prdBots, b=>b.area);
-  const topArea = topEntry(byArea);
-  if(topArea){
-    ins.push({type:'neu', ico:'#',
-      text:`A área com mais automações em produção é <b>${topArea[0]}</b> (${topArea[1]} bots, ${pct(topArea[1],prd)}%).`});
+  // cobertura por área (entre as áreas de negócio principais)
+  const botsPrd = bots.filter(b=>b.status==='PRD');
+  const porArea = count(botsPrd, b=>b.area);
+  const maiorArea = maiorEntrada(porArea);
+  if(maiorArea){
+    observacoes.push({type:'neu', ico:'#',
+      text:`A área com mais automações em produção é <b>${maiorArea[0]}</b> (${maiorArea[1]} bots, ${calculatePercentage(maiorArea[1],prd)}%).`});
   }
 
-  // critical bots
-  const critical = prdBots.filter(b=>b.criticidade && b.criticidade<=2).length;
-  if(critical>0){
-    ins.push({type:'warn', ico:'!',
-      text:`<b>${critical} bots em produção são de criticidade alta</b> (nível 1-2) — priorize monitoramento e plano de contingência.`});
+  // bots críticos
+  const criticos = botsPrd.filter(b=>b.criticidade && b.criticidade<=2).length;
+  if(criticos>0){
+    observacoes.push({type:'warn', ico:'!',
+      text:`<b>${criticos} bots em produção são de criticidade alta</b> (nível 1-2) — priorize monitoramento e plano de contingência.`});
   }
 
-  // cross-reference with tickets, if available
+  // cruzamento com chamados, se disponível
   if(App.R.length){
-    const ticketsByProcess = count(App.R, r=>r.processo);
-    let maxTickets = 0, botWithMostTickets = '';
-    prdBots.forEach(b => {
-      const botNameNorm = normBotName(b.nome);
-      let totalTickets = 0;
-      Object.entries(ticketsByProcess).forEach(([proc, qtd]) => {
-        const procNameNorm = normBotName(proc);
-        if (procNameNorm && botNameNorm && (botNameNorm.includes(procNameNorm) || procNameNorm.includes(botNameNorm))) {
-          totalTickets += qtd;
+    const chamadosPorProcesso = count(App.R, r=>r.processo);
+    let maxChamados = 0, botComMaisChamados = '';
+    botsPrd.forEach(b => {
+      const nomeBotNorm = normalizeBotName(b.nome);
+      let totalChamados = 0;
+      Object.entries(chamadosPorProcesso).forEach(([proc, qtd]) => {
+        const nomeProcNorm = normalizeBotName(proc);
+        if (nomeProcNorm && nomeBotNorm && (nomeBotNorm.includes(nomeProcNorm) || nomeProcNorm.includes(nomeBotNorm))) {
+          totalChamados += qtd;
         }
       });
-      if (totalTickets > maxTickets) { maxTickets = totalTickets; botWithMostTickets = b.nome; }
+      if (totalChamados > maxChamados) { maxChamados = totalChamados; botComMaisChamados = b.nome; }
     });
-    if(maxTickets>0){
-      ins.push({type:'warn', ico:'⚙',
-        text:`O bot em produção com mais manutenções é <b>${botWithMostTickets}</b> (${maxTickets} chamados) — forte candidato a refatoração.`});
+    if(maxChamados>0){
+      observacoes.push({type:'warn', ico:'⚙',
+        text:`O bot em produção com mais manutenções é <b>${botComMaisChamados}</b> (${maxChamados} chamados) — forte candidato a refatoração.`});
     }
   }
-  return ins;
+  return observacoes;
 }
 
 
@@ -3931,7 +3869,7 @@ function generate(){
   //    This sets the min/max limits of the header's date inputs,
   //    preventing the user from selecting dates outside the data's range.
   const all = [...App.P.improvements, ...App.P.proj, ...App.P.ana, ...App.R];
-  const dates = all.map(refDate).filter(Boolean).map(d => d.getTime());
+  const dates = all.map(dataReferencia).filter(Boolean).map(d => d.getTime());
   if(dates.length){
     const min = new Date(Math.min(...dates));
     const max = new Date(Math.max(...dates));
@@ -3946,10 +3884,10 @@ function generate(){
   function buildTab(builder) {
     try { builder(); } catch(error) { console.error('[SYNAPSE] erro ao construir aba:', error); }
   }
-  buildTab(() => buildGovernance());
+  buildTab(() => construirGovernanca());
   buildTab(() => { if(App.P.proj.length) buildProjects(); });
-  buildTab(() => { if(App.P.improvements.length) buildImprovements(); });
-  buildTab(() => { if(App.P.ana.length) buildAna(); });
+  buildTab(() => { if(App.P.improvements.length) construirMelhorias(); });
+  buildTab(() => { if(App.P.ana.length) buildAnalytics(); });
   buildTab(() => { if(App.R.length) buildRPATickets(); });
   buildTab(() => { if(App.B.length) buildBots(); });
 

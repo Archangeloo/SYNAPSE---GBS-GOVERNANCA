@@ -1,356 +1,316 @@
-import { App } from '../state.js';
-import { applyDate, ymLabel } from '../utils/date.js';
-import { count, pct } from '../utils/helpers.js';
-import { donut, hbars, clusteredBars } from '../charts.js';
-import { aiBar } from '../analysis.js';
-import { setBadge } from '../nav.js';
-
-// ─── MÓDULO: views/rpa.js ────────────────────────────────────────────────────
-// Aba RPA & Bots — chamados de manutenção (5 sub-abas).
-//
-// Exporta:
-//   buildRPAChamados()   — renderiza estrutura da aba e todas as sub-abas
-//   renderRPAStatus()    — re-renderiza KPIs + gráficos da visão geral
-//                          (chamada ao mudar filtro local de fase)
-//   renderRPALista()     — re-renderiza tabela paginada de chamados
-//                          (chamada ao digitar na busca)
-//
-// Sub-abas e seus elementos DOM:
-//   #rpage-visao   — KPIs, volume mensal, tickets por área
-//   #rpage-bots    — top bots por volume de manutenções
-//   #rpage-prob    — tipos de problema × fase (barras clusterizadas)
-//   #rpage-tempo   — tempo médio de resolução por bot
-//   #rpage-lista   — tabela paginada com busca por texto
+// ─── MODULE: views/rpa.js ──────────────────────────────────────────────────
+// VIEW: RPA TICKETS (5 sub-tabs)
+// DATE FILTER: uses 'criado' (ticket opening date).
+// Every ticket has this date filled in (a required field in Pipefy).
+// Sub-tabs: Overview, Top bots, Problem types, Resolution time, Tickets.
 // ─────────────────────────────────────────────────────────────────────────────
 
-// ─── buildRPAChamados ─────────────────────────────────────────────────────────
-// Monta a estrutura completa da aba RPA & Bots com 5 sub-abas.
-// FILTRO DE DATA: usa 'criado' (data de abertura). Todos os chamados têm essa data.
-export function buildRPAChamados() {
-  const { kept: R, noDate } = applyDate(App.R);
+import { App } from '../state.js';
+import { MAIN_RPA_AREAS } from '../constants.js';
+import { count, calculatePercentage, sortedCountEntries, averageField, iconeKpi } from '../utils/helpers.js';
+import { filtrarPorPeriodo, toYearMonthLabel } from '../utils/date.js';
+import { donut, horizontalBars, clusteredBars, verticalBarsChart, flushCharts } from '../charts.js';
+import { barraAnalise } from '../analysis.js';
+import { setBadge } from '../nav.js';
+
+/*
+ * buildRPATickets() — RPA & Bots tab (ticket sub-tabs).
+ *
+ * Reads:  App.R (tickets), App.B (inventory, via areaPorProc)
+ * Writes: #rpa-empty / #rpa-content  (visibility)
+ *          #rpage-visao   → structure + calls renderRPAStatus()
+ *          #rpage-bots    → top bots by maintenance volume
+ *          #rpage-prob    → problem types × phase (clusteredBars)
+ *          #rpage-tempo   → average time per bot
+ *          #rpage-lista   → paginated table with search
+ * Called by: generate() and renderAll()
+ *
+ * FUNCTION STRUCTURE:
+ *   1. Validation and date-filter note
+ *   2. Overview sub-tab  → htmlVisao + renderRPAStatus()
+ *   3. Top Bots sub-tab     → htmlTopBots
+ *   4. Problem Types sub-tab → htmlProblemas
+ *   5. Time sub-tab        → htmlTempo
+ *   6. List sub-tab        → htmlLista + renderRPAList()
+ */
+export function buildRPATickets(){
+  const {kept: chamados, noDate} = filtrarPorPeriodo(App.R);
   const emptyEl = document.getElementById('rpa-empty');
-
-  // Mostra/esconde conteúdo conforme se há dados
-  emptyEl.style.display = App.R.length ? 'none' : 'block';
+  emptyEl.style.display  = App.R.length ? 'none' : 'block';
   document.getElementById('rpa-content').style.display = App.R.length ? 'block' : 'none';
-
-  if (!App.R.length) {
-    // Se há aviso de arquivo errado, exibe esse aviso; senão, mensagem padrão
+  // if there was a wrong-file warning, shows a specific message instead of the default text
+  if(!App.R.length){
     emptyEl.innerHTML = App.rpaWarn
       ? `<i class="ti ti-alert-triangle" style="color:var(--warn)"></i>${App.rpaWarn}`
       : `<i class="ti ti-robot"></i>Carregue o relatório de Chamados RPA`;
     return;
   }
 
-  const total     = R.length;
-  const venc      = R.filter(r => r.vencido).length;
-  const procUnicos = new Set(R.map(r => r.processo).filter(p => p && p !== '(sem processo)')).size;
+  const total      = chamados.length;
+  const venc       = chamados.filter(r => r.vencido).length;
+  const concl      = chamados.filter(r => r.fase.toLowerCase().includes('conclu')).length;
+  const abertos    = total - concl;
+  const reexec     = chamados.filter(r => r.problema.toLowerCase().includes('reexecu')).length;
+  const procUnicos = new Set(chamados.map(r=>r.processo).filter(p=>p&&p!=='(sem processo)')).size;
 
-  // Nota de período (aparece quando o filtro global de data está ativo)
-  let dn = '';
-  if (App.dateRange.mode !== 'all') {
-    dn = `<div class="note" style="background:var(--neu-bg);color:var(--ink3)"><i class="ti ti-calendar-stats"></i><div>
+  let dateNote = '';
+  if(App.dateRange.mode !== 'all'){
+    dateNote = `<div class="note" style="background:var(--neu-bg);color:var(--ink3)"><i class="ti ti-calendar-stats"></i><div>
       Período aplicado: <b>${total} chamados</b> abertos no recorte.` +
-      (noDate > 0 ? ` ${noDate} sem data de criação não entram no filtro.` : '') + `</div></div>`;
+      (noDate>0 ? ` ${noDate} sem data de criação não entram no filtro.` : '') +
+      `<br><span style="font-size:10px;opacity:.6;font-style:italic">Referência de data: data de abertura do chamado</span>
+      </div></div>`;
   }
 
-  // Filtro local de fase (independente do filtro global de data)
-  const fasesDisp   = [...new Set(R.map(r => r.fase).filter(Boolean))].sort();
+  // Local status (phase) filter — options derived from the phases present in the data
+  const fasesDisp = [...new Set(chamados.map(r=>r.fase).filter(Boolean))].sort();
   const filtroStatus = `<div class="filters" style="margin-bottom:14px">
     <label>Status do chamado</label>
     <select id="rpa-fs" onchange="renderRPAStatus()"><option value="">Todos</option>
-      ${fasesDisp.map(f => `<option>${f}</option>`).join('')}</select>
+      ${fasesDisp.map(f=>`<option>${f}</option>`).join('')}</select>
     <span style="font-size:11px;color:var(--ink4);margin-left:auto" id="rpa-fs-count"></span>
   </div>`;
 
-  // Monta a sub-aba de visão geral (KPIs são preenchidos por renderRPAStatus)
-  document.getElementById('rpage-visao').innerHTML = dn + aiBar('rpa') + filtroStatus + `<div id="rpa-visao-kpis"></div>`;
+  let htmlVisao = dateNote + barraAnalise('rpa') + filtroStatus + `<div id="rpa-visao-kpis"></div>`;
+  document.getElementById('rpage-visao').innerHTML = htmlVisao;
+  // the KPIs and charts are rendered by renderRPAStatus (it respects the status filter)
   renderRPAStatus();
 
-  // ── Sub-aba: Top Bots ────────────────────────────────────────────────────────
-  // Mapa de processo → área (já resolvido em enrichRPAComArea durante o parse)
+  const labelComArea = rpaLabelWithArea(chamados);
+  buildRPATabTopBots(chamados, labelComArea);
+  buildRPATabProblems(chamados);
+  buildRPATabTime(chamados, labelComArea);
+  buildRPATabList(chamados, total, venc);
+}
+
+// Returns a function that formats "Nome do bot  ·  ÁREA" for chart labels.
+function rpaLabelWithArea(chamados) {
   const areaPorProc = {};
-  R.forEach(r => { if (r.processo && !areaPorProc[r.processo]) areaPorProc[r.processo] = r.area; });
-
-  // Formata o rótulo da barra como "Nome do processo · ÁREA" quando disponível
-  const labelComArea = proc => {
-    const a = areaPorProc[proc];
-    return a && a !== '(não mapeada)' ? `${proc}  ·  ${a}` : proc;
+  chamados.forEach(r => { if(r.processo && !areaPorProc[r.processo]) areaPorProc[r.processo] = r.area; });
+  return proc => {
+    const area = areaPorProc[proc];
+    return area && area !== '(não mapeada)' ? `${proc}  ·  ${area}` : proc;
   };
+}
 
-  // Conta chamados por processo e ordena do mais problemático para o menos
-  const porProcV = count(R, r => r.processo);
-  const procList = Object.entries(porProcV)
-    .filter(e => e[0] !== '(sem processo)')
-    .sort((a, b) => b[1] - a[1])
-    .map(([proc, n]) => [labelComArea(proc), n]); // substitui nome pelo label com área
-
+function buildRPATabTopBots(chamados, labelComArea) {
+  const procList = sortedCountEntries(chamados, r => r.processo)
+    .filter(([proc]) => proc !== '(sem processo)')
+    .map(([proc, n]) => [labelComArea(proc), n]);
   document.getElementById('rpage-bots').innerHTML =
     `<div class="card"><div class="card-title"><i class="ti ti-trophy"></i> Top bots por nº de manutenções<span class="rt">${procList.length} processos</span></div>
-    ${hbars(procList, { max: 15, lw: 300, color: 'var(--err)', fixedLabel: true })}</div>`;
+      ${horizontalBars(procList,{max:15,lw:300,color:'var(--err)',fixedLabel:true})}</div>`;
+  flushCharts();
+}
 
-  // ── Sub-aba: Tipos de Problema ───────────────────────────────────────────────
-  // Mostra quais tipos de problema ocorrem em cada fase e em cada área.
-  // Usa barras clusterizadas: cada grupo = fase ou área, cada barra = tipo de problema.
-  const porProb   = count(R, r => r.problema);
-  const porReexec = count(R.filter(r => r.reexec), r => r.reexec);
-  const porIntext = count(R.filter(r => r.intext), r => r.intext);
+function buildRPATabProblems(chamados) {
+  const porProb   = count(chamados, r => r.problema);
+  const porReexec = count(chamados.filter(r=>r.reexec), r => r.reexec);
+  const porIntext = count(chamados.filter(r=>r.intext), r => r.intext);
 
-  // Fases do fluxo de chamados RPA (ordem lógica do processo)
   const fasesDef = [
-    { key: 'Backlog',                    label: 'Backlog',         color: '#9a9a92' },
-    { key: 'Identificação do problema',  label: 'Identificação',   color: '#d4a93c' },
-    { key: 'Desenvolvimento da solução', label: 'Desenvolvimento', color: '#4a90d9' },
-    { key: 'Reexecução',                 label: 'Reexecução',      color: '#8f6fd0' },
-    { key: 'Concluído',                  label: 'Concluído',       color: '#3fa46a' }
+    {key:'Backlog',                    label:'Backlog',         color:'#9CA3AF'},
+    {key:'Identificação do problema',  label:'Identificação',   color:'#E66407'},
+    {key:'Desenvolvimento da solução', label:'Desenvolvimento', color:'#0195D6'},
+    {key:'Reexecução',                 label:'Reexecução',      color:'#4DB1B3'},
+    {key:'Concluído',                  label:'Concluído',       color:'#0F5299'}
   ];
-
-  // Áreas do GBS para o gráfico de problema × área
   const areasDef = [
-    { key: 'P2P',           label: 'P2P',         color: '#4a90d9' },
-    { key: 'TAX',           label: 'TAX',         color: '#d4a93c' },
-    { key: 'H2R',           label: 'H2R',         color: '#3fa46a' },
-    { key: 'O2C',           label: 'O2C',         color: '#8f6fd0' },
-    { key: 'R2R',           label: 'R2R',         color: '#d46a6a' },
-    { key: '(não mapeada)', label: 'Não mapeada', color: '#9a9a92' }
+    {key:'P2P',           label:'P2P',         color:'#0195D6'},
+    {key:'TAX',           label:'TAX',         color:'#E66407'},
+    {key:'H2R',           label:'H2R',         color:'#4DB1B3'},
+    {key:'O2C',           label:'O2C',         color:'#8B6FD4'},
+    {key:'R2R',           label:'R2R',         color:'#C5284C'},
+    {key:'(não mapeada)', label:'Não mapeada', color:'#9CA3AF'}
   ];
+  const paletaProb = ['#0195D6','#E66407','#4DB1B3','#C5284C','#E83430','#0F5299','#8B6FD4'];
+  const probsOrd   = Object.entries(porProb).sort((a,b)=>b[1]-a[1]).map(e=>e[0]);
+  const serieProb  = probsOrd.map((pr,i) => ({key:pr, label:pr, color:paletaProb[i%paletaProb.length]}));
 
-  // Ordena os tipos de problema por volume total (mais frequentes primeiro)
-  const probsOrd   = Object.entries(porProb).sort((a, b) => b[1] - a[1]).map(e => e[0]);
-  const paletaProb = ['#4a90d9', '#d49a4a', '#3fa46a', '#8f6fd0', '#d46a6a', '#5aa0a0', '#9a7ad4'];
-  const serieProb  = probsOrd.map((pr, i) => ({ key: pr, label: pr, color: paletaProb[i % paletaProb.length] }));
-
-  // Para cada fase, conta quantos chamados de cada tipo de problema estão nela
-  const grupos = fasesDef.map(f => {
-    const sub    = R.filter(r => r.fase === f.key);
+  const gruposProb = fasesDef.map(f => {
+    const sub = chamados.filter(r => r.fase===f.key);
     const valores = {};
-    probsOrd.forEach(pr => { valores[pr] = sub.filter(r => r.problema === pr).length; });
-    return { label: f.label, color: f.color, valores };
+    probsOrd.forEach(pr => { valores[pr] = sub.filter(r=>r.problema===pr).length; });
+    return {label:f.label, color:f.color, valores};
   });
-
-  // Para cada área, conta quantos chamados de cada tipo de problema estão nela
   const gruposArea = areasDef
     .map(a => {
-      const sub = R.filter(r => r.area === a.key);
+      const sub = chamados.filter(r => r.area === a.key);
       const valores = {};
-      probsOrd.forEach(pr => { valores[pr] = sub.filter(r => r.problema === pr).length; });
-      return { label: a.label, color: a.color, valores };
+      probsOrd.forEach(pr => { valores[pr] = sub.filter(r=>r.problema===pr).length; });
+      return {label:a.label, color:a.color, valores};
     })
-    .filter(g => probsOrd.some(pr => g.valores[pr] > 0)); // omite áreas sem chamados
+    .filter(g => probsOrd.some(pr => g.valores[pr] > 0));
 
-  // Donut de "admite reexecução?"
-  const reexecDonut = donut(Object.entries(porReexec).map(([k, vv], i) => ({
-    label: k, value: vv, color: i === 0 ? 'var(--ok)' : 'var(--warn)'
-  })));
-
-  // Donut de "interno ou externo?" — só exibe se o campo existir nos dados
+  const reexecDonut = donut(Object.entries(porReexec).map(([k,vv],i)=>({label:k,value:vv,color:i===0?'var(--ok)':'var(--warn)'})));
   const intextEntries = Object.entries(porIntext);
   const intextDonut = intextEntries.length
-    ? donut(intextEntries.map(([k, vv]) => ({
-        label: k, value: vv,
-        color: k.toLowerCase().includes('intern') ? 'var(--info)' : 'var(--warn)'
-      })))
-    : `<div style="font-size:12px;color:var(--ink4);font-style:italic">
-        Campo "Interno ou externo?" ainda não disponível nos dados.<br>
-        Adicione esse campo ao formulário RPA no Pipefy para habilitar esta análise.
-       </div>`;
+    ? donut(intextEntries.map(([k,vv])=>({label:k,value:vv,color:k.toLowerCase().includes('intern')?'var(--info)':'var(--warn)'})))
+    : `<div style="font-size:12px;color:var(--ink4);font-style:italic">Campo "Interno ou externo?" ainda não disponível nos dados.<br>Adicione esse campo ao formulário RPA no Pipefy para habilitar esta análise.</div>`;
 
   document.getElementById('rpage-prob').innerHTML =
     `<div class="card"><div class="card-title"><i class="ti ti-alert-circle"></i> Tipos de problema <span class="rt">por fase do chamado</span></div>
-      ${clusteredBars(grupos, serieProb)}</div>
+      ${clusteredBars(gruposProb, serieProb)}</div>
     <div class="card"><div class="card-title"><i class="ti ti-building"></i> Tipos de problema <span class="rt">por área</span></div>
       ${clusteredBars(gruposArea, serieProb)}</div>
     <div class="two">
       <div class="card"><div class="card-title"><i class="ti ti-refresh"></i> Admite reexecução?</div>
-        ${reexecDonut}</div>
+        ${reexecDonut}
+        <div class="note" style="margin-top:14px;margin-bottom:0;background:var(--neu-bg);color:var(--ink3)"><i class="ti ti-info-circle"></i><div>
+          <b>O que é reexecução?</b> Indica se o bot pode ser rodado novamente após uma falha sem risco de duplicar transações.
+          <b>Admite:</b> basta re-executar — o resultado é o mesmo.
+          <b>Não admite:</b> é preciso investigar até onde processou antes de qualquer ação (ex: evitar pagamento duplo ou lançamento duplicado no SAP).
+        </div></div></div>
       <div class="card"><div class="card-title"><i class="ti ti-arrow-fork"></i> Causa interna ou externa?</div>
         ${intextDonut}</div>
     </div>`;
+  flushCharts();
+}
 
-  // ── Sub-aba: Tempo de Resolução ──────────────────────────────────────────────
-  // Calcula o tempo médio de cada chamado somando os dias nas fases de
-  // "Identificação do problema" e "Desenvolvimento da solução".
-  // Essas são as fases de trabalho ativo (fases de espera não são contadas).
-
-  // Função auxiliar: média de um campo numérico no array, ignorando nulls
-  const avg = (arr, k) => {
-    const v = arr.filter(r => r[k] != null).map(r => r[k]);
-    return v.length ? (v.reduce((s, x) => s + x, 0) / v.length).toFixed(1) : '—';
-  };
-
-  let t = `<div class="krow">
-    <div class="kpi"><div class="knum sm">${avg(R, 'tIdent')}</div><div class="klbl">Média dias · Identificação</div></div>
-    <div class="kpi"><div class="knum sm">${avg(R, 'tDesenv')}</div><div class="klbl">Média dias · Desenvolvimento</div></div>
-    <div class="kpi"><div class="knum sm">${avg(R, 'tReexec')}</div><div class="klbl">Média dias · Reexecução</div></div>
-    <div class="kpi"><div class="knum sm">${R.filter(r => r.tIdent != null || r.tDesenv != null).length}</div><div class="klbl">Chamados com tempo medido</div></div>
-  </div>`;
-
-  // Monta índice de tempo total por processo (soma Identificação + Desenvolvimento)
-  const procTempo = {};
-  R.forEach(r => {
-    const tt = (r.tIdent || 0) + (r.tDesenv || 0);
-    if (tt > 0) {
-      if (!procTempo[r.processo]) procTempo[r.processo] = { s: 0, n: 0 };
-      procTempo[r.processo].s += tt; // soma total de dias
-      procTempo[r.processo].n++;     // número de chamados com tempo medido
+function buildRPATabTime(chamados, labelComArea) {
+  const tempoPorProcesso = {};
+  chamados.forEach(r => {
+    const diasAtivos = (r.tIdent || 0) + (r.tDesenv || 0);
+    if (diasAtivos > 0) {
+      if (!tempoPorProcesso[r.processo]) tempoPorProcesso[r.processo] = { soma: 0, contagem: 0 };
+      tempoPorProcesso[r.processo].soma     += diasAtivos;
+      tempoPorProcesso[r.processo].contagem += 1;
     }
   });
-
-  // Bots com 3+ chamados: a média é estatisticamente mais confiável
-  const procAvg = Object.entries(procTempo)
-    .filter(e => e[0] !== '(sem processo)' && e[1].n >= 3)
-    .map(([k, v]) => [labelComArea(k), +(v.s / v.n).toFixed(1)]) // média = soma / n
-    .sort((a, b) => b[1] - a[1]); // mais demorado primeiro
-
-  // Bots com apenas 1 chamado: exibidos separadamente (não é uma média, é um valor único)
-  const procUm = Object.entries(procTempo)
-    .filter(e => e[0] !== '(sem processo)' && e[1].n === 1)
-    .map(([k, v]) => [labelComArea(k), +v.s.toFixed(1)])
+  const procAvg = Object.entries(tempoPorProcesso)
+    .filter(([proc, d]) => proc !== '(sem processo)' && d.contagem >= 3)
+    .map(([proc, d]) => [labelComArea(proc), +(d.soma / d.contagem).toFixed(1)])
+    .sort((a, b) => b[1] - a[1]);
+  const procUm = Object.entries(tempoPorProcesso)
+    .filter(([proc, d]) => proc !== '(sem processo)' && d.contagem === 1)
+    .map(([proc, d]) => [labelComArea(proc), +d.soma.toFixed(1)])
     .sort((a, b) => b[1] - a[1]);
 
-  t += `<div class="card"><div class="card-title"><i class="ti ti-clock"></i> Tempo médio de resolução por bot<span class="rt">dias · bots com 3+ chamados</span></div>
-    ${hbars(procAvg, { max: 12, lw: 220, color: 'var(--warn)' })}
-    <div class="note" style="margin-top:14px;margin-bottom:0;background:var(--neu-bg);color:var(--ink3)"><i class="ti ti-info-circle"></i><div>
-      <b>Como o tempo é calculado:</b> para cada chamado, somamos os dias que ele passou na fase de <b>Identificação do problema</b> e na de <b>Desenvolvimento da solução</b> (as fases de trabalho ativo). A barra mostra a <b>média desses dias</b> entre os chamados de cada bot.
-      Só entram bots com <b>3 chamados ou mais</b>, para a média ser estatisticamente confiável — um único chamado muito longo distorceria o número. Quanto maior a barra, mais tempo aquele bot leva, em média, para ter a manutenção resolvida.</div></div></div>`;
+  const notaTempoMedio = `<div class="note" style="margin-top:14px;margin-bottom:0;background:var(--neu-bg);color:var(--ink3)"><i class="ti ti-info-circle"></i><div>Soma dos dias em <b>Identificação</b> + <b>Desenvolvimento</b> dividida pelo nº de chamados do bot. Só bots com <b>3+ chamados</b> entram (evita distorção de amostra única).</div></div>`;
+  const cardTempoMedio = `<div class="card"><div class="card-title"><i class="ti ti-clock"></i> Tempo médio por bot<span class="rt">dias · 3+ chamados</span></div>
+    ${horizontalBars(procAvg,{max:12,lw:200,color:'var(--warn)'})}${notaTempoMedio}</div>`;
 
+  let html = `<div class="krow">
+    <div class="kpi">${iconeKpi('clock')}<div class="knum sm">${averageField(chamados,'tIdent')}</div><div class="klbl">Média dias · Identificação</div></div>
+    <div class="kpi">${iconeKpi('clock')}<div class="knum sm">${averageField(chamados,'tDesenv')}</div><div class="klbl">Média dias · Desenvolvimento</div></div>
+    <div class="kpi">${iconeKpi('clock')}<div class="knum sm">${averageField(chamados,'tReexec')}</div><div class="klbl">Média dias · Reexecução</div></div>
+    <div class="kpi">${iconeKpi('chartbar')}<div class="knum sm">${chamados.filter(r=>r.tIdent!=null||r.tDesenv!=null).length}</div><div class="klbl">Chamados com tempo medido</div></div>
+  </div>`;
   if (procUm.length) {
-    t += `<div class="card"><div class="card-title"><i class="ti ti-clock-hour-4"></i> Tempo de resolução — bots com apenas 1 chamado<span class="rt">dias · ${procUm.length} bots</span></div>
-      ${hbars(procUm, { max: 30, lw: 220, color: '#5aa0a0' })}
-      <div class="note" style="margin-top:14px;margin-bottom:0;background:var(--neu-bg);color:var(--ink3)"><i class="ti ti-info-circle"></i><div>
-        Estes bots tiveram <b>um único chamado</b> no período, então o valor é o tempo <b>daquele chamado</b> (Identificação + Desenvolvimento), não uma média. Por ser uma amostra de 1, serve de referência, mas não indica um padrão do bot.</div></div></div>`;
+    html += `<div class="two">${cardTempoMedio}<div class="card"><div class="card-title"><i class="ti ti-clock-hour-4"></i> Bots com 1 chamado<span class="rt">dias · ${procUm.length} bots</span></div>
+      ${horizontalBars(procUm,{max:20,lw:200,color:'#5aa0a0'})}
+      <div class="note" style="margin-top:14px;margin-bottom:0;background:var(--neu-bg);color:var(--ink3)"><i class="ti ti-info-circle"></i><div>Um único chamado — não é média, serve de referência.</div></div></div></div>`;
+  } else {
+    html += cardTempoMedio;
   }
-  document.getElementById('rpage-tempo').innerHTML = t;
+  document.getElementById('rpage-tempo').innerHTML = html;
+  flushCharts();
+}
 
-  // ── Sub-aba: Lista de Chamados ───────────────────────────────────────────────
+function buildRPATabList(chamados, total, venc) {
   document.getElementById('rpage-lista').innerHTML =
     `<div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
-    <input type="text" id="rsearch" placeholder="Buscar por código, processo, solicitante..." oninput="renderRPALista()" style="flex:1;max-width:360px">
-    <span style="font-size:11px;color:var(--ink4)" id="rlista-count">${total} chamados</span></div>
+      <input type="text" id="rsearch" placeholder="Buscar por código, processo, solicitante..." oninput="renderRPAList()" style="flex:1;max-width:360px">
+      <span style="font-size:11px;color:var(--ink4)" id="rlista-count">${total} chamados</span></div>
     <div class="card np"><div style="overflow-x:auto"><table class="tbl" style="margin:0">
     <thead><tr><th style="padding-left:20px">Código</th><th>Processo</th><th>Problema</th><th>Fase</th><th>Mês</th><th style="padding-right:20px">Status</th></tr></thead>
     <tbody id="rlista-body"></tbody></table></div></div>`;
-  renderRPALista();
-
-  // Badge da aba: mostra quantos vencidos se houver, senão o total
-  setBadge('nb-rpa', venc > 0 ? venc + ' venc' : total, venc > 0 ? 'warn' : '');
+  renderRPAList();
+  setBadge('nb-rpa', venc>0 ? venc+' venc' : total, venc>0?'warn':'');
 }
 
-// ─── renderRPAStatus ──────────────────────────────────────────────────────────
-// Re-renderiza os KPIs e gráficos da visão geral com o filtro local de fase ativo.
-// Chamada pelo buildRPAChamados() e pelo onChange do select de fase.
-export function renderRPAStatus() {
-  const { kept: R0 } = applyDate(App.R);
-  const fs = document.getElementById('rpa-fs')?.value || ''; // fase selecionada no filtro local
-  const R  = fs ? R0.filter(r => r.fase === fs) : R0;        // aplica filtro de fase (ou todos)
+/*
+ * renderRPAStatus() — renders the KPIs and charts of the RPA Tickets overview,
+ * respecting the global date filter AND the local status (phase) filter.
+ * Includes: KPIs, monthly volume, opened by weekday (Mon-Fri) and tickets by area.
+ */
+export function renderRPAStatus(){
+  const {kept: chamadosFiltrados} = filtrarPorPeriodo(App.R);   // já filtrado pelo período global
+  const faseSelecionada = document.getElementById('rpa-fs')?.value || '';
+  const chamados = faseSelecionada ? chamadosFiltrados.filter(r => r.fase === faseSelecionada) : chamadosFiltrados;
 
-  const total   = R.length;
-  const venc    = R.filter(r => r.vencido).length;
-  const concl   = R.filter(r => r.fase.toLowerCase().includes('conclu')).length;
-  const abertos = total - concl;
-  const reexec  = R.filter(r => r.problema.toLowerCase().includes('reexecu')).length;
-  const procUnicos = new Set(R.map(r => r.processo).filter(p => p && p !== '(sem processo)')).size;
+  const total      = chamados.length;
+  const venc       = chamados.filter(r => r.vencido).length;
+  const concl      = chamados.filter(r => r.fase.toLowerCase().includes('conclu')).length;
+  const abertos    = total - concl;
+  const reexec     = chamados.filter(r => r.problema.toLowerCase().includes('reexecu')).length;
+  const pctVenc    = calculatePercentage(venc, total);
+  const procUnicos = new Set(chamados.map(r => r.processo).filter(p => p && p !== '(sem processo)')).size;
 
   const cnt = document.getElementById('rpa-fs-count');
-  if (cnt) cnt.textContent = fs ? `${total} chamados em "${fs}"` : `${total} chamados`;
+  if(cnt) cnt.textContent = faseSelecionada ? `${total} chamados em "${faseSelecionada}"` : `${total} chamados`;
 
-  let v = `<div class="krow k5">
-    <div class="kpi"><div class="knum">${total}</div><div class="klbl">Total chamados</div><div class="ksub">${procUnicos} processos distintos</div></div>
-    <div class="kpi gl"><div class="knum">${concl}</div><div class="klbl">Concluídos</div><div class="ksub">${pct(concl, total)}%</div></div>
-    <div class="kpi il"><div class="knum">${abertos}</div><div class="klbl">Abertos</div></div>
-    <div class="kpi dl"><div class="knum">${venc}</div><div class="klbl">Vencidos</div><div class="ksub">${pct(venc, total)}% do total</div></div>
-    <div class="kpi wl"><div class="knum">${reexec}</div><div class="klbl">Reexecuções</div></div>
+  let htmlKpis = `<div class="krow k5">
+    <div class="kpi">${iconeKpi('ticket')}<div class="knum">${total}</div><div class="klbl">Total chamados</div><div class="ksub">${procUnicos} processos distintos</div></div>
+    <div class="kpi gl">${iconeKpi('check')}<div class="knum">${concl}</div><div class="klbl">Concluídos</div><div class="ksub">${calculatePercentage(concl,total)}%</div></div>
+    <div class="kpi il">${iconeKpi('clock')}<div class="knum">${abertos}</div><div class="klbl">Abertos</div></div>
+    <div class="kpi dl">${iconeKpi('alert')}<div class="knum">${venc}</div><div class="klbl">Vencidos</div><div class="ksub">${pctVenc}% do total</div></div>
+    <div class="kpi wl">${iconeKpi('refresh')}<div class="knum">${reexec}</div><div class="klbl">Reexecuções</div></div>
   </div>`;
 
-  // ── Gráfico de volume mensal (barras verticais customizadas em CSS) ──────────
-  // Cada coluna representa um mês. Dentro da coluna há duas barras empilhadas:
-  //   - barra azul clara (vbar-total): representa TODOS os chamados do mês
-  //   - barra vermelha (vbar-inc):     representa apenas os vencidos do mês
-  //
-  // Altura de cada barra é calculada em % relativa ao mês com mais chamados (mx).
-  // A fórmula: height = round(valor / mx × 100) + "%"
-  // Assim o mês mais cheio sempre ocupa 100% da altura do gráfico.
-  const porMes  = {}, porMesV = {};
-  R.forEach(r => {
+  // Monthly volume (stacked bars: normal tickets + overdue)
+  const porMes={}, porMesV={};
+  chamados.forEach(r => {
     if (r.mes) {
       porMes[r.mes]  = (porMes[r.mes]  || 0) + 1;
       if (r.vencido) porMesV[r.mes] = (porMesV[r.mes] || 0) + 1;
     }
   });
+  const meses = Object.keys(porMes).sort().slice(-12);
+  const vol   = verticalBarsChart(meses, porMes, porMesV);
 
-  const meses = Object.keys(porMes).sort();
-  const mx    = Math.max(...meses.map(m => porMes[m]), 1); // máximo (escala de referência)
-
-  let vol = '<div class="vchart">';
-  meses.slice(-12).forEach(m => { // exibe só os últimos 12 meses para não poluir
-    const tt = porMes[m]  || 0;  // total do mês
-    const vv = porMesV[m] || 0;  // vencidos do mês
-    const hTot = Math.round(tt / mx * 100); // altura em % da barra total
-
-    vol += `<div class="vcol"><div class="vcol-bars">
-      <div class="vcol-num" style="bottom:calc(${hTot}% + 2px)">${tt}</div>
-      <div class="vbar-total" style="height:${hTot}%"></div>
-      <div class="vbar-inc" style="height:${Math.round(vv / mx * 100)}%"></div>
-    </div><div class="vcol-lbl">${ymLabel(m)}</div>${vv > 0 ? `<div class="vcol-venc">${vv} venc.</div>` : ''}</div>`;
-  });
-  vol += '</div><div class="vlegend"><div class="vleg"><div class="vleg-dot" style="background:var(--brand);opacity:.3"></div>Total</div><div class="vleg"><div class="vleg-dot" style="background:var(--err)"></div>Vencidos</div></div>';
-
-  v += `<div class="card"><div class="card-title"><i class="ti ti-chart-bar"></i> Volume mensal</div>${vol}</div>`;
-
-  // ── Tickets por área (agrupa fora das principais em "Outros") ────────────────
-  const AREAS_PRINCIPAIS = ['P2P', 'TAX', 'H2R', 'O2C', 'R2R'];
-  const porArea    = count(R, r => r.area || '(não mapeada)');
-  let outrosArea   = 0;
-  const areaEntries = [];
-
-  Object.entries(porArea).forEach(([area, n]) => {
-    if (AREAS_PRINCIPAIS.includes(area.toUpperCase()) || area === '(não mapeada)') {
-      areaEntries.push([area, n]); // áreas reconhecidas entram individualmente
-    } else {
-      outrosArea += n; // áreas desconhecidas são agrupadas em "Outros"
-    }
-  });
-
-  areaEntries.sort((a, b) => b[1] - a[1]);
-  if (outrosArea > 0) areaEntries.push(['Outros', outrosArea]);
-
-  v += `<div class="two">
-    <div class="card"><div class="card-title"><i class="ti ti-building"></i> Tickets por área</div>
-      ${hbars(areaEntries, { max: 12, lw: 120, tot: total, fixedLabel: true })}</div>
+  // Monthly volume + phase donut side by side (time view + current state)
+  htmlKpis += `<div class="two">
+    <div class="card"><div class="card-title"><i class="ti ti-chart-bar"></i> Volume mensal</div>${vol}</div>
     <div class="card"><div class="card-title"><i class="ti ti-chart-pie"></i> Status (fase) dos chamados</div>
-      ${donut(Object.entries(count(R, r => r.fase)).map(([k, vv], i) => ({ label: k, value: vv, color: ['var(--ok)', 'var(--info)', 'var(--warn)', 'var(--err)', '#7c5cbf', 'var(--ink4)'][i % 6] })))}</div>
+      ${donut(Object.entries(count(chamados,r=>r.fase)).map(([k,vv],i)=>({label:k,value:vv,color:['var(--ok)','var(--info)','var(--warn)','var(--err)','#7c5cbf','var(--ink4)'][i%6]})))}</div>
   </div>`;
 
-  document.getElementById('rpa-visao-kpis').innerHTML = v;
+  // Tickets by area (area inherited from the bot inventory via name matching).
+  // The main areas stay visible; the rest (PAM, CI, IT, ARG, etc.)
+  // are summed into "Outros" to avoid cluttering the chart with tiny slices.
+  const porArea = count(chamados, r => r.area || '(não mapeada)');
+  let outrosArea = 0;
+  const areaEntries = [];
+  Object.entries(porArea).forEach(([area, n]) => {
+    const up = area.toUpperCase();
+    if(MAIN_RPA_AREAS.includes(up) || area === '(não mapeada)'){
+      areaEntries.push([area, n]);
+    } else {
+      outrosArea += n; // PAM, CI, IT, ARG e quaisquer outras pequenas
+    }
+  });
+  areaEntries.sort((a,b)=>b[1]-a[1]);
+  if(outrosArea > 0) areaEntries.push(['Outros', outrosArea]); // "Outros" sempre por último
+  htmlKpis += `<div class="card"><div class="card-title"><i class="ti ti-building"></i> Tickets por área</div>
+    ${horizontalBars(areaEntries,{max:12,lw:120,tot:total,fixedLabel:true})}</div>`;
+
+  document.getElementById('rpa-visao-kpis').innerHTML = htmlKpis;
+  flushCharts();
 }
 
-// ─── renderRPALista ───────────────────────────────────────────────────────────
-// Tabela de chamados com busca em tempo real. Limitada a 1000 linhas para
-// desempenho — exibe aviso se houver mais.
-export function renderRPALista() {
-  const { kept: R } = applyDate(App.R);
-  const q   = (document.getElementById('rsearch')?.value || '').toLowerCase();
-  // Busca no texto combinado de código + processo + solicitante + problema
-  const vis = q ? R.filter(r => (r.cod + r.processo + r.solicitante + r.problema).toLowerCase().includes(q)) : R;
-
+/*
+ * renderRPAList() — renders the paginated ticket list.
+ * Applies the global date filter + text search.
+ * Shows up to 1000 tickets; warns if there are more.
+ */
+export function renderRPAList(){
+  const {kept: chamados} = filtrarPorPeriodo(App.R);
+  const query = (document.getElementById('rsearch')?.value||'').toLowerCase();
+  const vis = query ? chamados.filter(r=>(r.cod+r.processo+r.solicitante+r.problema).toLowerCase().includes(query)) : chamados;
   const cnt = document.getElementById('rlista-count');
-  if (cnt) cnt.textContent = vis.length + ' chamados';
-
-  let h = vis.slice(0, 1000).map(r => {
+  if(cnt) cnt.textContent = vis.length+' chamados';
+  let linhasChamados = vis.slice(0,1000).map(r => {
     const concl = r.fase.toLowerCase().includes('conclu');
     return `<tr>
       <td style="padding-left:20px;font-family:monospace;font-size:11px;color:var(--ink3)">${r.cod}</td>
       <td style="font-size:11px">${r.processo}</td>
       <td style="font-size:11px;color:var(--ink3)">${r.problema}</td>
-      <td><span class="badge ${concl ? 'ok' : 'info'}" style="font-size:9px">${r.fase}</span></td>
-      <td style="font-size:11px;color:var(--ink4)">${ymLabel(r.mes)}</td>
-      <td style="padding-right:20px">${r.vencido ? '<span class="badge red">Vencido</span>' : '<span class="badge neu">No prazo</span>'}</td></tr>`;
+      <td><span class="badge ${concl?'ok':'info'}" style="font-size:9px">${r.fase}</span></td>
+      <td style="font-size:11px;color:var(--ink4)">${toYearMonthLabel(r.mes)}</td>
+      <td style="padding-right:20px">${r.vencido?'<span class="badge red">Vencido</span>':'<span class="badge neu">No prazo</span>'}</td></tr>`;
   }).join('');
-
-  if (vis.length > 1000) {
-    h += `<tr><td colspan="6" style="text-align:center;padding:16px;color:var(--ink4);font-size:12px">Exibindo 1000 de ${vis.length} — use a busca para refinar</td></tr>`;
-  }
-
-  const b = document.getElementById('rlista-body');
-  if (b) b.innerHTML = h;
+  if(vis.length > 1000) linhasChamados += `<tr><td colspan="6" style="text-align:center;padding:16px;color:var(--ink4);font-size:12px">Exibindo 1000 de ${vis.length} — use a busca para refinar</td></tr>`;
+  const corpoTabela = document.getElementById('rlista-body');
+  if(corpoTabela) corpoTabela.innerHTML = linhasChamados;
 }

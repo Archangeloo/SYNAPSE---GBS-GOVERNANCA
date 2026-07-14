@@ -1,64 +1,119 @@
-// Nomes dos meses e dias da semana (índice 0 = Jan / Seg)
+// ─── MODULE: constants.js ──────────────────────────────────────────────────
+// Static lookup tables and fixed values shared across the app. No logic here
+// beyond simple derivations (HOJE) — everything else is plain data.
+// ─────────────────────────────────────────────────────────────────────────────
+
 export const MESES = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
-export const DOW   = ['Seg','Ter','Qua','Qui','Sex','Sáb','Dom'];
 
-// Data atual no momento do carregamento — usada como referência em cálculos de atraso/risco
-export const HOJE = new Date();
+export const HOJE = new Date(); // current date at the moment the page loads
 
-// ─── Equipe CoE ─────────────────────────────────────────────────────────────
-// Usado para filtrar "Ações abertas por responsável" na aba Governança.
-// Cada membro tem uma lista de termos únicos que identificam seu nome nos dados,
-// tolerando variações de escrita. Sobrenomes distintos são preferidos a primeiros
-// nomes (ex: "archangelo" em vez de "gustavo") para evitar homônimos.
-export const EQUIPE_COE = [
-  // --- Projetos ---
-  { nome:'Gabriel Hirata',    match:['gabriel hirata','hirata'] },
-  { nome:'Maiara',            match:['maiara'] },
-  { nome:'Vinícius Milagres', match:['milagres','vinícius marchi','vinicius marchi'] },
-  { nome:'Isabelly Vidal',    match:['isabelly'] },
-  { nome:'Daniel Torres',     match:['daniel torres'] },
-  { nome:'Adely Canizal',     match:['adely'] },
+/* Inline SVG paths — don't depend on font loading, work in dynamic HTML */
+export const _SVG = {
+  list:    '<line x1="9" y1="6" x2="20" y2="6"/><line x1="9" y1="12" x2="20" y2="12"/><line x1="9" y1="18" x2="20" y2="18"/><circle cx="5" cy="6" r="1" fill="currentColor"/><circle cx="5" cy="12" r="1" fill="currentColor"/><circle cx="5" cy="18" r="1" fill="currentColor"/>',
+  check:   '<polyline points="20 6 9 17 4 12"/>',
+  clock:   '<circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 15"/>',
+  stack:   '<polyline points="12 4 4 8 12 12 20 8 12 4"/><polyline points="4 12 12 16 20 12"/><polyline points="4 16 12 20 20 16"/>',
+  dots:    '<circle cx="5" cy="12" r="1.5" fill="currentColor"/><circle cx="12" cy="12" r="1.5" fill="currentColor"/><circle cx="19" cy="12" r="1.5" fill="currentColor"/>',
+  folders: '<path d="M10 4H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-4l-2-3z"/>',
+  play:    '<polygon points="5 3 19 12 5 21 5 3" fill="currentColor" opacity=".35"/><polygon points="5 3 19 12 5 21 5 3"/>',
+  flag:    '<path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/>',
+  flame:   '<path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z"/>',
+  message: '<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><circle cx="9" cy="11" r=".8" fill="currentColor"/><circle cx="13" cy="11" r=".8" fill="currentColor"/>',
+  lock:    '<rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>',
+  branch:  '<line x1="6" y1="3" x2="6" y2="15"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/>',
+  chartbar:'<line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/><line x1="2" y1="20" x2="22" y2="20"/>',
+  minus:   '<line x1="5" y1="12" x2="19" y2="12"/>',
+  ticket:  '<path d="M2 9a3 3 0 0 1 0 6v2a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-2a3 3 0 0 1 0-6V7a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2z"/>',
+  alert:   '<circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><circle cx="12" cy="16" r=".8" fill="currentColor"/>',
+  refresh: '<polyline points="1 4 1 10 7 10"/><polyline points="23 20 23 14 17 14"/><path d="M20.49 9A9 9 0 0 0 5.64 5.64L1 10m22 4-4.64 4.36A9 9 0 0 1 3.51 15"/>',
+  robot:   '<rect x="3" y="11" width="18" height="10" rx="2"/><circle cx="12" cy="5" r="2"/><line x1="12" y1="7" x2="12" y2="11"/><circle cx="8" cy="16" r="1" fill="currentColor"/><circle cx="16" cy="16" r="1" fill="currentColor"/>',
+  rocket:  '<path d="M4.5 16.5c-1.5 1.26-2 5-2 5s3.74-.5 5-2c.71-.84.7-2.13-.09-2.91a2.18 2.18 0 0 0-2.91-.09z"/><path d="m12 15-3-3a22 22 0 0 1 2-3.95A12.88 12.88 0 0 1 22 2c0 2.72-.78 7.5-6 11a22.35 22.35 0 0 1-4 2z"/><path d="M9 12H4s.55-3.03 2-4c1.62-1.08 5 0 5 0"/><path d="M12 15v5s3.03-.55 4-2c1.08-1.62 0-5 0-5"/>',
+  code:    '<polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/>',
+};
+
+// Portuguese labels for display in the interface
+export const STATUS_PT = {
+  done:    'Concluído',
+  doing:   'Em andamento',
+  closing: 'Em encerramento',
+  monitor: 'Monitoramento',
+  todo:    'Não iniciado',
+  blocked: 'Bloqueado',
+  cancel:  'Cancelado',
+  vendor:  'Suporte Pipefy',
+  other:   'Outro'
+};
+
+// CSS badge class for each status (see CSS: .badge.ok, .badge.info, etc.)
+export const STATUS_BADGE = {
+  done:    'ok',
+  doing:   'info',
+  closing: 'warn',
+  monitor: 'info',
+  todo:    'neu',
+  blocked: 'warn',
+  cancel:  'red',
+  vendor:  'blue',
+  other:   'neu'
+};
+
+// Solid color for charts — Saint-Gobain palette
+export const STATUS_COLOR = {
+  done:    '#4DB1B3',  // teal        — done
+  doing:   '#0195D6',  // bright blue — in progress
+  closing: '#E66407',  // orange      — closing
+  monitor: '#0F5299',  // brand blue  — monitoring
+  todo:    '#9CA3AF',  // gray        — not started
+  blocked: '#E83430',  // red         — blocked
+  cancel:  '#C5284C',  // pink-red    — cancelled
+  vendor:  '#8B6FD4',  // purple      — Pipefy support
+  other:   '#9CA3AF'   // gray
+};
+
+/*
+ * COE_TEAM — CoE team members, organized by the area they work in.
+ * Used ONLY on the Governance tab to filter "Open actions by owner"
+ * (shows only the internal team; non-CoE people don't appear on that chart).
+ *
+ * Each entry has a 'match' list of distinctive terms to recognize the
+ * person in the data, tolerating spelling variations. We deliberately use
+ * surnames/unique terms to AVOID confusing first-name homonyms
+ * (ex: "Gustavo" would also match "Matheus Gustavo Germano", who is not
+ * CoE; that's why we use "archangelo"). 'name' is the label shown on the chart.
+ */
+export const COE_TEAM = [
+  // --- Projects ---
+  { name:'Gabriel Hirata',    match:['gabriel hirata','hirata'] },
+  { name:'Maiara',            match:['maiara'] },
+  { name:'Vinícius Milagres', match:['milagres','vinícius marchi','vinicius marchi'] },
+  { name:'Isabelly Vidal',    match:['isabelly'] },
+  { name:'Daniel Torres',     match:['daniel torres'] },
+  { name:'Adely Canizal',     match:['adely'] },
   // --- RPA ---
-  { nome:'Lucas Oliveira',    match:['lucas oliveira','lucas alvarenga','alvarenga'] },
-  { nome:'Caio Pucci',        match:['caio pucci','pucci'] },
-  { nome:'Francisco Prestes', match:['francisco prestes','prestes'] },
-  { nome:'Fernando Sanches',  match:['fernando sanches','sanches'] },
-  { nome:'Igor Henrique',     match:['igor henrique'] },
-  { nome:'Esteban Menendez',  match:['esteban'] },
-  { nome:'Jesus Axel',        match:['axel'] },
+  { name:'Lucas Oliveira',    match:['lucas oliveira','lucas alvarenga','alvarenga'] },
+  { name:'Caio Pucci',        match:['caio pucci','pucci'] },
+  { name:'Francisco Prestes', match:['francisco prestes','prestes'] },
+  { name:'Fernando Sanches',  match:['fernando sanches','sanches'] },
+  { name:'Igor Henrique',     match:['igor henrique'] },
+  { name:'Esteban Menendez',  match:['esteban'] },
+  { name:'Jesus Axel',        match:['axel'] },
   // --- Pipefy ---
-  { nome:'Gustavo Archangelo',match:['archangelo'] },
-  { nome:'Vinícius Domingues',match:['vinícius domingues','vinicius domingues'] },
-  { nome:'Felipe Cordeiro',   match:['felipe cordeiro','cordeiro'] },
-  { nome:'William Maciel',    match:['william maciel','willian maciel','souza maciel'] }
+  { name:'Gustavo Archangelo',match:['archangelo'] },
+  { name:'Vinícius Domingues',match:['vinícius domingues','vinicius domingues'] },
+  { name:'Felipe Cordeiro',   match:['felipe cordeiro','cordeiro'] },
+  { name:'William Maciel',    match:['william maciel','willian maciel','souza maciel'] }
 ];
 
-// ─── Status ──────────────────────────────────────────────────────────────────
-// Rótulos em português exibidos na interface
-export const STATUS_PT = {
-  done:'Concluído', doing:'Em andamento', closing:'Em encerramento',
-  monitor:'Monitoramento', todo:'Não iniciado', blocked:'Bloqueado',
-  cancel:'Cancelado', vendor:'Suporte Pipefy', other:'Outro'
-};
+// Main GBS business areas — used to filter RPA and bot charts.
+// Secondary inventory areas (PAM, CI, IT, ARG, MEX etc.) are grouped into "Outros"
+// to avoid cluttering the charts with low-volume slices.
+export const MAIN_RPA_AREAS = ['P2P', 'TAX', 'H2R', 'O2C', 'R2R'];
 
-// Classe CSS do badge de status (ver styles/main.css: .badge.ok, .badge.info, etc.)
-export const STATUS_BADGE = {
-  done:'ok', doing:'info', closing:'warn', monitor:'info',
-  todo:'neu', blocked:'warn', cancel:'red', vendor:'blue', other:'neu'
-};
+// Team responsible for developing Pipefy improvements (excludes requesters/champions).
+// Used in construirMelhorias() to filter the "Por responsável" chart.
+export const PIPEFY_TEAM = ['willian', 'vinícius', 'vinicius', 'felipe', 'gustavo', 'caio'];
 
-// Cor pura para gráficos SVG (que não usam classes CSS)
-export const STATUS_COLOR = {
-  done:'var(--ok)', doing:'var(--info)', closing:'#c08438',
-  monitor:'#5a8fd9', todo:'var(--neu)', blocked:'var(--warn)',
-  cancel:'var(--err)', vendor:'#7c5cbf', other:'var(--ink4)'
-};
-
-// SVG inline do ícone "faísca" — não depende de fonte de ícone externa
-export const AI_SPARK = '<svg class="ai-spark" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.9 5.8L20 11l-6.1 2.2L12 19l-1.9-5.8L4 11l6.1-2.2z"/></svg>';
-
-// ─── Equipe de desenvolvimento de Melhorias Pipefy ──────────────────────────
-// Usado na aba Pipefy Melhorias para filtrar o gráfico "Por responsável",
-// mostrando apenas quem desenvolve as melhorias (não solicitantes ou champions).
-// Para adicionar ou remover alguém, edite este array — não precisa mexer na view.
-export const EQUIPE_MEL = ['willian', 'vinícius', 'vinicius', 'felipe', 'gustavo', 'caio'];
+// Calculates the number of days between two dates.
+// Positive = date1 is more recent than date2 (ex: today - deadline = days overdue).
+export const MS_PER_DAY = 86_400_000;
+export const EXCEL_EPOCH_OFFSET = 25569; // days between 1900-01-01 (Excel epoch) and 1970-01-01 (Unix epoch)

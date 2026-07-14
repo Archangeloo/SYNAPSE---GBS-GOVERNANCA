@@ -1,73 +1,90 @@
-import { App } from './state.js';
-
-// ─── MÓDULO: upload.js ───────────────────────────────────────────────────────
-// Gerencia o upload de arquivos Excel: drag-and-drop e seleção via input file.
-// Usa FileReader + SheetJS (XLSX global injetado via CDN no index.html).
-//
-// Exporta:
-//   dzO(e, id)       — drag-over: adiciona classe visual 'over'
-//   dzL(id)          — drag-leave: remove classe 'over'
-//   dzD(e, t)        — drag-drop: lê o arquivo solto
-//   hf(i, t)         — handler do <input type="file">
-//   readFile(f, type) — lê arquivo Excel e popula App.gov ou App.rpa
-//   showOk(type, name, wb) — atualiza UI após leitura bem-sucedida
-//   updateBar()      — atualiza contador de bases carregadas
+// ─── MODULE: upload.js ─────────────────────────────────────────────────────
+// FILE UPLOAD
+// Drag & drop and file-input handling for the two Excel sources (Governance
+// base and RPA ticket report), using SheetJS (XLSX, loaded globally via CDN)
+// to parse the binary into a workbook stored on App.gov / App.rpa.
 // ─────────────────────────────────────────────────────────────────────────────
 
-// ─── Drag & drop ──────────────────────────────────────────────────────────────
-export function dzO(e, id)  { e.preventDefault(); document.getElementById(id).classList.add('over'); }
-export function dzL(id)     { document.getElementById(id).classList.remove('over'); }
-export function dzD(e, t)   {
-  e.preventDefault();
-  document.getElementById('dz-' + t).classList.remove('over');
-  const f = e.dataTransfer.files[0];
-  if (f) readFile(f, t);
+import { App } from './state.js';
+
+// Drag & drop: drag-over (over), drag-leave (leave), drop events
+export function handleDropzoneDragOver(event,id){ event.preventDefault(); document.getElementById(id).classList.add('over'); }
+export function handleDropzoneDragLeave(id){ document.getElementById(id).classList.remove('over'); }
+export function handleDropzoneDrop(event,type){
+  event.preventDefault();
+  document.getElementById('dz-'+type).classList.remove('over');
+  const file = event.dataTransfer.files[0];
+  if(file) readFile(file, type);
 }
 
-// Handler do input file (clique no botão de seleção de arquivo)
-export function hf(i, t) { if (i.files[0]) readFile(i.files[0], t); }
+// File input handler (click on the file selection button)
+export function handleFileInputChange(input,type){ if(input.files[0]) readFile(input.files[0], type); }
 
-// ─── Leitura do arquivo Excel ─────────────────────────────────────────────────
-// Usa FileReader + SheetJS (XLSX global injetado pela CDN no index.html).
-// cellDates:true faz o SheetJS retornar objetos Date nativos.
-export function readFile(file, type) {
-  const rd = new FileReader();
-  rd.onload = e => {
-    const wb = XLSX.read(new Uint8Array(e.target.result), { type: 'array', cellDates: true });
-    if (type === 'gov') App.gov = wb;
+/*
+ * Reads an Excel (.xlsx) file from disk using FileReader.
+ * Uses the SheetJS (XLSX) library to parse the binary.
+ * cellDates:true makes SheetJS return native Date objects (not Excel serials).
+ * After reading, stores the workbook in App.gov or App.rpa depending on the type.
+ */
+export function readFile(file, type){
+  const reader = new FileReader();
+  reader.onload = e => {
+    const wb = XLSX.read(new Uint8Array(e.target.result), {type:'array', cellDates:true});
+    if(type === 'gov') App.gov = wb;
     else App.rpa = wb;
     App.loaded[type] = true;
     showOk(type, file.name, wb);
     updateBar();
   };
-  rd.readAsArrayBuffer(file);
+  reader.readAsArrayBuffer(file);
 }
 
-// Atualiza a UI do card de upload após leitura bem-sucedida.
-// Para a base de governança, verifica quais abas esperadas foram encontradas.
-export function showOk(type, name, wb) {
-  document.getElementById('ok-' + type).classList.add('show');
-  document.getElementById('uc-' + type).classList.add('loaded');
-  document.getElementById('fn-' + type).textContent = name;
-  const tg = document.getElementById('tg-' + type);
+/*
+ * Updates the upload card's UI after a successful read.
+ * For the governance base, checks which expected tabs were found
+ * and shows green/yellow badges for each one.
+ */
+function showOk(type, name, wb){
+  document.getElementById('ok-'+type).classList.add('show');
+  document.getElementById('uc-'+type).classList.add('loaded');
+  document.getElementById('fn-'+type).textContent = name;
+  const tg = document.getElementById('tg-'+type);
   tg.classList.add('show');
-  if (type === 'gov') {
+  if(type === 'gov'){
     const found = wb.SheetNames;
-    const want = ['Pipefy_Melhorias', 'Projetos', 'Analytics', 'Inventario_RPA'];
-    tg.innerHTML = '<b>Abas lidas:</b> ' + want.map(w => {
-      const ok = found.some(f => f.toLowerCase().replace(/[_ ]/g, '').includes(w.toLowerCase().replace(/[_ ]/g, '')));
-      return `<span class="badge ${ok ? 'ok' : 'warn'}" style="margin:2px">${w}${ok ? '' : ' (?)'}</span>`;
+    const want = ['Pipefy_Melhorias','Projetos','Analytics','Inventario_RPA'];
+    // shows the tabs found
+    let html = '<b>Abas lidas:</b> ' + want.map(w => {
+      const ok = found.some(f => f.toLowerCase().replace(/[_ ]/g,'').includes(w.toLowerCase().replace(/[_ ]/g,'')));
+      return `<span class="badge ${ok?'ok':'warn'}" style="margin:2px">${w}${ok?'':' (?)'}</span>`;
     }).join('');
+    // Pipefy_Melhorias column diagnostics — helps identify the correct date column name
+    const sMel = found.find(f => f.toLowerCase().replace(/[_ ]/g,'').includes('pipefymelhorias') || f.toLowerCase().replace(/[_ ]/g,'').includes('melhorias'));
+    if(sMel){
+      const rows = XLSX.utils.sheet_to_json(wb.Sheets[sMel], {defval:''});
+      if(rows.length){
+        const cols = Object.keys(rows[0]);
+        const dateCols = cols.filter(c => /data|criado|created|inicio|abertura|planejamento|conclus/i.test(c));
+        html += `<br><details style="margin-top:6px"><summary style="font-size:10px;color:var(--ink3);cursor:pointer">🔍 Colunas de data encontradas em Pipefy_Melhorias (clique)</summary>
+          <div style="font-size:10px;color:var(--ink2);margin-top:4px;line-height:2">
+            ${dateCols.length ? dateCols.map(c => `<code style="background:var(--paper);padding:1px 4px;border-radius:3px">${c}</code>`).join('  ') : '<i>Nenhuma coluna com "data", "criado", "início" ou "conclusão" encontrada.</i>'}
+          </div></details>`;
+      }
+    }
+    tg.innerHTML = html;
   } else {
-    const ws = wb.Sheets[wb.SheetNames[0]];
-    const n = XLSX.utils.sheet_to_json(ws, { defval: '' }).length;
-    tg.innerHTML = `<b>Aba lida:</b> <span class="badge ok" style="margin:2px">${wb.SheetNames[0]} · ${n} chamados</span>`;
+    // for the RPA report, shows the tab name and total tickets
+    const sheet    = wb.Sheets[wb.SheetNames[0]];
+    const rowCount = XLSX.utils.sheet_to_json(sheet, {defval:''}).length;
+    tg.innerHTML = `<b>Aba lida:</b> <span class="badge ok" style="margin:2px">${wb.SheetNames[0]} · ${rowCount} chamados</span>`;
   }
 }
 
-// Atualiza o contador "X de 2 bases carregadas" e habilita/desabilita o botão.
-export function updateBar() {
-  const n = Object.values(App.loaded).filter(Boolean).length;
-  document.getElementById('abar-status').innerHTML = `<strong style="color:var(--ink)">${n} de 2</strong> bases carregadas`;
-  document.getElementById('btn-gen').disabled = n === 0;
+/*
+ * Updates the "X de 2 bases carregadas" counter and enables/disables the "Gerar dashboard" button.
+ */
+function updateBar(){
+  const loadedCount = Object.values(App.loaded).filter(Boolean).length;
+  document.getElementById('abar-status').innerHTML = `<strong style="color:var(--ink)">${loadedCount} de 2</strong> bases carregadas`;
+  document.getElementById('btn-gen').disabled = loadedCount === 0;
 }

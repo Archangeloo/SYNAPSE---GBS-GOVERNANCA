@@ -1,194 +1,160 @@
-import { HOJE, EQUIPE_COE } from '../constants.js';
-
-// ─── MÓDULO: utils/classify.js ───────────────────────────────────────────────
-// Normalização de status, identificação de equipe e cálculos de risco de projeto.
-//
-// Exporta:
-//   statusClass(s)         — texto bruto → código interno (done/doing/todo/blocked…)
-//   coeNomePadrao(resp)    — nome do responsável → nome padronizado CoE (ou null)
-//   projFase(statusRaw)    — texto de status → número da fase 1–5 (ou null)
-//   projAtrasado(p)        — boolean: projeto com prazo vencido e não entregue?
-//   projRisco(p)           — { score 0–100, nivel, motivos[] }: risco calculado
+// ─── MODULE: utils/classify.js ─────────────────────────────────────────────
+// Status normalization, CoE team identification, and project risk scoring.
 // ─────────────────────────────────────────────────────────────────────────────
 
-// ─── Normalização de status ───────────────────────────────────────────────────
-// Converte o texto bruto da planilha em um código interno padronizado.
-// Isso isola o resto do código das variações de digitação nas planilhas
-// (acentos, maiúsculas, prefixos numéricos de ordenação).
-//
-// Fluxo de Projetos GBS (do início ao fim):
-//   Diagnóstico(1) → Planejamento(2) → Execução(3) → Encerramento(4) → Monitoramento(5)
-//
-// Códigos internos e quando são usados:
-//   done    — item realmente entregue e fechado
-//   doing   — em andamento ativo (desenvolvimento, execução, validação)
-//   closing — projeto em fase de encerramento formal (último passo antes de fechar)
-//   monitor — entregue e em acompanhamento pós go-live (não conta como atrasado)
-//   todo    — ainda não iniciado (backlog, planejamento, diagnóstico)
-//   blocked — pausado por impedimento externo
-//   cancel  — cancelado permanentemente
-//   vendor  — encaminhado ao suporte do fornecedor Pipefy
-//   other   — qualquer status não reconhecido (útil para detectar novos valores na base)
-export function statusClass(s) {
-  // Remove prefixo numérico de ordenação que aparece em algumas planilhas
-  // Ex: "6. Encerramento" → "encerramento" | "3 - Planejamento" → "planejamento"
-  const t = (s || '').toString().trim().toLowerCase().replace(/^\s*\d+\s*[.\-)]\s*/, '');
+import { HOJE, COE_TEAM } from '../constants.js';
+import { daysBetween } from './date.js';
 
-  if (['suporte pipefy', 'encaminhado ao fornecedor', 'pipefy'].includes(t)) return 'vendor';
+/*
+ * Converts the raw status text (from the spreadsheet) into an internal code.
+ * This normalizes spelling variants ("Concluido" vs "Concluído"), synonyms,
+ * and GBS-specific statuses (Encerramento, Monitoramento).
+ *
+ * GBS Project flow:
+ *   Diagnóstico → Planejamento → Execução → Encerramento → Monitoramento
+ *   (none of these is "done" — "done" only appears once a project truly closes)
+ *
+ * Mapping to internal code:
+ *   done    = actually completed (doesn't exist yet for projects)
+ *   doing   = in progress / in development
+ *   closing = in the closing process (can be overdue if the deadline passed)
+ *   monitor = delivered, in post go-live monitoring (does not count as overdue)
+ *   todo    = not started / backlog / planning
+ *   blocked = blocked / paused
+ *   cancel  = cancelled
+ *   vendor  = forwarded to Pipefy support (external vendor)
+ *   other   = any unrecognized value
+ */
+export function classeStatus(rawStatus){
+  // Removes the numeric ordering prefix, if any.
+  // Ex: "6. Encerramento" → "encerramento", "3 - Planejamento" → "planejamento"
+  const normalized = (rawStatus || '').toString().trim().toLowerCase().replace(/^\s*\d+\s*[.\-)]\s*/, '');
 
-  if (['concluído', 'concluido', 'finalizados', 'finalizado', 'tema concluído.', 'tema concluído'].includes(t))
+  if (['suporte pipefy', 'encaminhado ao fornecedor', 'pipefy'].includes(normalized))
+    return 'vendor';
+
+  if (['concluído', 'concluido', 'finalizados', 'finalizado', 'tema concluído.', 'tema concluído'].includes(normalized))
     return 'done';
 
   if (['em andamento', 'em execução', 'execução', 'execucao', 'desenvolvimento',
-       'em validação', 'em validacao', 'aguardando validação', 'aguardando validacao'].includes(t))
+       'em validação', 'em validacao', 'aguardando validação', 'aguardando validacao'].includes(normalized))
     return 'doing';
 
-  if (['encerramento'].includes(t))  return 'closing';
-  if (['monitoramento'].includes(t)) return 'monitor';
+  if (['encerramento'].includes(normalized))  return 'closing';
+  if (['monitoramento'].includes(normalized)) return 'monitor';
 
-  if (['planejamento', 'diagnóstico', 'diagnostico', 'não iniciado', 'nao iniciado', 'backlog'].includes(t))
+  if (['planejamento', 'diagnóstico', 'diagnostico', 'não iniciado', 'nao iniciado', 'backlog'].includes(normalized))
     return 'todo';
 
-  if (['bloqueado', 'pausado'].includes(t))  return 'blocked';
-  if (['cancelado'].includes(t))             return 'cancel';
+  if (['bloqueado', 'pausado'].includes(normalized))  return 'blocked';
+  if (['cancelado'].includes(normalized))             return 'cancel';
 
   return 'other';
 }
 
-// ─── statusClass específico de Melhorias (Pipefy_Melhorias) ──────────────────
-// Ali "Planejamento" já é item retirado do backlog (trabalho ativo), então é
-// contado junto de "doing" — alimenta a coluna "Dev + Planej." do Overview e
-// o KPI "Backlog" da aba Melhorias.
-// Não usar em Projetos/Analytics: lá "Planejamento" é fase 2 do fluxo
-// (Diagnóstico→Planejamento→Execução...) e deve continuar em 'todo'.
-export function statusClassMel(s) {
-  const t = (s || '').toString().trim().toLowerCase().replace(/^\s*\d+\s*[.\-)]\s*/, '');
-  if (t === 'planejamento') return 'doing';
-  return statusClass(s);
+/*
+ * classeStatus specific to Improvements (Pipefy_Melhorias).
+ * There, "Planejamento" is already an item pulled out of the backlog (active
+ * work), so it's counted together with "doing" — this is what feeds the
+ * "Dev + Planej." column of the Overview and the "Backlog" KPI on the
+ * Improvements tab.
+ * Do not use for Projects/Analytics: there "Planejamento" is phase 2 of the
+ * flow (Diagnóstico→Planejamento→Execução...) and must stay 'todo'.
+ */
+export function classeStatusMelhoria(rawStatus){
+  const normalized = (rawStatus || '').toString().trim().toLowerCase().replace(/^\s*\d+\s*[.\-)]\s*/, '');
+  if (normalized === 'planejamento') return 'doing';
+  return classeStatus(rawStatus);
 }
 
-// ─── Equipe CoE ───────────────────────────────────────────────────────────────
-// Recebe o nome bruto do responsável (como vem da planilha) e verifica se é
-// um membro da equipe CoE. Se sim, retorna o nome padronizado para exibição.
-// Se não for CoE, retorna null (a pessoa não aparece no gráfico de equipe).
-//
-// Por que normalizar sem acento?
-//   Evita falsos negativos por diferenças de codificação entre versões do Excel.
-//   "Vinícius" e "Vinicius" devem casar com o mesmo membro.
-export function coeNomePadrao(resp) {
-  if (!resp) return null;
-  // normaliza: minúsculas + remove diacríticos (acentos)
-  const t = resp.toString().toLowerCase()
-    .normalize('NFD').replace(/[̀-ͯ]/g, '');
-
-  for (const m of EQUIPE_COE) {
-    for (const termo of m.match) {
-      const termoNorm = termo.normalize('NFD').replace(/[̀-ͯ]/g, '');
-      if (t.includes(termoNorm)) return m.nome; // encontrou → retorna nome canônico
+/*
+ * nomePadraoCoe(resp) — takes the responsible person's name as it
+ * appears in the data and, if they are a CoE team member, returns the
+ * standardized name (label). Otherwise returns null.
+ * Uses each member's 'match' terms (case-insensitive, accent-insensitive).
+ */
+export function nomePadraoCoe(resp){
+  if(!resp) return null;
+  const normalized = resp.toString().toLowerCase()
+    .normalize('NFD').replace(/[̀-ͯ]/g,''); // strip accents for comparison
+  for(const member of COE_TEAM){
+    for(const term of member.match){
+      const termNorm = term.normalize('NFD').replace(/[̀-ͯ]/g,'');
+      if(normalized.includes(termNorm)) return member.name;
     }
   }
-  return null; // não é membro CoE
-}
-
-// ─── Ciclo de vida de Projetos GBS ────────────────────────────────────────────
-// Converte o texto bruto do status para um número de fase (1 = começo, 5 = fim).
-// Usado pelo cálculo de risco: projetos em fases iniciais têm mais caminho a
-// percorrer e, portanto, maior incerteza de prazo.
-// Retorna null para status fora do fluxo principal (cancelado, bloqueado).
-export function projFase(statusRaw) {
-  const t = (statusRaw || '').toString().trim().toLowerCase();
-  if (t.includes('diagn'))   return 1; // Diagnóstico — levantamento inicial
-  if (t.includes('planej'))  return 2; // Planejamento — desenho da solução
-  if (t.includes('execu'))   return 3; // Execução     — implementação
-  if (t.includes('encerr'))  return 4; // Encerramento — entrega formal
-  if (t.includes('monitor')) return 5; // Monitoramento — pós go-live
-  if (t.includes('conclu'))  return 5; // Concluído    — equivale ao monitoramento
   return null;
 }
 
-// Retorna true se o projeto está com o prazo vencido e ainda não foi encerrado.
-// Projetos em monitoramento NÃO são atrasados — eles foram entregues mas
-// seguem sendo acompanhados. Cancelados também não contam como atrasados.
-export function projAtrasado(p) {
-  return !!(p.dtFim && p.dtFim < HOJE && p.sc !== 'done' && p.sc !== 'cancel' && p.sc !== 'monitor');
+/*
+ * Phase number in the lifecycle of a GBS Project.
+ * The higher the number, the closer to completion.
+ * Flow: Diagnóstico(1) → Planejamento(2) → Execução(3) → Encerramento(4) → Monitoramento(5)
+ * Returns null for statuses outside the flow (cancelled, blocked).
+ */
+export function faseProjeto(statusRaw){
+  const normalized = (statusRaw||'').toString().trim().toLowerCase();
+  if(normalized.includes('diagn')) return 1;
+  if(normalized.includes('planej')) return 2;
+  if(normalized.includes('execu')) return 3;
+  if(normalized.includes('encerr')) return 4;
+  if(normalized.includes('monitor')) return 5;
+  if(normalized.includes('conclu')) return 5;
+  return null;
 }
 
-// ─── Cálculo de risco automático ─────────────────────────────────────────────
-// Gera um score de 0 a 100 combinando três fatores objetivos:
-//
-//  1) ATRASO (fator mais pesado, até 70 pontos):
-//     score = min(70,  15 + dias × 1.2)
-//     Por quê esses números?
-//       - 15 pontos de "base" apenas por estar atrasado (sinalizador imediato)
-//       - +1.2 ponto por dia corrido de atraso
-//       - Satura em 70 (não queremos score de atraso inflado por projetos muito velhos)
-//       - Com ~35 dias, o atraso já contribui com ~57 pontos → nível alto sozinho
-//
-//  2) PROXIMIDADE DO PRAZO (quando ainda não venceu):
-//     ≤ 15 dias → +18 pontos (urgente, qualquer imprevisto já atrasa)
-//     ≤ 30 dias → +10 pontos (atenção, mas há margem)
-//
-//  3) FASE DO PROJETO (peso por estágio, até 18 pontos):
-//     { 1: 18, 2: 14, 3: 9, 4: 4, 5: 0 }
-//     Projetos em estágios iniciais têm mais incerteza de prazo. Em Encerramento
-//     o trabalho está quase feito; em Diagnóstico há muito pela frente.
-//
-//  4) BLOQUEIO (bônus fixo de 30 pontos):
-//     Projeto parado por impedimento = risco alto independente do prazo.
-//
-// Classificação do nível:
-//   score ≥ 55 → alto  (vermelho)
-//   score ≥ 30 → médio (laranja)
-//   score  < 30 → baixo (verde)
-//
-// Projetos já encerrados (done, monitor, cancel) retornam score=0 automaticamente
-// — eles não estão mais "em jogo".
-export function projRisco(p) {
-  // Projetos fora do fluxo ativo não têm risco a calcular
-  if (p.sc === 'done' || p.sc === 'cancel' || p.sc === 'monitor') {
-    return { score: 0, nivel: 'baixo', motivos: [] };
+/*
+ * projetoAtrasado(project) — true if the project has a past-due deadline and
+ * hasn't been delivered/cancelled yet. Considered "not overdue-eligible":
+ * completed, in monitoring (post go-live), or cancelled projects.
+ */
+export function projetoAtrasado(project){
+  return !!(project.dtFim && project.dtFim < HOJE && project.sc!=='done' && project.sc!=='cancel' && project.sc!=='monitor');
+}
+
+/*
+ * riscoProjeto(project) — automatic risk score (0 to 100) for a project.
+ * Combines three objective factors, with no manual field needed in the spreadsheet:
+ *   1) DELAY (heaviest weight): days past the deadline. The more overdue, the higher.
+ *   2) PHASE: projects in early phases (Diagnóstico/Planejamento) with a tight
+ *      deadline are riskier than ones already in Encerramento.
+ *   3) DEADLINE PROXIMITY: an approaching deadline (even without a delay) raises risk.
+ * Completed/cancelled/monitoring projects have risk 0 (no longer "in play").
+ * Returns { score, level, reasons[] } — level ∈ {high, medium, low}.
+ */
+export function riscoProjeto(project){
+  if(project.sc==='done' || project.sc==='cancel' || project.sc==='monitor'){
+    return { score:0, level:'low', reasons:[] };
   }
+  let score = 0;
+  const reasons = [];
+  const phase = faseProjeto(project.statusRaw) || 2;
 
-  let score    = 0;
-  const motivos = [];
-  const fase   = projFase(p.statusRaw) || 2; // se fase desconhecida, assume Planejamento (2)
-
-  // ── Fator 1 e 2: prazo ──────────────────────────────────────────────────
-  if (p.dtFim) {
-    const dias = Math.round((HOJE - p.dtFim) / 86400000); // dias decorridos desde o prazo
-    if (dias > 0) {
-      // já venceu: 15 pontos base + 1.2 por dia, máximo de 70
-      score += Math.min(70, 15 + dias * 1.2);
-      motivos.push(`${dias} ${dias === 1 ? 'dia' : 'dias'} de atraso`);
+  // 1) Delay — the strongest factor. A meaningful delay alone already pushes to high risk.
+  if(project.dtFim){
+    const days = daysBetween(HOJE, project.dtFim);
+    if(days > 0){
+      // 15 base points + ~1/day, capping at 70; ~40 days already crosses the "high" threshold
+      score += Math.min(70, 15 + days*1.2);
+      reasons.push(`${days} ${days===1?'dia':'dias'} de atraso`);
     } else {
-      // ainda não venceu: penalidade por proximidade do prazo
-      const faltam = -dias; // dias que ainda faltam (dias é negativo quando no futuro)
-      if (faltam <= 15) { score += 18; motivos.push(`prazo em ${faltam} ${faltam === 1 ? 'dia' : 'dias'}`); }
-      else if (faltam <= 30) { score += 10; motivos.push('prazo próximo'); }
+      // 2) Deadline proximity (not yet overdue)
+      const daysLeft = -days;
+      if(daysLeft <= 15){ score += 18; reasons.push(`prazo em ${daysLeft} ${daysLeft===1?'dia':'dias'}`); }
+      else if(daysLeft <= 30){ score += 10; reasons.push('prazo próximo'); }
     }
   } else {
-    // projeto ativo sem prazo definido = falta de controle
-    score += 14;
-    motivos.push('sem prazo definido');
+    // no deadline set on an active project = lack-of-control risk
+    score += 14; reasons.push('sem prazo definido');
   }
 
-  // ── Fator 3: bloqueio ───────────────────────────────────────────────────
-  if (p.sc === 'blocked') {
-    score += 30;
-    motivos.push('bloqueado');
-  }
+  // 3) Phase — weight by stage (earlier phases = more road ahead = more risk)
+  if(project.sc==='blocked'){ score += 30; reasons.push('bloqueado'); }
+  const phaseWeight = {1:18, 2:14, 3:9, 4:4, 5:0}[phase] || 9;
+  score += phaseWeight;
+  if(phase<=2 && project.sc!=='blocked') reasons.push(`fase inicial (${project.statusRaw})`);
 
-  // ── Fator 4: fase do projeto ────────────────────────────────────────────
-  // Quanto mais cedo no ciclo, maior a incerteza → mais pontos de risco
-  const pesoFase = { 1: 18, 2: 14, 3: 9, 4: 4, 5: 0 }[fase] || 9;
-  score += pesoFase;
-
-  // Só adiciona o motivo de "fase inicial" se não estiver bloqueado
-  // (bloqueado já domina o motivo principal)
-  if (fase <= 2 && p.sc !== 'blocked') motivos.push(`fase inicial (${p.statusRaw})`);
-
-  // Limita em 100 e arredonda
   score = Math.min(100, Math.round(score));
-  const nivel = score >= 55 ? 'alto' : (score >= 30 ? 'medio' : 'baixo');
-  return { score, nivel, motivos };
+  const level = score>=55 ? 'high' : (score>=30 ? 'medium' : 'low');
+  return { score, level, reasons };
 }

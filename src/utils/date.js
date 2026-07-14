@@ -1,112 +1,131 @@
-import { App } from '../state.js';
-import { MESES, HOJE } from '../constants.js';
-
-// ─── MÓDULO: utils/date.js ────────────────────────────────────────────────────
-// Conversão, formatação e filtragem de datas.
+// ─── MODULE: utils/date.js ─────────────────────────────────────────────────
+// Date parsing/formatting helpers and the global period filter.
 //
-// Exporta:
-//   toDate(v)                  — converte qualquer valor (Date, serial Excel, ISO) → Date nativa
-//   ym(d)                      — Date → "YYYY-MM" (chave de agrupamento mensal)
-//   ymLabel(m)                 — "YYYY-MM" → "Mmm/AA" (ex: "Abr/26")
-//   refDate(item)              — data de referência de um item (dtFim > criado)
-//   inDateRange(d)             — boolean: data passa no filtro global?
-//   activeInRange(ini, fim)    — 'in'|'out'|'nodate': intervalo cruza o filtro?
-//   applyDate(arr)             — aplica filtro ao array → { kept, noDate }
+// GLOBAL DATE FILTER:
+//   Each source has a different date that makes sense for it:
+//   - Pipefy Improvements: DataConclusaoRealDesenvolvimento (dev delivery date)
+//   - Projects: PrazoConclusão (project delivery deadline)
+//   - Analytics: DataAbertura or DataFechamento
+//   - RPA Tickets: criado (ticket opening date)
+//   - Bot Inventory: does NOT filter by action date; uses AnoPRD separately
+//
+//   ATTENTION: items without a date fall OUTSIDE the filter when it's active.
+//   This is intentional and transparent — the app shows the warning.
+//   We never invent a zero for items without a date.
 // ─────────────────────────────────────────────────────────────────────────────
 
-// ─── Conversão de valores para Date ─────────────────────────────────────────
+import { App } from '../state.js';
+import { MESES, HOJE, MS_PER_DAY, EXCEL_EPOCH_OFFSET } from '../constants.js';
 
-// Aceita Date nativo, número serial do Excel ou string ISO.
-// Retorna null para qualquer valor inválido.
-export function toDate(v) {
-  if (!v) return null;
-  if (v instanceof Date) return isNaN(v) ? null : v;
-  if (typeof v === 'number') {
-    // serial do Excel: (serial - 25569) * 86400000 ms desde a epoch
-    const d = new Date(Math.round((v - 25569) * 864e5));
-    return isNaN(d) ? null : d;
-  }
-  if (typeof v === 'string' && v.length > 4) {
-    const d = new Date(v);
-    return isNaN(d) ? null : d;
-  }
-  return null;
-}
-
-// ─── Formatação ──────────────────────────────────────────────────────────────
-
-// Retorna "YYYY-MM" — usada como chave de agrupamento mensal
-export function ym(d) {
-  return d ? `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}` : '';
-}
-
-// Converte "YYYY-MM" em rótulo legível "Mmm/AA" (ex: "2026-04" → "Abr/26")
-export function ymLabel(m) {
-  if (!m) return '';
-  const p = m.split('-');
-  return `${MESES[+p[1] - 1]}/${p[0].slice(2)}`;
-}
-
-// ─── Data de referência de um item ──────────────────────────────────────────
-
-// Prioridade: data de conclusão (dtFim) > data de criação (criado).
-// Para Chamados RPA, 'criado' é a data de abertura do chamado.
-export function refDate(item) {
+/*
+ * Returns the reference date of a normalized item.
+ * Priority is: completion date (dtFim) > creation date (criado).
+ * For RPA Tickets, criado is the ticket's opening date.
+ */
+export function dataReferencia(item){
   return item.dtFim || item.criado || null;
 }
 
-// ─── Filtro global de período ────────────────────────────────────────────────
-// Cada fonte tem uma data diferente que faz sentido:
-//   Pipefy Melhorias: DataConclusaoRealDesenvolvimento
-//   Projetos: PrazoConclusão
-//   Analytics: DataAbertura ou DataFechamento
-//   Chamados RPA: criado
-//   Inventário de Bots: NÃO filtra por data — usa AnoPRD separadamente
-//
-// ATENÇÃO: itens sem data ficam FORA do filtro quando ele está ativo.
-// Isso é intencional — exibimos o aviso na interface. Nunca inventamos zero.
-
-// Retorna true se uma data isolada passa no filtro ativo.
-export function inDateRange(d) {
+/*
+ * Checks whether a date passes the global period filter.
+ * Returns true if: mode=all, or the date is inside the range.
+ * Returns false if: mode=custom and there's no date (item doesn't enter the filter).
+ */
+export function dataNoIntervalo(date){
   const dr = App.dateRange;
-  if (dr.mode === 'all') return true;
-  if (!d) return false;
-  if (dr.from && d < dr.from) return false;
-  if (dr.to && d > dr.to) return false;
+  if(dr.mode === 'all') return true;        // no filter: everything passes
+  if(!date) return false;                    // no date: doesn't enter a specific period
+  if(dr.from && date < dr.from) return false;  // before the start: out
+  if(dr.to && date > dr.to) return false;      // after the end: out
   return true;
 }
 
-// Verifica se um item esteve ATIVO durante o período do filtro,
-// considerando um intervalo [inicio, fim] em vez de uma data única.
-// Retorna 'in' | 'out' | 'nodate'.
-export function activeInRange(ini, fim) {
+/*
+ * Checks whether an item was ACTIVE during the filter period, considering
+ * a [start, end] interval instead of a single date. Used for Pipefy,
+ * where an improvement has a development start and completion.
+ * Rules (custom mode):
+ *   - has start and end → passes if the item's interval crosses the filter's interval
+ *   - only has start (in progress) → passes if it started before the filter's end
+ *     (considered active from the start until today)
+ *   - only has end → falls back to single-date behavior (dataNoIntervalo on the end)
+ *   - no date at all → out (counted as "no date")
+ * Returns 'in' | 'out' | 'nodate'.
+ */
+export function ativoNoIntervalo(ini, fim){
   const dr = App.dateRange;
-  if (dr.mode === 'all') return 'in';
-  if (!ini && !fim) return 'nodate';
+  if(dr.mode === 'all') return 'in';
+  if(!ini && !fim) return 'nodate';
+  // filter bounds (either can be null = open on that side)
   const fFrom = dr.from || new Date(-8640000000000000);
-  const fTo   = dr.to   || new Date(8640000000000000);
+  const fTo   = dr.to   || new Date( 8640000000000000);
+  // item bounds: if start is missing, use the end; if end is missing, consider "until today" (ongoing)
   const iIni = ini || fim;
   const iFim = fim || HOJE;
-  // sobreposição de intervalos: item começa antes do fim do filtro E termina depois do início
+  // interval overlap: starts before the filter's end AND ends after the filter's start
   return (iIni <= fTo && iFim >= fFrom) ? 'in' : 'out';
 }
 
-// Aplica o filtro de data a um array.
-// Retorna { kept: [...itens que passaram], noDate: N (quantidade sem data) }.
-// Itens com dtInicio usam lógica de "ativo no período"; demais usam refDate.
-export function applyDate(arr) {
-  if (App.dateRange.mode === 'all') return { kept: arr, noDate: 0 };
+/*
+ * Applies the date filter to an entire array.
+ * Returns: { kept: [...items that passed], noDate: N (count without a date) }
+ * For items that have dtInicio (ex: Pipefy), uses the "active in period" logic
+ * (start→end interval). For the rest, uses the single dataReferencia.
+ * Items without a date are not lost — they stay out of the range and the
+ * count is shown in the interface's transparency note.
+ */
+export function filtrarPorPeriodo(arr){
+  if(App.dateRange.mode === 'all') return { kept: arr, noDate: 0 };
   const kept = [], noDate = [];
   arr.forEach(x => {
-    if (x.dtInicio !== undefined) {
-      const r = activeInRange(x.dtInicio, x.dtFim);
-      if (r === 'nodate') noDate.push(x);
-      else if (r === 'in') kept.push(x);
+    // if the item has an interval concept (dtInicio defined), uses ativoNoIntervalo
+    if(x.dtInicio !== undefined){
+      const rangeStatus = ativoNoIntervalo(x.dtInicio, x.dtFim);
+      if(rangeStatus === 'nodate') noDate.push(x);
+      else if(rangeStatus === 'in') kept.push(x);
     } else {
-      const d = refDate(x);
-      if (!d) noDate.push(x);
-      else if (inDateRange(d)) kept.push(x);
+      const date = dataReferencia(x);
+      if(!date) noDate.push(x);
+      else if(dataNoIntervalo(date)) kept.push(x);
     }
   });
   return { kept, noDate: noDate.length };
 }
+
+/*
+ * Converts any value type to a Date (or null if invalid).
+ * Needed because Excel can store dates as:
+ *   - a Date object (when cellDates:true and SheetJS manages to parse it)
+ *   - an Excel serial number (ex: 45678 = days since 1900-01-01)
+ *   - a date string (ex: "2026-04-24")
+ */
+export function toDate(rawValue){
+  if(!rawValue) return null;
+  if(rawValue instanceof Date) return isNaN(rawValue) ? null : rawValue;
+  if(typeof rawValue === 'number'){
+    const date = new Date(Math.round((rawValue - EXCEL_EPOCH_OFFSET) * 864e5));
+    return isNaN(date) ? null : date;
+  }
+  if(typeof rawValue === 'string' && rawValue.length > 4){
+    const date = new Date(rawValue);
+    return isNaN(date) ? null : date;
+  }
+  return null;
+}
+
+// Formats a Date as a "YYYY-MM" string (used as the monthly grouping key)
+export function toYearMonthKey(date){ return date ? `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}` : ''; }
+
+// Converts "YYYY-MM" into a readable "Mmm/AA" label (ex: "2026-04" → "Abr/26")
+export function toYearMonthLabel(monthKey){
+  if(!monthKey) return '';
+  const partes = monthKey.split('-');
+  return `${MESES[+partes[1]-1]}/${partes[0].slice(2)}`;
+}
+
+// Converts a Date to a "YYYY-MM-DD" string (ISO format, used in date inputs).
+export function toIsoDate(date){ return date.toISOString().slice(0, 10); }
+
+// Calculates the number of days between two dates.
+// Positive = date1 is more recent than date2 (ex: today - deadline = days overdue).
+export function daysBetween(date1, date2){ return Math.round((date1 - date2) / MS_PER_DAY); }
