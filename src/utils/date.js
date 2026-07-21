@@ -105,19 +105,40 @@ export function filtrarPorPeriodo(arr){
  *   - a Date object (when cellDates:true and SheetJS manages to parse it)
  *   - an Excel serial number (ex: 45678 = days since 1900-01-01)
  *   - a date string (ex: "2026-04-24")
+ *
+ * NORMALIZAÇÃO DE FUSO: tanto o SheetJS (com cellDates:true) quanto o parser de
+ * string "AAAA-MM-DD" do JavaScript constroem a data como meia-noite em UTC.
+ * Num fuso com offset negativo (Brasil, UTC-3), ler ano/mês/dia dessa data com
+ * os métodos locais (getFullYear/getMonth/getDate) desloca o dia pra trás — o
+ * dia 1º de um mês "vira" 21h do último dia do mês anterior, e todo agrupamento
+ * por mês (evolução de melhorias, volume mensal de chamados RPA) fica errado
+ * bem no primeiro dia de cada mês. Por isso, sempre que a data resultante cai
+ * exatamente à meia-noite UTC (sinal de que é uma data pura, sem hora real),
+ * reconstruímos como uma data LOCAL com os mesmos componentes de ano/mês/dia,
+ * eliminando esse deslocamento em qualquer lugar do site que leia essa data.
  */
 export function toDate(rawValue){
   if(!rawValue) return null;
-  if(rawValue instanceof Date) return isNaN(rawValue) ? null : rawValue;
-  if(typeof rawValue === 'number'){
-    const date = new Date(Math.round((rawValue - EXCEL_EPOCH_OFFSET) * 864e5));
-    return isNaN(date) ? null : date;
+  let date;
+  if(rawValue instanceof Date){
+    date = isNaN(rawValue) ? null : rawValue;
+  } else if(typeof rawValue === 'number'){
+    date = new Date(Math.round((rawValue - EXCEL_EPOCH_OFFSET) * 864e5));
+    if(isNaN(date)) date = null;
+  } else if(typeof rawValue === 'string' && rawValue.length > 4){
+    date = new Date(rawValue);
+    if(isNaN(date)) date = null;
+  } else {
+    date = null;
   }
-  if(typeof rawValue === 'string' && rawValue.length > 4){
-    const date = new Date(rawValue);
-    return isNaN(date) ? null : date;
-  }
-  return null;
+  if(!date) return null;
+  // A hora nunca importa pra essas datas (são datas de negócio, não timestamps) —
+  // por isso ignoramos qualquer componente de hora e reconstruímos direto a
+  // partir do ano/mês/dia em UTC. Fazer essa normalização sempre, em vez de só
+  // quando a hora bate exatamente meia-noite, evita escapar de casos em que o
+  // serial do Excel chega com uma pequena imprecisão de ponto flutuante (ex:
+  // 46579,999999998 em vez de 46580) e a hora não fica exatamente zerada.
+  return new Date(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate());
 }
 
 // Formats a Date as a "YYYY-MM" string (used as the monthly grouping key)
