@@ -119,12 +119,12 @@ Cada aba tem um botão "Gerar análise" que calcula insights programáticos a pa
 SYNAPSE - GBS GOVERNANCA/
 │
 ├── index.html              # Estrutura HTML + fundo interativo de partículas
-├── app.js                  # Todo o JavaScript da aplicação (arquivo principal)
+├── app.js                  # Artefato de build (gerado pelo Vercel, não versionado — ver Nota abaixo)
 │
 ├── styles/
 │   └── main.css            # Estilos (identidade Saint-Gobain/GBS + @media print)
 │
-├── src/                    # Versão modular do código (referência / manutenção futura)
+├── src/                    # Código-fonte real do site — toda alteração é feita aqui
 │   ├── main.js             # Entry point — orquestra parsers, views e navegação
 │   ├── state.js            # Estado global compartilhado (App.P, App.R, App.B…)
 │   ├── constants.js        # Equipe CoE, status, paleta de cores, HOJE
@@ -151,11 +151,12 @@ SYNAPSE - GBS GOVERNANCA/
 ├── saint-gobain-logo.png
 ├── logo_gbs.png
 ├── synapse_logo3.png
-├── package.json            # Build com esbuild (apenas se for usar src/)
+├── package.json            # Script "build": esbuild empacota src/main.js → app.js
+├── vercel.json             # Roda o build (npm install + esbuild) a cada deploy
 └── README.md               # Este arquivo
 ```
 
-> **Nota:** `app.js` é o arquivo ativo. A pasta `src/` contém a versão modular equivalente com documentação detalhada — útil para entender a lógica, mas o navegador carrega apenas `app.js`.
+> **Nota:** o código-fonte é `src/`. O `app.js` é gerado automaticamente pelo Vercel a cada deploy (ver seção 1.1 da documentação técnica) e não deve ser editado à mão nem versionado — não há Node.js nesta máquina para gerá-lo localmente, então validações de mudanças passam por preview do Vercel (push em branch / Pull Request).
 
 ---
 

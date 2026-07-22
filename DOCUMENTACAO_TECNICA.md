@@ -49,17 +49,17 @@ Quadro 1 — Bibliotecas externas utilizadas
 | Tabler Icons (webfont) | Ícones da interface |
 | Google Fonts (Inter, Syne) | Tipografia |
 
-### 1.1 Por que existem dois códigos-fonte: `app.js` e `src/`
+### 1.1 Relação entre `src/` e `app.js`
 
-O `index.html` carrega um único arquivo de script — `<script src="app.js">`, sem `type="module"` e sem nenhum passo de build por trás. É esse arquivo, e só ele, que o navegador executa; qualquer alteração que não seja feita nele não tem efeito nenhum no site publicado.
+`src/` é a única fonte da verdade do código. É lá que toda alteração de lógica deve ser feita — os cerca de vinte módulos menores, cada um com suas próprias declarações `import`/`export`, documentados ao longo deste texto.
 
-A pasta `src/` contém a mesma lógica reescrita em cerca de vinte módulos menores, cada um com suas próprias declarações `import`/`export`. Ela existe apenas como material de referência para leitura e manutenção futura — não é carregada pelo navegador e não é compilada em momento algum.
+`app.js` é o artefato de build: o arquivo único, gerado a partir de `src/main.js` e seus imports, que o `index.html` efetivamente carrega (`<script src="app.js">`). Ele nunca é editado à mão e não é versionado no git (está listado em `.gitignore`) — existe apenas como saída de um comando de build.
 
-A razão de manter as duas versões é uma restrição do ambiente: transformar os módulos de `src/` num único arquivo executável exigiria um empacotador (esbuild, webpack, vite ou similar), e todos eles dependem de Node.js — que não está instalado nesta máquina e cuja instalação não é permitida neste computador corporativo. Sem essa ferramenta, o conteúdo de `src/` não tem como se tornar, sozinho, o arquivo que o site carrega.
+A geração acontece no deploy, não nesta máquina. O `vercel.json` define `buildCommand: "npm install && npm run build && rm -rf node_modules"`: a cada push para o repositório, o Vercel instala o `esbuild` (dependência de desenvolvimento listada em `package.json`), executa `esbuild src/main.js --bundle --format=iife --outfile=app.js`, e remove o `node_modules` antes de publicar o resultado. O Vercel tem Node.js disponível no seu próprio ambiente de build — o que resolve a restrição desta máquina corporativa, onde Node.js não está instalado e não pode ser instalado.
 
-Consequência prática: toda alteração de comportamento precisa ser aplicada duas vezes — uma em `app.js`, que é o que realmente roda, e outra, espelhada, no módulo correspondente de `src/`, para que a versão de referência não fique desatualizada. Essa duplicação é deliberada, não um descuido de manutenção.
+Isso elimina o risco de duplicação: antes, `app.js` e `src/` eram mantidos manualmente em paralelo e podiam divergir; agora só existe uma versão do código (`src/`), e `app.js` é sempre reflexo exato dela após o próximo deploy.
 
-Existe uma alternativa que eliminaria a necessidade de `app.js` sem depender de Node.js: módulos ES são executados nativamente por qualquer navegador moderno, sem empacotador, bastando declarar `<script type="module" src="src/main.js">` no HTML. Essa mudança tornaria `src/` o código real do site. A ressalva é o teste local: abrir o `index.html` diretamente do disco (protocolo `file://`) bloqueia o carregamento de módulos por restrição de segurança do navegador, então seria necessário servir a pasta por algum servidor local simples durante o desenvolvimento — por exemplo, a extensão "Live Server" do VS Code, que não depende de Node.js nem de Python. Essa migração ainda não foi realizada; até que seja, `app.js` continua sendo a fonte da verdade.
+Consequência prática para desenvolvimento local: como não há Node.js nesta máquina, não é possível regerar `app.js` localmente após editar `src/`. Um `app.js` de build anterior permanece no disco (fora do git) só para permitir abrir o `index.html` diretamente por conveniência, mas ele fica desatualizado assim que `src/` muda. Para validar uma alteração antes de ir para produção, o caminho é abrir um Pull Request ou enviar a mudança para uma branch — o Vercel gera automaticamente uma URL de preview já buildada a partir do `src/` atualizado.
 
 ---
 
