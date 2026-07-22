@@ -1,25 +1,23 @@
-// ─── MODULE: views/mel.js ──────────────────────────────────────────────────
-// ABA: MELHORIAS PIPEFY
+// views/mel.js — ABA: MELHORIAS PIPEFY
 // FILTRO DE DATA: usa DataConclusaoRealDesenvolvimento.
 // A maioria das melhorias em backlog/planejamento NÃO tem essa data.
 // Ao filtrar por período, elas ficam de fora — comportamento correto e documentado.
 // Pra ver todas as melhorias, use o filtro de Status dentro da aba.
-// ─────────────────────────────────────────────────────────────────────────────
 
 import { App } from '../state.js';
 import { STATUS_PT, STATUS_COLOR } from '../constants.js';
 import { HOJE } from '../constants.js';
-import { statusCounts, calculatePercentage, sortedCountEntries, isPipefyTeamMember, iconeKpi } from '../utils/helpers.js';
-import { filtrarPorPeriodo, toYearMonthKey, toYearMonthLabel } from '../utils/date.js';
-import { donut, horizontalBars, flushCharts, CHART_COLORS, _generateChartId, registerChart } from '../charts.js';
+import { contarPorStatus, calcularPercentual, contagemOrdenada, ehIntegranteEquipePipefy, iconeKpi } from '../utils/helpers.js';
+import { filtrarPorPeriodo, paraChaveAnoMes, paraRotuloAnoMes } from '../utils/date.js';
+import { graficoRosca, barrasHorizontais, renderizarGraficosPendentes, CORES_GRAFICO, _gerarIdGrafico, registrarGrafico } from '../charts.js';
 import { barraAnalise } from '../analysis.js';
-import { setBadge } from '../nav.js';
+import { definirBadge } from '../nav.js';
 import { renderizarSecaoAtividadesMelhorias } from './mel-activities.js';
 
 /*
  * construirGraficoEvolucaoMelhorias(M) — gráfico de linha: Concluídas × Backlog × Previsão.
  *
- * Linha 1 — Concluídas/mês: itens com sc='done' agrupados por dtFim
+ * Linha 1 — Concluídas/mês: itens com codigoStatus='done' agrupados por dataFim
  * Linha 2 — Backlog/mês: reconstruído historicamente como
  *           itens_backlog_hoje + itens_concluidos_depois_daquele_mes
  * Linha 3 — Previsão (futuro): média dos últimos 3 meses projetada adiante
@@ -30,12 +28,12 @@ import { renderizarSecaoAtividadesMelhorias } from './mel-activities.js';
 // Calcula os dados das três séries do gráfico de evolução de melhorias.
 // Retorna null se não houver dados suficientes (< 3 concluídas ou < 2 meses históricos).
 function calcularDadosEvolucaoMelhorias(melhorias) {
-  const concluidas = melhorias.filter(m => m.sc === 'done' && m.dtFim);
+  const concluidas = melhorias.filter(m => m.codigoStatus === 'done' && m.dataFim);
   if (concluidas.length < 3) return null;
 
   const porMes        = {};
-  concluidas.forEach(m => { const chaveMes = toYearMonthKey(m.dtFim); porMes[chaveMes] = (porMes[chaveMes] || 0) + 1; });
-  const mesAtual    = toYearMonthKey(HOJE);
+  concluidas.forEach(m => { const chaveMes = paraChaveAnoMes(m.dataFim); porMes[chaveMes] = (porMes[chaveMes] || 0) + 1; });
+  const mesAtual    = paraChaveAnoMes(HOJE);
   const mesesHistoricos = Object.keys(porMes).sort().filter(k => k <= mesAtual);
   if (mesesHistoricos.length < 2) return null;
 
@@ -56,12 +54,12 @@ function calcularDadosEvolucaoMelhorias(melhorias) {
   let atual = mesesHistoricos[0];
   while (atual <= fimIntervalo) { todosMeses.push(atual); atual = avancarMes(atual); }
 
-  const itensBacklogAtual = melhorias.filter(m => m.sc === 'todo').length;
+  const itensBacklogAtual = melhorias.filter(m => m.codigoStatus === 'todo').length;
   const mesesFuturos      = todosMeses.filter(m => m >= mesAtual);
   const previsaoPorMes    = mesesFuturos.length > 0 ? Math.max(1, Math.round(itensBacklogAtual / mesesFuturos.length)) : 1;
 
   return {
-    labels:         todosMeses.map(m => toYearMonthLabel(m)),
+    labels:         todosMeses.map(m => paraRotuloAnoMes(m)),
     currentIndex:   todosMeses.indexOf(mesAtual),
     currentTodoItems: itensBacklogAtual,
     futureMonths:     mesesFuturos,
@@ -69,7 +67,7 @@ function calcularDadosEvolucaoMelhorias(melhorias) {
     completedData: todosMeses.map(m => m <= mesAtual ? (porMes[m] || 0) : null),
     backlogData:   todosMeses.map(m => {
       if (m > mesAtual) return null;
-      return itensBacklogAtual + concluidas.filter(c => toYearMonthKey(c.dtFim) > m).length;
+      return itensBacklogAtual + concluidas.filter(c => paraChaveAnoMes(c.dataFim) > m).length;
     }),
     forecastData:  todosMeses.map(m => m >= mesAtual ? previsaoPorMes : null),
   };
@@ -108,7 +106,7 @@ function pluginsEvolucaoMelhorias(currentIndex) {
       ctx.save();
       ctx.beginPath();
       ctx.setLineDash([6, 4]);
-      ctx.strokeStyle = CHART_COLORS.err;
+      ctx.strokeStyle = CORES_GRAFICO.err;
       ctx.lineWidth   = 1.5;
       ctx.moveTo(xPixel, chartArea.top);
       ctx.lineTo(xPixel, chartArea.bottom);
@@ -125,9 +123,9 @@ function construirGraficoEvolucaoMelhorias(melhorias) {
 
   const { labels, currentIndex, currentTodoItems, futureMonths, forecastPerMonth,
           completedData, backlogData, forecastData } = evolucao;
-  const id = _generateChartId('mel-evol');
+  const id = _gerarIdGrafico('mel-evol');
 
-  registerChart(id, {
+  registrarGrafico(id, {
     type: 'line',
     data: {
       labels,
@@ -135,34 +133,34 @@ function construirGraficoEvolucaoMelhorias(melhorias) {
         {
           label:               'Concluídas',
           data:                completedData,
-          borderColor:         CHART_COLORS.ink,
+          borderColor:         CORES_GRAFICO.ink,
           backgroundColor:     'transparent',
           borderWidth:         2,
           pointRadius:         4,
-          pointBackgroundColor: CHART_COLORS.ink,
+          pointBackgroundColor: CORES_GRAFICO.ink,
           tension:             0.1,
           spanGaps:            false,
         },
         {
           label:               'Backlog',
           data:                backlogData,
-          borderColor:         CHART_COLORS.ink,
+          borderColor:         CORES_GRAFICO.ink,
           backgroundColor:     'transparent',
           borderWidth:         2,
           borderDash:          [6, 4],
           pointRadius:         3,
-          pointBackgroundColor: CHART_COLORS.ink,
+          pointBackgroundColor: CORES_GRAFICO.ink,
           tension:             0.1,
           spanGaps:            false,
         },
         {
           label:               'Previsão',
           data:                forecastData,
-          borderColor:         CHART_COLORS.err,
+          borderColor:         CORES_GRAFICO.err,
           backgroundColor:     'transparent',
           borderWidth:         1.5,
           pointRadius:         3,
-          pointBackgroundColor: CHART_COLORS.err,
+          pointBackgroundColor: CORES_GRAFICO.err,
           tension:             0,
           spanGaps:            false,
         }
@@ -175,7 +173,7 @@ function construirGraficoEvolucaoMelhorias(melhorias) {
       plugins: {
         legend: {
           position: 'top',
-          labels: { color: CHART_COLORS.ink3, boxWidth: 20, boxHeight: 2, padding: 20, font: { size: 11 } }
+          labels: { color: CORES_GRAFICO.ink3, boxWidth: 20, boxHeight: 2, padding: 20, font: { size: 11 } }
         },
         tooltip: {
           callbacks: {
@@ -189,12 +187,12 @@ function construirGraficoEvolucaoMelhorias(melhorias) {
         x: {
           grid:   { display: false },
           border: { display: false },
-          ticks:  { color: CHART_COLORS.ink4, font: { size: 10 }, maxTicksLimit: 14 }
+          ticks:  { color: CORES_GRAFICO.ink4, font: { size: 10 }, maxTicksLimit: 14 }
         },
         y: {
-          grid:   { color: CHART_COLORS.rule },
+          grid:   { color: CORES_GRAFICO.rule },
           border: { display: false },
-          ticks:  { color: CHART_COLORS.ink4, font: { size: 10 } }
+          ticks:  { color: CORES_GRAFICO.ink4, font: { size: 10 } }
         }
       }
     },
@@ -218,9 +216,9 @@ function construirGraficoEvolucaoMelhorias(melhorias) {
  * Linhas  = áreas de negócio (P2P, O2C, TAX…), na ordem padrão + extras no final.
  * Colunas = Melhorias (total) + detalhamento por status.
  *
- * "Dev + Planej." e "Validação" são as duas fatias de sc='doing', diferenciadas pelo statusRaw:
+ * "Dev + Planej." e "Validação" são as duas fatias de codigoStatus='doing', diferenciadas pelo statusRaw:
  *   Validação    → statusRaw contém "validação" ou "aguardando"
- *   Dev + Planej → sc='doing' e não é validação
+ *   Dev + Planej → codigoStatus='doing' e não é validação
  */
 function visaoGeralPorArea(melhorias) {
   const ehValidacao = melhoria => {
@@ -229,14 +227,14 @@ function visaoGeralPorArea(melhorias) {
   };
 
   const COLUNAS = [
-    { label: 'Melhorias',     fn: null,                                      cls: '' },
-    { label: 'Backlog',       fn: m => m.sc === 'todo',                      cls: '' },
-    { label: 'Dev + Planej.', fn: m => m.sc === 'doing' && !ehValidacao(m),  cls: '' },
-    { label: 'Validação',     fn: m => ehValidacao(m),                      cls: '' },
-    { label: 'Pipefy',        fn: m => m.sc === 'vendor',                    cls: '' },
-    { label: 'Bloqueado',     fn: m => m.sc === 'blocked',                   cls: '' },
-    { label: 'Concluídos',    fn: m => m.sc === 'done',                      cls: 'ov-done' },
-    { label: 'Cancelados',    fn: m => m.sc === 'cancel',                    cls: 'ov-cancel' },
+    { label: 'Melhorias',     fn: null,                                                cls: '' },
+    { label: 'Backlog',       fn: m => m.codigoStatus === 'todo',                      cls: '' },
+    { label: 'Dev + Planej.', fn: m => m.codigoStatus === 'doing' && !ehValidacao(m),  cls: '' },
+    { label: 'Validação',     fn: m => ehValidacao(m),                                cls: '' },
+    { label: 'Pipefy',        fn: m => m.codigoStatus === 'vendor',                    cls: '' },
+    { label: 'Bloqueado',     fn: m => m.codigoStatus === 'blocked',                   cls: '' },
+    { label: 'Concluídos',    fn: m => m.codigoStatus === 'done',                      cls: 'ov-done' },
+    { label: 'Cancelados',    fn: m => m.codigoStatus === 'cancel',                    cls: 'ov-cancel' },
   ];
 
   const ORDEM  = ['COE','P2P','O2C','R2R','TAX','H2R'];
@@ -294,12 +292,12 @@ function visaoGeralPorArea(melhorias) {
 /*
  * construirMelhorias() — aba Pipefy Melhorias.
  *
- * Lê:      App.P.improvements
+ * Lê:      App.dadosGovernanca.melhorias
  * Escreve: #mel-content
- * Chamada por: generate() e renderAll()
+ * Chamada por: gerarDashboard() e renderizarTudo()
  *
  * ATENÇÃO — lógica especial de filtro de data:
- *   Usa dtInicio + dtFim (intervalo de desenvolvimento), não uma data única.
+ *   Usa dataInicio + dataFim (intervalo de desenvolvimento), não uma data única.
  *   Melhorias de backlog sem data são SEMPRE incluídas, mesmo com um
  *   filtro ativo (representam trabalho pendente, não histórico).
  *
@@ -308,22 +306,22 @@ function visaoGeralPorArea(melhorias) {
  *  - Donut de status, barras por área, complexidade e responsável
  */
 export function construirMelhorias(){
-  const {kept: melhoriasFiltradas} = filtrarPorPeriodo(App.P.improvements);
+  const {kept: melhoriasFiltradas} = filtrarPorPeriodo(App.dadosGovernanca.melhorias);
   // Backlog sem data = trabalho pendente, não histórico. Sempre incluído.
-  const backlogSemData = App.dateRange.mode !== 'all'
-    ? App.P.improvements.filter(m => !m.dtInicio && !m.dtFim && m.sc === 'todo')
+  const backlogSemData = App.periodoFiltro.modo !== 'all'
+    ? App.dadosGovernanca.melhorias.filter(m => !m.dataInicio && !m.dataFim && m.codigoStatus === 'todo')
     : [];
   const melhorias = [...melhoriasFiltradas, ...backlogSemData];
-  document.getElementById('mel-empty').style.display  = App.P.improvements.length ? 'none' : 'block';
-  document.getElementById('mel-content').style.display = App.P.improvements.length ? 'block' : 'none';
-  if(!App.P.improvements.length) return;
-  const sc      = statusCounts(melhorias);
-  const done    = sc.done;
-  const backlog = sc.todo;
-  const blocked = sc.blocked;
+  document.getElementById('mel-empty').style.display  = App.dadosGovernanca.melhorias.length ? 'none' : 'block';
+  document.getElementById('mel-content').style.display = App.dadosGovernanca.melhorias.length ? 'block' : 'none';
+  if(!App.dadosGovernanca.melhorias.length) return;
+  const contagem = contarPorStatus(melhorias);
+  const done    = contagem.done;
+  const backlog = contagem.todo;
+  const blocked = contagem.blocked;
 
   let notaData = '';
-  if(App.dateRange.mode !== 'all'){
+  if(App.periodoFiltro.modo !== 'all'){
     notaData = `<div class="note" style="background:var(--neu-bg);color:var(--ink3)"><i class="ti ti-calendar-stats"></i><div>
       Período aplicado: <b>${melhorias.length} melhorias</b> no recorte${backlogSemData.length > 0 ? ` (inclui <b>${backlogSemData.length} backlog</b> sem data)` : ''}.
       <br><span style="font-size:10px;opacity:.6;font-style:italic">Referência de data: início e conclusão do desenvolvimento — inclui melhorias ativas no período, mesmo que iniciadas antes dele</span>
@@ -331,17 +329,17 @@ export function construirMelhorias(){
   }
 
   // "Fluxos (processos)" = número de NomeFluxo distintos no recorte atual
-  const fluxosUnicos = new Set(App.P.improvements.map(m => m.fluxo).filter(Boolean)).size;
+  const fluxosUnicos = new Set(App.dadosGovernanca.melhorias.map(m => m.fluxo).filter(Boolean)).size;
 
-  // Qualidade de dados: concluída sem dtFim = erro de preenchimento na planilha.
-  // Itens não concluídos sem dtFim estão corretos (ainda em andamento/backlog).
-  const concluidasSemData = App.P.improvements.filter(m => m.sc==='done' && !m.dtFim).length;
+  // Qualidade de dados: concluída sem dataFim = erro de preenchimento na planilha.
+  // Itens não concluídos sem dataFim estão corretos (ainda em andamento/backlog).
+  const concluidasSemData = App.dadosGovernanca.melhorias.filter(m => m.codigoStatus==='done' && !m.dataFim).length;
 
   let html = notaData + `<div class="sh">Pipefy — Melhorias & Ajustes</div>
   ${barraAnalise('mel')}
   <div class="krow k5">
-    <div class="kpi">${iconeKpi('message')}<div class="knum">${App.P.improvements.length}</div><div class="klbl">Total melhorias</div>${App.dateRange.mode !== 'all' ? `<div class="ksub">${melhorias.length} no recorte</div>` : ''}</div>
-    <div class="kpi gl">${iconeKpi('check')}<div class="knum">${done}</div><div class="klbl">Concluídas</div><div class="ksub">${calculatePercentage(done,App.P.improvements.length)}% do total</div></div>
+    <div class="kpi">${iconeKpi('message')}<div class="knum">${App.dadosGovernanca.melhorias.length}</div><div class="klbl">Total melhorias</div>${App.periodoFiltro.modo !== 'all' ? `<div class="ksub">${melhorias.length} no recorte</div>` : ''}</div>
+    <div class="kpi gl">${iconeKpi('check')}<div class="knum">${done}</div><div class="klbl">Concluídas</div><div class="ksub">${calcularPercentual(done,App.dadosGovernanca.melhorias.length)}% do total</div></div>
     <div class="kpi">${iconeKpi('stack')}<div class="knum">${backlog}</div><div class="klbl">Backlog</div></div>
     <div class="kpi wl">${iconeKpi('lock')}<div class="knum">${blocked}</div><div class="klbl">Bloqueadas</div></div>
     <div class="kpi il">${iconeKpi('branch')}<div class="knum">${fluxosUnicos}</div><div class="klbl">Fluxos (processos)</div><div class="ksub">distintos no recorte</div></div>
@@ -353,24 +351,24 @@ export function construirMelhorias(){
 
   html += `<div class="two">
     <div class="card"><div class="card-title"><i class="ti ti-chart-pie"></i> Status</div>
-      ${donut(['done','doing','todo','vendor','blocked','cancel'].map(k=>({label:STATUS_PT[k],value:melhorias.filter(m=>m.sc===k).length,color:STATUS_COLOR[k]})).filter(d=>d.value), {total:App.P.improvements.length})}</div>
+      ${graficoRosca(['done','doing','todo','vendor','blocked','cancel'].map(k=>({label:STATUS_PT[k],value:melhorias.filter(m=>m.codigoStatus===k).length,color:STATUS_COLOR[k]})).filter(d=>d.value), {total:App.dadosGovernanca.melhorias.length})}</div>
     <div class="card"><div class="card-title"><i class="ti ti-building"></i> Por frente</div>
-      ${horizontalBars(sortedCountEntries(melhorias, m=>m.frente),{max:8,lw:60,tot:melhorias.length})}</div>
+      ${barrasHorizontais(contagemOrdenada(melhorias, m=>m.frente),{max:8,lw:60,tot:melhorias.length})}</div>
   </div>`;
   html += `<div class="two">
     <div class="card"><div class="card-title"><i class="ti ti-stack-2"></i> Por complexidade</div>
-      ${horizontalBars(sortedCountEntries(melhorias.filter(m=>m.complex), m=>m.complex),{max:6,lw:90})}</div>
+      ${barrasHorizontais(contagemOrdenada(melhorias.filter(m=>m.complexidade), m=>m.complexidade),{max:6,lw:90})}</div>
     <div class="card"><div class="card-title"><i class="ti ti-user-code"></i> Por responsável</div>
       ${(() => {
-        const dados = sortedCountEntries(melhorias.filter(m=>m.resp && isPipefyTeamMember(m.resp)), m=>m.resp);
-        return horizontalBars(dados,{max:8,lw:130});
+        const dados = contagemOrdenada(melhorias.filter(m=>m.responsavel && ehIntegranteEquipePipefy(m.responsavel)), m=>m.responsavel);
+        return barrasHorizontais(dados,{max:8,lw:130});
       })()}</div>
   </div>`;
   html += construirGraficoEvolucaoMelhorias(melhorias);
   html += visaoGeralPorArea(melhorias);
   html += '<div id="mel-atividades"></div>';
   document.getElementById('mel-content').innerHTML = html;
-  flushCharts();
-  setBadge('nb-mel', melhorias.length, '');
+  renderizarGraficosPendentes();
+  definirBadge('nb-mel', melhorias.length, '');
   renderizarSecaoAtividadesMelhorias();
 }

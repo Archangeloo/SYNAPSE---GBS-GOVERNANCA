@@ -1,35 +1,40 @@
-// ─── MODULE: state.js ──────────────────────────────────────────────────────
-// Single global application state object, shared by every other module.
-// Nothing here is computed — it's just the data + UI state containers that
-// the parsers write to and the views read from.
-// ─────────────────────────────────────────────────────────────────────────────
+// state.js — objeto único de estado global da aplicação, compartilhado por todos os módulos.
+// Nada aqui é calculado — são só os containers de dados e estado de interface que os
+// parsers escrevem e as views leem.
 
 export const App = {
-  // Raw workbooks read by SheetJS (null until the user uploads the file)
-  gov: null,
-  rpa: null,
+  // Planilhas brutas lidas pelo SheetJS (null até o usuário fazer o upload)
+  planilhaGovernanca: null,
+  planilhaRPA: null,
 
-  // Normalized data after parsing (arrays of plain objects)
-  P: {
-    improvements: [], // Pipefy_Melhorias — Pipefy improvements and adjustments
-    proj: [],         // Projetos — the area's project portfolio
-    ana: []            // Analytics — Analytics activities
+  // Dados normalizados após o parse (arrays de objetos simples), vindos da planilha de Governança
+  dadosGovernanca: {
+    melhorias: [], // Pipefy_Melhorias — melhorias e ajustes do Pipefy
+    projetos: [],  // Projetos — carteira de projetos da área
+    analytics: []  // Analytics — atividades de Analytics
   },
-  R: [],       // RPA Tickets — bot maintenance tickets
-  B: [],       // Bot Inventory — automation catalog (no date filter; uses AnoPRD)
+  chamadosRPA: [], // Chamados RPA — chamados de manutenção dos bots
+  bots: [],        // Inventário de Bots — catálogo de automações (sem filtro de data; usa AnoPRD)
 
-  // Tracks which files have already been loaded
-  loaded: { gov: false, rpa: false },
+  // Controle de quais arquivos já foram carregados
+  carregado: { governanca: false, rpa: false },
 
-  // Global period filter (applied to every tab at the same time)
-  // mode: 'all' = no filter | 'custom' = manual date range
-  dateRange: { mode: 'all', from: null, to: null },
+  // Aviso exibido quando o arquivo de Chamados RPA carregado não parece ser um
+  // relatório de chamados válido (preenchido por interpretarRPA(), lido em views/rpa.js)
+  avisoRPA: '',
 
-  // Set of expanded projects in the list (key = num or titulo)
-  projOpen: new Set(),
-  // Quick filter chips on the Projects tab: show only overdue / only high risk
-  projChips: { atraso: false, risco: false },
+  // Filtro global de período (aplicado em todas as abas ao mesmo tempo)
+  // modo: 'all' = sem filtro | 'custom' = intervalo manual de datas
+  periodoFiltro: { modo: 'all', de: null, ate: null },
 
-  // Active area filter on the Governance tab ('' = all areas)
-  govFrente: ''
+  // Conjunto de projetos expandidos na lista (chave = numero ou titulo)
+  projetosAbertos: new Set(),
+  // Chips de filtro rápido na aba Projetos: mostrar só atrasados / só risco alto
+  chipsProjetos: { atraso: false, risco: false },
+
+  // Conjunto de bots expandidos na lista do Inventário
+  botsAbertos: new Set(),
+
+  // Filtro de frente ativo na aba Governança ('' = todas as frentes)
+  frenteGovernanca: ''
 };

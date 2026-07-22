@@ -40,14 +40,14 @@
     <!-- Filtro de período (aparece após o primeiro "Gerar dashboard") -->
     <div class="date-filter" id="date-filter" style="display: none">
       <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.6)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
-      <button class="df-chip" id="dfc-month"   onclick="setQuickRange('month')">Este mês</button>
-      <button class="df-chip" id="dfc-quarter" onclick="setQuickRange('quarter')">Trimestre</button>
-      <button class="df-chip" id="dfc-year"    onclick="setQuickRange('year')">Este ano</button>
+      <button class="df-chip" id="dfc-month"   onclick="definirPeriodoRapido('month')">Este mês</button>
+      <button class="df-chip" id="dfc-quarter" onclick="definirPeriodoRapido('quarter')">Trimestre</button>
+      <button class="df-chip" id="dfc-year"    onclick="definirPeriodoRapido('year')">Este ano</button>
       <span class="df-divider"></span>
-      <input type="date" id="df-from" class="df-input" onchange="applyDateFilter()" title="Data inicial">
+      <input type="date" id="df-from" class="df-input" onchange="aplicarFiltroData()" title="Data inicial">
       <span style="color: rgba(255,255,255,0.5); font-size: 12px">→</span>
-      <input type="date" id="df-to"   class="df-input" onchange="applyDateFilter()" title="Data final">
-      <button class="df-clear" onclick="clearDateFilter()" title="Limpar período">
+      <input type="date" id="df-to"   class="df-input" onchange="aplicarFiltroData()" title="Data final">
+      <button class="df-clear" onclick="limparFiltroData()" title="Limpar período">
         <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
       </button>
     </div>
@@ -57,7 +57,7 @@
       Exportar PDF
     </button>
 
-    <button class="btn" onclick="setNav('upload')">
+    <button class="btn" onclick="definirNav('upload')">
       <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
       Atualizar bases
     </button>
@@ -67,12 +67,12 @@
 
 <!-- ── Navegação principal ─────────────────────────────────── -->
 <nav class="nav">
-  <div class="nav-item active" id="nav-upload" onclick="setNav('upload')">Upload</div>
-  <div class="nav-item"        id="nav-gov"    onclick="setNav('gov')">Painel de Controle <span class="nb" id="nb-gov">—</span></div>
-  <div class="nav-item"        id="nav-proj"   onclick="setNav('proj')">Projetos <span class="nb" id="nb-proj">—</span></div>
-  <div class="nav-item"        id="nav-mel"    onclick="setNav('mel')">Pipefy Melhorias <span class="nb" id="nb-mel">—</span></div>
-  <div class="nav-item"        id="nav-rpa"    onclick="setNav('rpa')">RPA &amp; Bots <span class="nb" id="nb-rpa">—</span></div>
-  <div class="nav-item"        id="nav-ana"    onclick="setNav('ana')">Analytics <span class="nb" id="nb-ana">—</span></div>
+  <div class="nav-item active" id="nav-upload" onclick="definirNav('upload')">Upload</div>
+  <div class="nav-item"        id="nav-gov"    onclick="definirNav('gov')">Painel de Controle <span class="nb" id="nb-gov">—</span></div>
+  <div class="nav-item"        id="nav-proj"   onclick="definirNav('proj')">Projetos <span class="nb" id="nb-proj">—</span></div>
+  <div class="nav-item"        id="nav-mel"    onclick="definirNav('mel')">Pipefy Melhorias <span class="nb" id="nb-mel">—</span></div>
+  <div class="nav-item"        id="nav-rpa"    onclick="definirNav('rpa')">RPA &amp; Bots <span class="nb" id="nb-rpa">—</span></div>
+  <div class="nav-item"        id="nav-ana"    onclick="definirNav('ana')">Analytics <span class="nb" id="nb-ana">—</span></div>
 </nav>
 
 <main>
@@ -99,10 +99,10 @@
         </div>
         <div class="dz" id="dz-gov"
           onclick="document.getElementById('fi-gov').click()"
-          ondragover="handleDropzoneDragOver(event, 'dz-gov')"
-          ondragleave="handleDropzoneDragLeave('dz-gov')"
-          ondrop="handleDropzoneDrop(event, 'gov')">
-          <input type="file" id="fi-gov" accept=".xlsx,.xls" onchange="handleFileInputChange(this, 'gov')">
+          ondragover="tratarArrastarSobreDropzone(event, 'dz-gov')"
+          ondragleave="tratarSairDropzone('dz-gov')"
+          ondrop="tratarSoltarDropzone(event, 'gov')">
+          <input type="file" id="fi-gov" accept=".xlsx,.xls" onchange="tratarMudancaArquivo(this, 'gov')">
           <div class="dz-ico">
             <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
               <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="16" y2="17"/><line x1="10" y1="9" x2="8" y2="9"/>
@@ -133,10 +133,10 @@
         </div>
         <div class="dz" id="dz-rpa"
           onclick="document.getElementById('fi-rpa').click()"
-          ondragover="handleDropzoneDragOver(event, 'dz-rpa')"
-          ondragleave="handleDropzoneDragLeave('dz-rpa')"
-          ondrop="handleDropzoneDrop(event, 'rpa')">
-          <input type="file" id="fi-rpa" accept=".xlsx,.xls" onchange="handleFileInputChange(this, 'rpa')">
+          ondragover="tratarArrastarSobreDropzone(event, 'dz-rpa')"
+          ondragleave="tratarSairDropzone('dz-rpa')"
+          ondrop="tratarSoltarDropzone(event, 'rpa')">
+          <input type="file" id="fi-rpa" accept=".xlsx,.xls" onchange="tratarMudancaArquivo(this, 'rpa')">
           <div class="dz-ico">
             <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
               <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="16" y2="17"/><line x1="10" y1="9" x2="8" y2="9"/>
@@ -159,7 +159,7 @@
       <div id="abar-status" style="font-size: 13px; color: var(--ink3)">
         <strong style="color: var(--ink)">0 de 2</strong> bases carregadas
       </div>
-      <button class="btn primary" id="btn-gen" onclick="generate()" disabled>
+      <button class="btn primary" id="btn-gen" onclick="gerarDashboard()" disabled>
         <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
         Gerar dashboard
       </button>
@@ -212,12 +212,12 @@
     </div>
     <div id="rpa-content" style="display: none">
       <nav class="pip-subnav">
-        <div class="pip-nav-item active" id="rnav-visao"  onclick="rpaPage('visao')">Visão geral</div>
-        <div class="pip-nav-item"        id="rnav-bots"   onclick="rpaPage('bots')">Top bots</div>
-        <div class="pip-nav-item"        id="rnav-prob"   onclick="rpaPage('prob')">Tipos de problema</div>
-        <div class="pip-nav-item"        id="rnav-tempo"  onclick="rpaPage('tempo')">Tempo de resolução</div>
-        <div class="pip-nav-item"        id="rnav-lista"  onclick="rpaPage('lista')">Chamados</div>
-        <div class="pip-nav-item"        id="rnav-inv"    onclick="rpaPage('inv')">Inventário de bots</div>
+        <div class="pip-nav-item active" id="rnav-visao"  onclick="definirSubAbaRPA('visao')">Visão geral</div>
+        <div class="pip-nav-item"        id="rnav-bots"   onclick="definirSubAbaRPA('bots')">Top bots</div>
+        <div class="pip-nav-item"        id="rnav-prob"   onclick="definirSubAbaRPA('prob')">Tipos de problema</div>
+        <div class="pip-nav-item"        id="rnav-tempo"  onclick="definirSubAbaRPA('tempo')">Tempo de resolução</div>
+        <div class="pip-nav-item"        id="rnav-lista"  onclick="definirSubAbaRPA('lista')">Chamados</div>
+        <div class="pip-nav-item"        id="rnav-inv"    onclick="definirSubAbaRPA('inv')">Inventário de bots</div>
       </nav>
       <div id="rpage-visao"  class="pip-sub-page active"></div>
       <div id="rpage-bots"   class="pip-sub-page"></div>

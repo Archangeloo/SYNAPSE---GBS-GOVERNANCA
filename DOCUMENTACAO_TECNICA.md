@@ -36,7 +36,7 @@ Este documento descreve o funcionamento interno do SYNAPSE: a estrutura de dados
 
 O SYNAPSE roda inteiramente no navegador do usuário. Não há servidor, banco de dados ou API própria associada à aplicação — o processamento das planilhas, os cálculos e a montagem dos gráficos acontecem no cliente.
 
-O fluxo de uso segue esta sequência: o usuário carrega duas planilhas Excel; o `FileReader`, API nativa do navegador, lê cada arquivo como `ArrayBuffer`; a biblioteca SheetJS converte o binário em um objeto de planilha (*workbook*); os parsers percorrem as abas relevantes e produzem arrays de objetos normalizados, armazenados em `App.P.*`, `App.R` e `App.B`; cada função de construção de aba lê esses arrays, aplica o filtro de período ativo e monta o HTML correspondente; por fim, o Chart.js desenha os gráficos dentro dos elementos `<canvas>` inseridos na página.
+O fluxo de uso segue esta sequência: o usuário carrega duas planilhas Excel; o `FileReader`, API nativa do navegador, lê cada arquivo como `ArrayBuffer`; a biblioteca SheetJS converte o binário em um objeto de planilha (*workbook*); os parsers percorrem as abas relevantes e produzem arrays de objetos normalizados, armazenados em `App.dadosGovernanca.*`, `App.chamadosRPA` e `App.bots`; cada função de construção de aba lê esses arrays, aplica o filtro de período ativo e monta o HTML correspondente; por fim, o Chart.js desenha os gráficos dentro dos elementos `<canvas>` inseridos na página.
 
 Não há envio de dados para fora do navegador em nenhuma etapa desse fluxo — o código não contém chamadas de `fetch`, `XMLHttpRequest` ou `WebSocket` para nenhum servidor próprio. As únicas conexões de rede da página servem para carregar bibliotecas, ícones e fontes hospedados em CDN, que não recebem o conteúdo das planilhas.
 
@@ -69,26 +69,26 @@ Um único objeto, `App`, concentra todo o estado da aplicação e é compartilha
 
 ```js
 App = {
-  gov: null,           // workbook da Base Governança, após o upload
-  rpa: null,            // workbook do relatório de Chamados RPA
+  planilhaGovernanca: null,   // workbook da Base Governança, após o upload
+  planilhaRPA: null,          // workbook do relatório de Chamados RPA
 
-  P: {
-    improvements: [],  // Pipefy_Melhorias normalizado
-    proj: [],          // Projetos normalizado
-    ana: []            // Analytics normalizado
+  dadosGovernanca: {
+    melhorias: [],    // Pipefy_Melhorias normalizado
+    projetos: [],     // Projetos normalizado
+    analytics: []     // Analytics normalizado
   },
-  R: [],               // Chamados RPA normalizados
-  B: [],               // Inventário de Bots normalizado
+  chamadosRPA: [],     // Chamados RPA normalizados
+  bots: [],            // Inventário de Bots normalizado
 
-  loaded: { gov:false, rpa:false },
-  dateRange: { mode:'all', from:null, to:null },
+  carregado: { governanca:false, rpa:false },
+  periodoFiltro: { modo:'all', de:null, ate:null },
 
-  projOpen: new Set(),
-  projChips: { atraso:false, risco:false },
-  govFrente: '',
+  projetosAbertos: new Set(),
+  chipsProjetos: { atraso:false, risco:false },
+  frenteGovernanca: '',
 
-  botsOpen: new Set(),
-  rpaWarn: ''
+  botsAbertos: new Set(),
+  avisoRPA: ''
 }
 ```
 
@@ -105,24 +105,24 @@ Quadro 2 — Interações da área de upload
 | Ação do usuário | Função acionada |
 |---|---|
 | Clique na área tracejada | Aciona o `<input type="file">` oculto, abrindo o seletor de arquivos do sistema |
-| Arrastar um arquivo sobre a área | `handleDropzoneDragOver` — destaca a área com a classe `.over` |
-| Arrastar para fora da área | `handleDropzoneDragLeave` — remove o destaque |
-| Soltar o arquivo | `handleDropzoneDrop` — lê o arquivo solto e chama `readFile` |
-| Selecionar o arquivo pelo seletor do sistema | `handleFileInputChange` — chama `readFile` sobre o arquivo escolhido |
+| Arrastar um arquivo sobre a área | `tratarArrastarSobreDropzone` — destaca a área com a classe `.over` |
+| Arrastar para fora da área | `tratarSairDropzone` — remove o destaque |
+| Soltar o arquivo | `tratarSoltarDropzone` — lê o arquivo solto e chama `lerArquivo` |
+| Selecionar o arquivo pelo seletor do sistema | `tratarMudancaArquivo` — chama `lerArquivo` sobre o arquivo escolhido |
 
-A função `readFile` cria um `FileReader` e lê o conteúdo como `ArrayBuffer`. Ao concluir a leitura, `XLSX.read()` converte os bytes em um workbook, com a opção `cellDates:true`, que faz o SheetJS retornar objetos `Date` nativos em vez do número serial usado internamente pelo Excel. O workbook resultante é armazenado em `App.gov` ou `App.rpa`, conforme o tipo de upload, e as funções `showOk` e `updateBar` atualizam a interface.
+A função `lerArquivo` cria um `FileReader` e lê o conteúdo como `ArrayBuffer`. Ao concluir a leitura, `XLSX.read()` converte os bytes em um workbook, com a opção `cellDates:true`, que faz o SheetJS retornar objetos `Date` nativos em vez do número serial usado internamente pelo Excel. O workbook resultante é armazenado em `App.planilhaGovernanca` ou `App.planilhaRPA`, conforme o tipo de upload, e as funções `mostrarSucesso` e `atualizarBarra` atualizam a interface.
 
-A função `showOk` confirma visualmente o upload e, no caso da Base Governança, verifica quais das quatro abas esperadas (`Pipefy_Melhorias`, `Projetos`, `Analytics`, `Inventario_RPA`) foram encontradas no arquivo, com comparação tolerante a maiúsculas, espaços e underscores. Um diagnóstico adicional varre as colunas da aba `Pipefy_Melhorias` em busca de termos como "data", "criado", "início" ou "conclusão", útil para identificar rapidamente se o nome de uma coluna de data foi alterado na planilha de origem.
+A função `mostrarSucesso` confirma visualmente o upload e, no caso da Base Governança, verifica quais das quatro abas esperadas (`Pipefy_Melhorias`, `Projetos`, `Analytics`, `Inventario_RPA`) foram encontradas no arquivo, com comparação tolerante a maiúsculas, espaços e underscores. Um diagnóstico adicional varre as colunas da aba `Pipefy_Melhorias` em busca de termos como "data", "criado", "início" ou "conclusão", útil para identificar rapidamente se o nome de uma coluna de data foi alterado na planilha de origem.
 
-A função `updateBar` conta quantos dos dois arquivos já foram carregados e habilita o botão "Gerar dashboard" assim que pelo menos um deles estiver presente — não é necessário carregar as duas bases simultaneamente. As abas que dependem da fonte ausente exibem apenas uma mensagem informando que não há dados carregados.
+A função `atualizarBarra` conta quantos dos dois arquivos já foram carregados e habilita o botão "Gerar dashboard" assim que pelo menos um deles estiver presente — não é necessário carregar as duas bases simultaneamente. As abas que dependem da fonte ausente exibem apenas uma mensagem informando que não há dados carregados.
 
 ---
 
 ## 4 Geração do dashboard
 
-A função `generate` orquestra a construção do dashboard a partir das planilhas carregadas, executando as seguintes etapas em sequência:
+A função `gerarDashboard` orquestra a construção do dashboard a partir das planilhas carregadas, executando as seguintes etapas em sequência:
 
-Primeiro, todas as instâncias ativas do Chart.js são destruídas e o contador de identificadores é zerado, evitando o erro de canvas duplicado ao gerar o dashboard mais de uma vez na mesma sessão. Em seguida, os parsers correspondentes às fontes carregadas são executados — `parseGov` e `parseInv` para a Base Governança, `parseRPA` para o relatório de chamados — seguidos por `enrichRPAWithArea`, que roda mesmo quando uma das fontes está ausente.
+Primeiro, todas as instâncias ativas do Chart.js são destruídas e o contador de identificadores é zerado, evitando o erro de canvas duplicado ao gerar o dashboard mais de uma vez na mesma sessão. Em seguida, os parsers correspondentes às fontes carregadas são executados — `interpretarGov` e `interpretarInventario` para a Base Governança, `interpretarRPA` para o relatório de chamados — seguidos por `enriquecerRPAComArea`, que roda mesmo quando uma das fontes está ausente.
 
 A partir dos dados normalizados, o sistema calcula o intervalo de datas coberto pela planilha e define esse intervalo como limite dos campos de data do filtro de período, impedindo a seleção de datas fora do que a base realmente contém. Cada aba é então construída dentro de um bloco `try/catch` independente, de modo que uma falha de renderização em uma aba não interrompa as demais — o erro, quando ocorre, é registrado apenas no console do navegador.
 
@@ -136,52 +136,52 @@ Por fim, o texto de sincronização no topo da página é atualizado com o horá
 
 O sistema não exige nomes exatos de aba. A comparação ignora maiúsculas, minúsculas, espaços e underscores, de modo que `Pipefy_Melhorias`, `pipefymelhorias` e `PIPEFY MELHORIAS` são reconhecidos como a mesma aba.
 
-Para o relatório de Chamados RPA, cujo nome de aba varia entre exportações do Pipefy, o sistema testa todas as abas do arquivo e atribui uma pontuação a cada uma, de acordo com a presença de colunas características de um relatório de chamados: `Código`, `Fase atual`, `Processo`, uma coluna relacionada a "qual é o problema" e `Criado em`. A aba com maior pontuação é selecionada. Quando nenhuma aba atinge ao menos duas dessas colunas, o sistema não tenta adivinhar: deixa `App.R` vazio e exibe um aviso informando que o arquivo carregado não corresponde a um relatório de chamados válido.
+Para o relatório de Chamados RPA, cujo nome de aba varia entre exportações do Pipefy, o sistema testa todas as abas do arquivo e atribui uma pontuação a cada uma, de acordo com a presença de colunas características de um relatório de chamados: `Código`, `Fase atual`, `Processo`, uma coluna relacionada a "qual é o problema" e `Criado em`. A aba com maior pontuação é selecionada. Quando nenhuma aba atinge ao menos duas dessas colunas, o sistema não tenta adivinhar: deixa `App.chamadosRPA` vazio e exibe um aviso informando que o arquivo carregado não corresponde a um relatório de chamados válido.
 
-### 5.2 Pipefy_Melhorias → `App.P.improvements`
+### 5.2 Pipefy_Melhorias → `App.dadosGovernanca.melhorias`
 
 Quadro 3 — Campos normalizados de Pipefy_Melhorias
 
 | Campo interno | Coluna de origem | Observação |
 |---|---|---|
-| `num` | Numero | |
+| `numero` | Numero | |
 | `frente` | Gerencia | área de negócio (P2P, O2C etc.) |
 | `fluxo` | NomeFluxo | nome do fluxo de processo |
 | `atividade` | Atividade | descrição da melhoria |
 | `statusRaw` | Status | texto original da planilha |
-| `sc` | Status, via `classeStatusMelhoria` | ver seção 6; "Planejamento" conta como `doing` |
-| `resp` | Responsavel | remove um caractere de espaço de largura zero comum em colagens do Excel |
+| `codigoStatus` | Status, via `classeStatusMelhoria` | ver seção 6; "Planejamento" conta como `doing` |
+| `responsavel` | Responsavel | remove um caractere de espaço de largura zero comum em colagens do Excel |
 | `champion` | Champion | |
-| `complex` | Complexidade | |
+| `complexidade` | Complexidade | |
 | `tipo` | TipoMelhoriaAjuste | |
-| `dtInicio` | DataInicioDesenvolvimento | sem coluna alternativa |
-| `dtFim` | DataRealEstimadaConclusaoValidacaoChampion | apenas quando `sc==='done'` — ver observação abaixo |
+| `dataInicio` | DataInicioDesenvolvimento | sem coluna alternativa |
+| `dataFim` | DataRealEstimadaConclusaoValidacaoChampion | apenas quando `codigoStatus==='done'` — ver observação abaixo |
 | `horas` | QtdHorasEstimadas | |
 
-Linhas sem `num` e sem `atividade` são descartadas. Melhorias de backlog sem `dtInicio` nem `dtFim` são sempre incluídas quando o filtro de período está ativo, por representarem trabalho pendente e não histórico.
+Linhas sem `numero` e sem `atividade` são descartadas. Melhorias de backlog sem `dataInicio` nem `dataFim` são sempre incluídas quando o filtro de período está ativo, por representarem trabalho pendente e não histórico.
 
-A coluna `DataRealEstimadaConclusaoValidacaoChampion` guarda uma data estimada enquanto a melhoria ainda está em desenvolvimento e só passa a representar a data real depois que o champion valida a conclusão. Por isso o parser só preenche `dtFim` quando o item já está com status concluído (`sc==='done')`; para os demais status, `dtFim` fica `null`, evitando que uma estimativa ainda não confirmada seja tratada como data de conclusão real pelo filtro de período (ver seção 7).
+A coluna `DataRealEstimadaConclusaoValidacaoChampion` guarda uma data estimada enquanto a melhoria ainda está em desenvolvimento e só passa a representar a data real depois que o champion valida a conclusão. Por isso o parser só preenche `dataFim` quando o item já está com status concluído (`codigoStatus==='done')`; para os demais status, `dataFim` fica `null`, evitando que uma estimativa ainda não confirmada seja tratada como data de conclusão real pelo filtro de período (ver seção 7).
 
-### 5.3 Projetos → `App.P.proj`
+### 5.3 Projetos → `App.dadosGovernanca.projetos`
 
 O parser reconhece automaticamente duas versões de layout da planilha. No layout atual, a coluna Status contém valores reconhecíveis pela função de classificação, e os campos são lidos pelo nome da coluna (`Numero`, `Titulo`, `Responsavel`, `AreaCliente` ou `Frente`, `PontoFocal`, `Status`, `PrazoConclusão`, entre outros). Quando nenhum valor de Status é reconhecido, o sistema assume uma versão anterior da planilha, na qual os cabeçalhos estão deslocados uma coluna em relação ao conteúdo, e passa a ler por posição: coluna 0 corresponde ao número, 1 ao título, 2 ao responsável, e assim por diante. Em ambos os casos, linhas sem título são descartadas.
 
-### 5.4 Analytics → `App.P.ana`
+### 5.4 Analytics → `App.dadosGovernanca.analytics`
 
 Quadro 4 — Campos normalizados de Analytics
 
 | Campo | Coluna de origem | Observação |
 |---|---|---|
-| `num` | Numero | |
+| `numero` | Numero | |
 | `titulo` | Titulo | linhas sem título são descartadas |
-| `statusRaw` / `sc` | Status | classificação padrão, sem a regra especial do Pipefy |
-| `prio` | Prioridade | extrai apenas o número do texto |
+| `statusRaw` / `codigoStatus` | Status | classificação padrão, sem a regra especial do Pipefy |
+| `prioridade` | Prioridade | extrai apenas o número do texto |
 | `frente` | Frente | |
-| `resp` | Responsavel | |
-| `dtInicio` | DataAbertura | |
-| `dtFim` | DataFechamento | |
+| `responsavel` | Responsavel | |
+| `dataInicio` | DataAbertura | |
+| `dataFim` | DataFechamento | |
 
-### 5.5 Inventario_RPA → `App.B`
+### 5.5 Inventario_RPA → `App.bots`
 
 Quadro 5 — Campos normalizados do inventário de bots
 
@@ -194,33 +194,33 @@ Quadro 5 — Campos normalizados do inventário de bots
 | `anoPrd` | AnoPRD | ano de entrada em produção, usado no filtro de período específico desta aba |
 | `criticidade` | Criticidade | 1 (crítica) a 4 (baixa) |
 | `fte` | FTE | FTEs economizados |
-| `vol` | VolumetriaMensal | transações por mês |
+| `volumetria` | VolumetriaMensal | transações por mês |
 
-### 5.6 Relatório de Chamados RPA → `App.R`
+### 5.6 Relatório de Chamados RPA → `App.chamadosRPA`
 
 Quadro 6 — Campos normalizados dos chamados RPA
 
 | Campo | Coluna de origem | Observação |
 |---|---|---|
-| `cod` | Código | linhas sem código são descartadas |
+| `codigo` | Código | linhas sem código são descartadas |
 | `fase` | Fase atual | fase corrente no fluxo do Pipefy |
 | `processo` | Processo | nome do bot; vazio vira `(sem processo)` |
 | `solicitante` | Nome do solicitante | quem abriu o chamado |
 | `responsaveis` | Responsáveis | quem atende o chamado, armazenado como lista |
 | `criado` | Criado em | data de abertura |
-| `dtFim` | Finalizado em | data de conclusão |
+| `dataFim` | Finalizado em | data de conclusão |
 | `mes` | derivado de `criado` | chave no formato AAAA-MM |
 | `vencido` | Vencido | aceita booleano ou texto "true"/"sim" |
 
 ### 5.7 Identificação da área de cada chamado
 
-Os chamados RPA não têm coluna de área na planilha de origem. A função `enrichRPAWithArea` resolve essa informação em duas etapas: primeiro tenta um cruzamento com o inventário de bots, comparando os nomes normalizados (sem prefixos entre colchetes, sem acentuação, sem espaços) e verificando se um nome contém o outro; quando esse cruzamento falha, aplica um conjunto de regras por palavra-chave — processos com termos como "bank statement" ou "payment run" são atribuídos a P2P, termos relacionados a impostos a TAX, e assim por diante. Chamados que não se encaixam em nenhuma das duas regras recebem a marcação `(não mapeada)`.
+Os chamados RPA não têm coluna de área na planilha de origem. A função `enriquecerRPAComArea` resolve essa informação em duas etapas: primeiro tenta um cruzamento com o inventário de bots, comparando os nomes normalizados (sem prefixos entre colchetes, sem acentuação, sem espaços) e verificando se um nome contém o outro; quando esse cruzamento falha, aplica um conjunto de regras por palavra-chave — processos com termos como "bank statement" ou "payment run" são atribuídos a P2P, termos relacionados a impostos a TAX, e assim por diante. Chamados que não se encaixam em nenhuma das duas regras recebem a marcação `(não mapeada)`.
 
 ---
 
 ## 6 Normalização de status
 
-Internamente, o sistema nunca compara o texto bruto de status vindo da planilha — trabalha com um código normalizado (`sc`), já que o texto de origem varia em grafia e acentuação. A função `classeStatus` faz essa conversão.
+Internamente, o sistema nunca compara o texto bruto de status vindo da planilha — trabalha com um código normalizado (`codigoStatus`), já que o texto de origem varia em grafia e acentuação. A função `classeStatus` faz essa conversão.
 
 Quadro 7 — Mapeamento de status
 
@@ -244,7 +244,7 @@ Existe uma exceção para as Melhorias Pipefy, aplicada pela função `classeSta
 
 ## 7 Filtro global de período
 
-O filtro de período no topo da página afeta todas as abas simultaneamente. Ele pode ser acionado de três formas: pelos atalhos "Este mês", "Trimestre" e "Este ano" (função `setQuickRange`, que calcula o intervalo a partir da data atual e marca o atalho como ativo); pela edição manual dos dois campos de data (função `applyDateFilter`, que monta o intervalo no modo personalizado, cobrindo o dia inteiro em ambas as pontas); ou pelo botão de limpar (função `clearDateFilter`, que retorna ao modo sem filtro). Clicar em um atalho já ativo funciona como alternância e remove o filtro. Qualquer uma dessas ações aciona `renderAll`, que reconstrói todas as abas com dado carregado.
+O filtro de período no topo da página afeta todas as abas simultaneamente. Ele pode ser acionado de três formas: pelos atalhos "Este mês", "Trimestre" e "Este ano" (função `definirPeriodoRapido`, que calcula o intervalo a partir da data atual e marca o atalho como ativo); pela edição manual dos dois campos de data (função `aplicarFiltroData`, que monta o intervalo no modo personalizado, cobrindo o dia inteiro em ambas as pontas); ou pelo botão de limpar (função `limparFiltroData`, que retorna ao modo sem filtro). Clicar em um atalho já ativo funciona como alternância e remove o filtro. Qualquer uma dessas ações aciona `renderizarTudo`, que reconstrói todas as abas com dado carregado.
 
 O período não é interpretado da mesma forma em todas as fontes — cada uma usa a data que faz sentido para o seu contexto de negócio.
 
@@ -252,13 +252,13 @@ Quadro 8 — Referência de data por fonte
 
 | Fonte | Campo de referência |
 |---|---|
-| Pipefy Melhorias | intervalo `dtInicio` a `dtFim` (só enquanto em andamento; concluídas usam `dtFim` como data única — ver abaixo) |
-| Projetos | `dtFim` (prazo de conclusão) |
-| Analytics | intervalo `dtInicio` a `dtFim` (mesma regra de itens concluídos que Melhorias) |
+| Pipefy Melhorias | intervalo `dataInicio` a `dataFim` (só enquanto em andamento; concluídas usam `dataFim` como data única — ver abaixo) |
+| Projetos | `dataFim` (prazo de conclusão) |
+| Analytics | intervalo `dataInicio` a `dataFim` (mesma regra de itens concluídos que Melhorias) |
 | Chamados RPA | `criado` (data de abertura) |
 | Inventário de Bots | `anoPrd`, filtrado por ano — ver seção 15 |
 
-A lógica central está em três funções do módulo de datas. `dataNoIntervalo` avalia itens com uma única data de referência: sem filtro ativo, tudo passa; com filtro ativo, um item sem data nunca passa. `ativoNoIntervalo` avalia itens com um intervalo próprio, como as Melhorias — um item com apenas a data de início é considerado ativo até a data atual; um item sem nenhuma das duas datas é classificado como "sem data" e contado à parte. `filtrarPorPeriodo` decide qual das duas regras aplicar a cada item de um array: itens ainda em andamento usam o intervalo completo (`ativoNoIntervalo`), porque faz sentido considerá-los "ativos" durante todo o desenvolvimento; itens já concluídos (`sc==='done'`) usam apenas `dtFim` como data única, via `dataNoIntervalo`, porque uma vez concluído o item tem uma data de conclusão real e fixa, e o que importa é se essa conclusão caiu dentro do período — não se o desenvolvimento, em algum momento, tocou o período. Essa distinção evita que um item concluído bem depois do período apareça como "concluído no período" só porque estava em desenvolvimento durante ele.
+A lógica central está em três funções do módulo de datas. `dataNoIntervalo` avalia itens com uma única data de referência: sem filtro ativo, tudo passa; com filtro ativo, um item sem data nunca passa. `ativoNoIntervalo` avalia itens com um intervalo próprio, como as Melhorias — um item com apenas a data de início é considerado ativo até a data atual; um item sem nenhuma das duas datas é classificado como "sem data" e contado à parte. `filtrarPorPeriodo` decide qual das duas regras aplicar a cada item de um array: itens ainda em andamento usam o intervalo completo (`ativoNoIntervalo`), porque faz sentido considerá-los "ativos" durante todo o desenvolvimento; itens já concluídos (`codigoStatus==='done'`) usam apenas `dataFim` como data única, via `dataNoIntervalo`, porque uma vez concluído o item tem uma data de conclusão real e fixa, e o que importa é se essa conclusão caiu dentro do período — não se o desenvolvimento, em algum momento, tocou o período. Essa distinção evita que um item concluído bem depois do período apareça como "concluído no período" só porque estava em desenvolvimento durante ele.
 
 `filtrarPorPeriodo` retorna dois valores: os itens que passaram no filtro e a quantidade dos que ficaram de fora por ausência de data — essa contagem é sempre exibida na interface, nunca ocultada. Em nenhuma circunstância um item sem data recebe uma data aproximada ou padrão: ele simplesmente fica fora do recorte enquanto o filtro estiver ativo.
 
@@ -280,9 +280,9 @@ Quadro 9 — Elementos da barra superior
 
 ## 9 Navegação entre abas
 
-A função `setNav` alterna a classe ativa entre o item de menu selecionado e a seção de página correspondente, ocultando as demais. Ao entrar em uma aba, os números dos indicadores visíveis são reanimados do zero até o valor final — efeito puramente visual, sem novo cálculo.
+A função `definirNav` alterna a classe ativa entre o item de menu selecionado e a seção de página correspondente, ocultando as demais. Ao entrar em uma aba, os números dos indicadores visíveis são reanimados do zero até o valor final — efeito puramente visual, sem novo cálculo.
 
-A aba RPA e Bots possui uma navegação secundária entre seis subabas, controlada pela função `rpaPage`, restrita ao conteúdo dessa aba. Os contadores exibidos ao lado de cada item do menu principal são atualizados pela função `setBadge` conforme cada aba é construída.
+A aba RPA e Bots possui uma navegação secundária entre seis subabas, controlada pela função `definirSubAbaRPA`, restrita ao conteúdo dessa aba. Os contadores exibidos ao lado de cada item do menu principal são atualizados pela função `definirBadge` conforme cada aba é construída.
 
 ---
 
@@ -290,7 +290,7 @@ A aba RPA e Bots possui uma navegação secundária entre seis subabas, controla
 
 Esta aba apresenta uma visão executiva que combina as quatro fontes de dados — Projetos, Melhorias, Analytics e Chamados RPA — em uma lista unificada de ações, produzida pela função `todasAcoes`. Cada ação carrega a fonte de origem, o status normalizado, a frente de negócio, o responsável, as datas relevantes e, no caso de chamados RPA, o indicador de vencimento. Chamados RPA só recebem uma frente quando a área do bot corresponde a uma das cinco áreas de negócio principais; áreas secundárias do inventário não entram nos gráficos "por frente" desta aba. A função `todasAcoesFiltradas` aplica o filtro global de período sobre essa lista combinada.
 
-Quando há mais de uma frente presente nos dados, chips de filtro permitem restringir a visão a uma área específica; essa seleção é guardada em `App.govFrente`. O filtro de área afeta os indicadores, o donut de status e o gráfico "Por responsável", mas não o gráfico "Por frente", que sempre mostra o panorama completo como referência de comparação.
+Quando há mais de uma frente presente nos dados, chips de filtro permitem restringir a visão a uma área específica; essa seleção é guardada em `App.frenteGovernanca`. O filtro de área afeta os indicadores, o donut de status e o gráfico "Por responsável", mas não o gráfico "Por frente", que sempre mostra o panorama completo como referência de comparação.
 
 A aba exibe cinco indicadores — total de ações, percentual concluído, em andamento, em backlog e "outros" — seguidos de um donut de status que agrupa Encerramento e Monitoramento em uma única fatia e reúne bloqueados, cancelados e itens em suporte externo sob "Impedimentos". O gráfico "Por responsável" soma apenas os membros fixos da equipe CoE, definidos na constante `COE_TEAM`; pessoas fora dessa lista não aparecem, ainda que constem como responsáveis na planilha. Um rodapé de diagnóstico mostra a contagem bruta de cada fonte, sem filtro de data, para auditoria rápida.
 
@@ -302,7 +302,7 @@ A aba apresenta indicadores de total, execução, fase final, atrasos e risco al
 
 O score de risco de cada projeto, calculado pela função `riscoProjeto`, combina três fatores sem exigir nenhum campo manual na planilha. O atraso é o fator de maior peso: quando o prazo já passou, a pontuação soma até 70 pontos, crescendo com o número de dias de atraso — cerca de 40 dias de atraso já é suficiente para classificar o projeto como risco alto isoladamente. Quando o prazo ainda não venceu, a proximidade da data soma pontos adicionais, e a ausência de qualquer prazo definido também é penalizada, por representar falta de controle. A fase do projeto contribui com um peso decrescente conforme o projeto avança no fluxo — Diagnóstico e Planejamento pesam mais que Execução e Encerramento — e um projeto bloqueado recebe um acréscimo fixo. O resultado final é classificado como risco alto a partir de 55 pontos, médio a partir de 30, e baixo abaixo disso; projetos concluídos, cancelados ou em monitoramento sempre recebem risco zero. Cada cálculo mantém também uma lista de motivos legíveis, exibida como texto auxiliar no indicador de risco.
 
-A lista de projetos aceita busca por texto, filtros combináveis de atraso e risco alto, e seletores de responsável, status e frente. A ordenação padrão é por score de risco, com progresso como critério de desempate. Clicar em um projeto expande um painel com os campos preenchidos na planilha — campos vazios simplesmente não aparecem. O estado de expansão de cada projeto é mantido em `App.projOpen` enquanto a página não é recarregada.
+A lista de projetos aceita busca por texto, filtros combináveis de atraso e risco alto, e seletores de responsável, status e frente. A ordenação padrão é por score de risco, com progresso como critério de desempate. Clicar em um projeto expande um painel com os campos preenchidos na planilha — campos vazios simplesmente não aparecem. O estado de expansão de cada projeto é mantido em `App.projetosAbertos` enquanto a página não é recarregada.
 
 ---
 
@@ -330,7 +330,7 @@ O botão de adicionar abre o modal em branco; o ícone de lápis em uma linha o 
 
 Além dos indicadores de total, conclusão, andamento e não iniciadas, a aba apresenta um donut de status e barras por prioridade, frente e responsável. Quando não há filtro de período ativo, mas parte das atividades carece de data registrada, um aviso informa a proporção afetada.
 
-O heatmap de prioridade por frente, produzido pela função `buildHeatmap` — fisicamente definida no módulo da Governança, mas usada apenas aqui —, cruza as prioridades de 1 a 4 com as frentes presentes em Analytics ou em Projetos, contando apenas atividades ainda em aberto. A intensidade da cor é proporcional ao valor máximo da matriz.
+O heatmap de prioridade por frente, produzido pela função `construirMapaCalor` — fisicamente definida no módulo da Governança, mas usada apenas aqui —, cruza as prioridades de 1 a 4 com as frentes presentes em Analytics ou em Projetos, contando apenas atividades ainda em aberto. A intensidade da cor é proporcional ao valor máximo da matriz.
 
 ---
 
@@ -338,9 +338,9 @@ O heatmap de prioridade por frente, produzido pela função `buildHeatmap` — f
 
 O filtro de período desta seção usa a data de abertura do chamado, campo obrigatório no Pipefy e por isso presente em todos os registros.
 
-A subaba Visão geral acrescenta um filtro local por fase do chamado, que atualiza apenas seus próprios indicadores e gráficos através da função `renderRPAStatus`. Ela reúne cinco indicadores, um gráfico de volume mensal em barras empilhadas, um donut de status por fase e uma distribuição de chamados por área, na qual áreas secundárias do inventário são agregadas sob "Outros".
+A subaba Visão geral acrescenta um filtro local por fase do chamado, que atualiza apenas seus próprios indicadores e gráficos através da função `renderizarStatusRPA`. Ela reúne cinco indicadores, um gráfico de volume mensal em barras empilhadas, um donut de status por fase e uma distribuição de chamados por área, na qual áreas secundárias do inventário são agregadas sob "Outros".
 
-A subaba Top bots lista, em barras horizontais, a contagem de chamados por processo. A subaba Tipos de problema cruza tipo de problema com fase e com área, usando o componente `clusteredBars`, e apresenta dois donuts adicionais sobre reexecução e causa interna ou externa. A subaba Tempo de resolução calcula a média de dias por fase e o tempo médio por bot, considerando apenas bots com três ou mais chamados para evitar distorção estatística por amostra pequena. A subaba Chamados oferece busca textual sobre a lista completa, limitada a mil linhas exibidas por vez.
+A subaba Top bots lista, em barras horizontais, a contagem de chamados por processo. A subaba Tipos de problema cruza tipo de problema com fase e com área, usando o componente `barrasAgrupadas`, e apresenta dois donuts adicionais sobre reexecução e causa interna ou externa. A subaba Tempo de resolução calcula a média de dias por fase e o tempo médio por bot, considerando apenas bots com três ou mais chamados para evitar distorção estatística por amostra pequena. A subaba Chamados oferece busca textual sobre a lista completa, limitada a mil linhas exibidas por vez.
 
 A subaba Inventário de bots reinterpreta o filtro de período: em vez de filtrar por data de ação, filtra por ano de entrada em produção (`AnoPRD`). Ela apresenta indicadores de composição do inventário, distribuição por área e perímetro, classificação por criticidade e frequência de execução, e uma tabela de cruzamento que aponta os dez bots em produção com mais chamados de manutenção associados — candidatos naturais a refatoração.
 
@@ -367,7 +367,7 @@ Os limiares numéricos usados nessas regras — por exemplo, 30% de concentraç�
 
 ## 17 Gráficos
 
-Os gráficos de linha, donut e barras empilhadas são produzidos pelo Chart.js. Cada função de gráfico devolve um trecho de HTML contendo um elemento `<canvas>` com identificador único e registra a configuração correspondente em uma fila interna, já que o elemento ainda não existe no DOM no momento da chamada. Após a inserção do HTML na página, a função `flushCharts` percorre essa fila e instancia cada gráfico. Instâncias anteriores com o mesmo identificador são destruídas antes da recriação, evitando o erro de canvas já em uso quando uma aba é reconstruída — por exemplo, ao alterar o filtro de período. No início de cada geração de dashboard, todas as instâncias ativas são destruídas de uma só vez.
+Os gráficos de linha, donut e barras empilhadas são produzidos pelo Chart.js. Cada função de gráfico devolve um trecho de HTML contendo um elemento `<canvas>` com identificador único e registra a configuração correspondente em uma fila interna, já que o elemento ainda não existe no DOM no momento da chamada. Após a inserção do HTML na página, a função `renderizarGraficosPendentes` percorre essa fila e instancia cada gráfico. Instâncias anteriores com o mesmo identificador são destruídas antes da recriação, evitando o erro de canvas já em uso quando uma aba é reconstruída — por exemplo, ao alterar o filtro de período. No início de cada geração de dashboard, todas as instâncias ativas são destruídas de uma só vez.
 
 Dois componentes visuais não usam Chart.js: as barras agrupadas da subaba Tipos de problema e o heatmap da aba Analytics são montados diretamente em HTML e CSS, para permitir controle total do layout.
 
@@ -439,4 +439,83 @@ Quadro 12 — Principais funções traduzidas
 | `activeInRange` | `ativoNoIntervalo` |
 | `analyzeGovernance`, `analyzeProjects` etc. | `analisarGovernanca`, `analisarProjetos` etc. |
 
-Esta segunda etapa, no momento da última atualização deste documento, cobre o núcleo de dados (Seção 1), a aba Governança, a aba Melhorias com o registro de atividades, e o módulo de análise automática. As funções relacionadas a upload, navegação, filtros, parsers e às abas Projetos, Analytics, RPA e Bots ainda mantêm identificadores em inglês e serão atualizadas em uma etapa posterior.
+Uma terceira etapa completou essa tradução: os módulos de upload, navegação, filtros, parsers, gráficos e as abas Projetos, Analytics, RPA e Bots — até então os únicos com identificadores e comentários em inglês — foram revisados. Com isso, todo o código-fonte em `src/` passou a usar português de forma consistente, com exceção dos códigos internos de status já mencionados.
+
+Essa etapa também unificou um padrão que estava dividido: as funções que constroem o conteúdo de uma aba usavam ora o verbo `build` (`buildProjects`, `buildAnalytics`, `buildRPATickets`, `buildBots`), ora `construir` (`construirGovernanca`, `construirMelhorias`), para o mesmo papel. Todas passaram a usar `construir`.
+
+Quadro 13 — Funções renomeadas na terceira etapa
+
+| Nome anterior | Nome atual | Função |
+|---|---|---|
+| `buildProjects` | `construirProjetos` | constrói a aba Projetos |
+| `buildAnalytics` | `construirAnalytics` | constrói a aba Analytics |
+| `buildRPATickets` | `construirChamadosRPA` | constrói a aba de Chamados RPA |
+| `buildRPATabTopBots` | `construirAbaTopBots` | sub-aba "Top bots" de Chamados RPA |
+| `buildRPATabProblems` | `construirAbaProblemas` | sub-aba "Tipos de problema" |
+| `buildRPATabTime` | `construirAbaTempo` | sub-aba "Tempo de resolução" |
+| `buildRPATabList` | `construirAbaLista` | sub-aba "Chamados" (tabela paginada) |
+| `buildBots` | `construirBots` | constrói a aba Inventário de Bots |
+| `buildBotsCruzamento` | `construirCruzamentoBots` | tabela de cruzamento inventário × chamados |
+
+Além da tradução, essa etapa corrigiu três pontos encontrados numa revisão de manutenibilidade:
+- A comparação aproximada de nome (bot × processo) estava duplicada em três arquivos (`analysis.js`, `views/bots.js` e `parsers/rpa.js`); passou a existir uma única vez, em `utils/helpers.js` (`nomesBatem` e `chamadosPorBot`).
+- `App.rpaWarn` e `App.botsOpen` eram usados em outros módulos sem nunca terem sido declarados em `state.js`; agora fazem parte do objeto `App` desde a origem.
+- A opção `fixedLabel:true`, passada para `horizontalBars()` em duas chamadas de `views/rpa.js`, não tinha efeito nenhum (a função nunca lê essa opção) — foi removida.
+
+Uma quarta etapa eliminou toda abreviação restante do código-fonte — inclusive as usadas em praticamente todo arquivo do projeto, como o campo de status (`sc`) e os nomes curtos do objeto `App` (`P`, `R`, `B`, `gov`, `rpa`, `loaded`, `dateRange`). A exceção combinada foi preservar siglas que já aparecem na própria interface para o usuário: `FTE`, `SAP`, `PRD`, e os códigos de área de negócio `P2P`/`O2C`/`R2R`/`TAX`/`H2R` — essas não têm cara de "código de máquina", são vocabulário real da empresa.
+
+Quadro 14 — Estado global `App`, campos de dados e funções renomeados na quarta etapa
+
+| Nome anterior | Nome atual |
+|---|---|
+| `App.gov` | `App.planilhaGovernanca` |
+| `App.rpa` | `App.planilhaRPA` |
+| `App.P` | `App.dadosGovernanca` |
+| `App.P.proj` | `App.dadosGovernanca.projetos` |
+| `App.P.improvements` | `App.dadosGovernanca.melhorias` |
+| `App.P.ana` | `App.dadosGovernanca.analytics` |
+| `App.R` | `App.chamadosRPA` |
+| `App.B` | `App.bots` |
+| `App.loaded` | `App.carregado` (chaves `governanca`/`rpa`) |
+| `App.dateRange` (`.mode`/`.from`/`.to`) | `App.periodoFiltro` (`.modo`/`.de`/`.ate`) |
+| `App.projOpen` | `App.projetosAbertos` |
+| `App.projChips` | `App.chipsProjetos` |
+| `App.botsOpen` | `App.botsAbertos` |
+| `App.govFrente` | `App.frenteGovernanca` |
+| `App.rpaWarn` | `App.avisoRPA` |
+| campo `sc` (todo registro normalizado) | `codigoStatus` |
+| `dtFim` / `dtInicio` | `dataFim` / `dataInicio` |
+| `resp` | `responsavel` |
+| `prog` | `progresso` |
+| `prio` / `prioRaw` | `prioridade` / `textoPrioridade` |
+| `num` | `numero` |
+| `complex` | `complexidade` |
+| `focal` | `pontoFocal` |
+| `atvConcl` / `atvAndam` | `atividadesConcluidas` / `atividadesAndamento` |
+| `proximos` | `proximosPassos` |
+| `desc` (inventário de bots) | `descricao` |
+| `dev` (inventário de bots) | `desenvolvedor` |
+| `freq` | `frequencia` |
+| `vol` | `volumetria` |
+| `nBots` | `numeroBots` |
+| `cod` (chamado RPA) | `codigo` |
+| `reexec` | `admiteReexecucao` |
+| `intext` | `internoExterno` |
+| `tIdent` / `tDesenv` / `tReexec` | `diasIdentificacao` / `diasDesenvolvimento` / `diasReexecucao` |
+| `parseGov` / `parseInv` / `parseRPA` | `interpretarGov` / `interpretarInventario` / `interpretarRPA` |
+| `enrichRPAWithArea` / `areaByKeyword` | `enriquecerRPAComArea` / `areaPorPalavraChave` |
+| `findSheet` / `getColumnValue` | `buscarAba` / `obterValorColuna` |
+| `count` / `calculatePercentage` / `averageField` | `contar` / `calcularPercentual` / `mediaDoCampo` |
+| `normalizeBotName` / `isPipefyTeamMember` | `normalizarNomeBot` / `ehIntegranteEquipePipefy` |
+| `statusCounts` / `sortedCountEntries` | `contarPorStatus` / `contagemOrdenada` |
+| `toDate` / `toYearMonthKey` / `toYearMonthLabel` / `toIsoDate` / `daysBetween` | `paraData` / `paraChaveAnoMes` / `paraRotuloAnoMes` / `paraDataIso` / `diasEntre` |
+| `donut` / `horizontalBars` / `clusteredBars` / `lineChart` / `verticalBarsChart` / `heatmap` | `graficoRosca` / `barrasHorizontais` / `barrasAgrupadas` / `graficoLinha` / `graficoBarrasVerticais` / `mapaCalor` |
+| `resetCharts` / `flushCharts` / `registerChart` / `resolveColor` / `CHART_COLORS` | `reiniciarGraficos` / `renderizarGraficosPendentes` / `registrarGrafico` / `resolverCor` / `CORES_GRAFICO` |
+| `setNav` / `rpaPage` / `setBadge` | `definirNav` / `definirSubAbaRPA` / `definirBadge` |
+| `handleDropzoneDragOver` / `handleDropzoneDragLeave` / `handleDropzoneDrop` / `handleFileInputChange` | `tratarArrastarSobreDropzone` / `tratarSairDropzone` / `tratarSoltarDropzone` / `tratarMudancaArquivo` |
+| `readFile` / `showOk` / `updateBar` | `lerArquivo` / `mostrarSucesso` / `atualizarBarra` |
+| `setQuickRange` / `applyDateFilter` / `clearDateFilter` / `renderAll` / `updateDateBadge` | `definirPeriodoRapido` / `aplicarFiltroData` / `limparFiltroData` / `renderizarTudo` / `atualizarBadgeData` |
+| `generate` | `gerarDashboard` |
+| `renderProjectList` / `toggleProjectChip` / `toggleProject` / `projectDetails` | `renderizarListaProjetos` / `alternarChipProjeto` / `alternarProjeto` / `detalhesProjeto` |
+| `renderBotsList` / `toggleBot` / `botDetails` | `renderizarListaBots` / `alternarBot` / `detalhesBot` |
+| `renderRPAStatus` / `renderRPAList` / `rpaLabelWithArea` | `renderizarStatusRPA` / `renderizarListaRPA` / `rotuloComArea` |

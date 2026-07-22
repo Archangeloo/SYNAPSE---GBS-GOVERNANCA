@@ -1,5 +1,4 @@
-// ─── MODULE: analysis.js ───────────────────────────────────────────────────
-// ANÁLISE AUTOMÁTICA ("IA" de insights calculados)
+// analysis.js — ANÁLISE AUTOMÁTICA ("IA" de insights calculados)
 // Gera leituras analíticas a partir dos dados, 100% no navegador —
 // nada é enviado a nenhum servidor. Isso não é um modelo de linguagem:
 // são análises programadas (concentração, tendência, gargalos, outliers)
@@ -9,12 +8,11 @@
 // Cada aba tem uma função analisar<Aba>() que retorna uma lista de
 // observações no formato { type, text }, onde type ∈ {pos, neg, warn, neu}
 // controla a cor/ícone. gerarAnalise() monta o painel e barraAnalise() o botão.
-// ─────────────────────────────────────────────────────────────────────────────
 
 import { App } from './state.js';
 import { HOJE } from './constants.js';
-import { count, calculatePercentage, statusCounts, normalizeBotName } from './utils/helpers.js';
-import { filtrarPorPeriodo, daysBetween } from './utils/date.js';
+import { contar, calcularPercentual, contarPorStatus, chamadosPorBot } from './utils/helpers.js';
+import { filtrarPorPeriodo, diasEntre } from './utils/date.js';
 import { nomePadraoCoe, projetoAtrasado, faseProjeto, riscoProjeto } from './utils/classify.js';
 import { todasAcoesFiltradas } from './data/actions.js';
 
@@ -30,20 +28,20 @@ function analisarGovernanca(){
   const total = acoes.length;
   if(!total) return [];
   const observacoes = [];
-  const sc      = statusCounts(acoes);
-  const done    = sc.done;
-  const doing   = sc.doing + sc.closing;
-  const backlog = sc.todo;
-  const taxa = calculatePercentage(done,total);
+  const contagem = contarPorStatus(acoes);
+  const done    = contagem.done;
+  const doing   = contagem.doing + contagem.closing;
+  const backlog = contagem.todo;
+  const taxa = calcularPercentual(done,total);
 
   // 1. Leitura geral de conclusão
   observacoes.push({type: taxa>=60?'pos':(taxa>=35?'neu':'warn'), ico:'%',
-    text:`<b>${taxa}% das ${total} ações estão concluídas</b> (${done}). Em andamento: ${doing}. Backlog/não iniciadas: ${backlog} (${calculatePercentage(backlog,total)}%).`});
+    text:`<b>${taxa}% das ${total} ações estão concluídas</b> (${done}). Em andamento: ${doing}. Backlog/não iniciadas: ${backlog} (${calcularPercentual(backlog,total)}%).`});
 
   // 2. Qual fonte concentra mais backlog em aberto
   const fontes = ['Projetos','Pipefy','Analytics','Chamados RPA'];
   const backlogPorFonte = {};
-  fontes.forEach(f => { backlogPorFonte[f] = acoes.filter(a=>a.source===f && (a.sc==='todo'||a.sc==='doing'||a.sc==='closing')).length; });
+  fontes.forEach(f => { backlogPorFonte[f] = acoes.filter(a=>a.source===f && (a.codigoStatus==='todo'||a.codigoStatus==='doing'||a.codigoStatus==='closing')).length; });
   const maiorBacklog = maiorEntrada(backlogPorFonte);
   if(maiorBacklog && maiorBacklog[1]>0){
     observacoes.push({type:'neu', ico:'≡',
@@ -52,8 +50,8 @@ function analisarGovernanca(){
 
   // 3. Concentração de ações abertas por responsável (só equipe CoE, igual ao gráfico)
   const abertasPorResponsavel = {};
-  acoes.filter(a=>a.resp && a.sc!=='done' && a.sc!=='cancel').forEach(a=>{
-    const nome = nomePadraoCoe(a.resp);
+  acoes.filter(a=>a.responsavel && a.codigoStatus!=='done' && a.codigoStatus!=='cancel').forEach(a=>{
+    const nome = nomePadraoCoe(a.responsavel);
     if(nome) abertasPorResponsavel[nome] = (abertasPorResponsavel[nome]||0)+1;
   });
   const totalAberto = Object.values(abertasPorResponsavel).reduce((s,v)=>s+v,0);
@@ -62,27 +60,27 @@ function analisarGovernanca(){
     // limiar de 30%: uma pessoa carregando >30% das ações abertas é um possível gargalo.
     // Abaixo disso é só "maior carga individual" — informativo, não um problema.
     observacoes.push({type: maiorResponsavel[1]/totalAberto>0.3?'warn':'neu', ico:'@',
-      text:`Na equipe CoE, <b>${maiorResponsavel[0]}</b> concentra ${maiorResponsavel[1]} ações abertas (${calculatePercentage(maiorResponsavel[1],totalAberto)}% do total da equipe) — ${maiorResponsavel[1]/totalAberto>0.3?'possível gargalo de capacidade':'maior carga individual'}.`});
+      text:`Na equipe CoE, <b>${maiorResponsavel[0]}</b> concentra ${maiorResponsavel[1]} ações abertas (${calcularPercentual(maiorResponsavel[1],totalAberto)}% do total da equipe) — ${maiorResponsavel[1]/totalAberto>0.3?'possível gargalo de capacidade':'maior carga individual'}.`});
   }
 
   // 4. Canceladas (sinalizado se relevante)
   // limiar de 5%: abaixo disso é ruído normal de planejamento; acima merece revisão de processo.
-  const cancelados = acoes.filter(a=>a.sc==='cancel').length;
-  if(cancelados>0 && calculatePercentage(cancelados,total)>=5){
+  const cancelados = acoes.filter(a=>a.codigoStatus==='cancel').length;
+  if(cancelados>0 && calcularPercentual(cancelados,total)>=5){
     observacoes.push({type:'warn', ico:'×',
-      text:`<b>${cancelados} ações canceladas</b> (${calculatePercentage(cancelados,total)}% do total) — vale revisar o motivo para reduzir retrabalho de planejamento.`});
+      text:`<b>${cancelados} ações canceladas</b> (${calcularPercentual(cancelados,total)}% do total) — vale revisar o motivo para reduzir retrabalho de planejamento.`});
   }
   return observacoes;
 }
 
 /* --- Análise: PROJETOS --- */
 function analisarProjetos(){
-  const {kept:projetos} = filtrarPorPeriodo(App.P.proj);
+  const {kept:projetos} = filtrarPorPeriodo(App.dadosGovernanca.projetos);
   const total = projetos.length;
   if(!total) return [];
   const observacoes = [];
-  const emExecucao = projetos.filter(p=>p.sc==='doing').length;
-  const emFaseFinal = projetos.filter(p=>p.sc==='closing'||p.sc==='monitor').length;
+  const emExecucao = projetos.filter(p=>p.codigoStatus==='doing').length;
+  const emFaseFinal = projetos.filter(p=>p.codigoStatus==='closing'||p.codigoStatus==='monitor').length;
   const atrasados = projetos.filter(projetoAtrasado);
 
   // 1. Status geral
@@ -93,7 +91,7 @@ function analisarProjetos(){
   if(atrasados.length>0){
     const comDias = atrasados.map(p => ({
       titulo: p.titulo,
-      dias: daysBetween(HOJE, p.dtFim),
+      dias: diasEntre(HOJE, p.dataFim),
       fase: faseProjeto(p.statusRaw), statusRaw: p.statusRaw
     })).sort((a,b)=>b.dias-a.dias);
     const lista = comDias.map(p => `<b>${p.titulo}</b> (${p.dias}d, ${p.statusRaw})`).join('; ');
@@ -118,7 +116,7 @@ function analisarProjetos(){
   }
 
   // 4. Frente com mais projetos
-  const porArea = count(projetos.filter(p=>p.frente), p=>p.frente);
+  const porArea = contar(projetos.filter(p=>p.frente), p=>p.frente);
   const maiorArea = maiorEntrada(porArea);
   if(maiorArea){
     observacoes.push({type:'neu', ico:'#',
@@ -127,38 +125,38 @@ function analisarProjetos(){
 
   // 5. Projetos não iniciados
   // limiar de 30%: se mais de 30% da carteira não começou, o pipeline está represado.
-  const naoIniciados = projetos.filter(p=>p.sc==='todo').length;
+  const naoIniciados = projetos.filter(p=>p.codigoStatus==='todo').length;
   if(naoIniciados>0){
-    observacoes.push({type: calculatePercentage(naoIniciados,total)>30?'warn':'neu', ico:'○',
-      text:`<b>${naoIniciados} ${naoIniciados===1?'projeto não iniciado':'projetos não iniciados'}</b> (${calculatePercentage(naoIniciados,total)}% da carteira) aguardando início.`});
+    observacoes.push({type: calcularPercentual(naoIniciados,total)>30?'warn':'neu', ico:'○',
+      text:`<b>${naoIniciados} ${naoIniciados===1?'projeto não iniciado':'projetos não iniciados'}</b> (${calcularPercentual(naoIniciados,total)}% da carteira) aguardando início.`});
   }
   return observacoes;
 }
 
 /* --- Análise: MELHORIAS PIPEFY --- */
 function analisarMelhorias(){
-  const {kept: melhorias} = filtrarPorPeriodo(App.P.improvements);
+  const {kept: melhorias} = filtrarPorPeriodo(App.dadosGovernanca.melhorias);
   const total = melhorias.length;
   if(!total) return [];
   const observacoes = [];
-  const sc      = statusCounts(melhorias);
-  const done    = sc.done;
-  const backlog = sc.todo;
-  const blocked = sc.blocked;
+  const contagem = contarPorStatus(melhorias);
+  const done    = contagem.done;
+  const backlog = contagem.todo;
+  const blocked = contagem.blocked;
 
-  observacoes.push({type: calculatePercentage(done,total)>=60?'pos':'neu', ico:'%',
-    text:`<b>${calculatePercentage(done,total)}% das ${total} melhorias concluídas</b> (${done}). Backlog: ${backlog}.`});
+  observacoes.push({type: calcularPercentual(done,total)>=60?'pos':'neu', ico:'%',
+    text:`<b>${calcularPercentual(done,total)}% das ${total} melhorias concluídas</b> (${done}). Backlog: ${backlog}.`});
 
   // complexidade predominante
-  const porComplexidade = count(melhorias.filter(m=>m.complex), m=>m.complex);
+  const porComplexidade = contar(melhorias.filter(m=>m.complexidade), m=>m.complexidade);
   const maiorComplexidade = maiorEntrada(porComplexidade);
   if(maiorComplexidade){
     observacoes.push({type:'neu', ico:'≡',
-      text:`Complexidade predominante: <b>${maiorComplexidade[0]}</b> (${maiorComplexidade[1]} melhorias, ${calculatePercentage(maiorComplexidade[1],total)}%).`});
+      text:`Complexidade predominante: <b>${maiorComplexidade[0]}</b> (${maiorComplexidade[1]} melhorias, ${calcularPercentual(maiorComplexidade[1],total)}%).`});
   }
 
   // área que mais demanda melhorias
-  const porArea = count(melhorias.filter(m=>m.frente), m=>m.frente);
+  const porArea = contar(melhorias.filter(m=>m.frente), m=>m.frente);
   const maiorArea = maiorEntrada(porArea);
   if(maiorArea){
     observacoes.push({type:'neu', ico:'#',
@@ -174,24 +172,24 @@ function analisarMelhorias(){
 
 /* --- Análise: ANALYTICS --- */
 function analisarAnalytics(){
-  const {kept:atividades} = filtrarPorPeriodo(App.P.ana);
+  const {kept:atividades} = filtrarPorPeriodo(App.dadosGovernanca.analytics);
   const total = atividades.length;
   if(!total) return [];
   const observacoes = [];
-  const done = atividades.filter(a=>a.sc==='done').length;
+  const done = atividades.filter(a=>a.codigoStatus==='done').length;
 
-  observacoes.push({type: calculatePercentage(done,total)>=50?'pos':'neu', ico:'%',
-    text:`<b>${calculatePercentage(done,total)}% das ${total} atividades concluídas</b> (${done}).`});
+  observacoes.push({type: calcularPercentual(done,total)>=50?'pos':'neu', ico:'%',
+    text:`<b>${calcularPercentual(done,total)}% das ${total} atividades concluídas</b> (${done}).`});
 
   // prioridade 1 ainda aberta — alerta
-  const p1Abertas = atividades.filter(a=>a.prio===1 && a.sc!=='done' && a.sc!=='cancel').length;
+  const p1Abertas = atividades.filter(a=>a.prioridade===1 && a.codigoStatus!=='done' && a.codigoStatus!=='cancel').length;
   if(p1Abertas>0){
     observacoes.push({type:'neg', ico:'!',
       text:`<b>${p1Abertas} ${p1Abertas===1?'atividade de Prioridade 1 em aberto':'atividades de Prioridade 1 em aberto'}</b> — foco máximo de atenção.`});
   }
 
   // área com mais demanda
-  const porArea = count(atividades.filter(a=>a.frente), a=>a.frente);
+  const porArea = contar(atividades.filter(a=>a.frente), a=>a.frente);
   const maiorArea = maiorEntrada(porArea);
   if(maiorArea){
     observacoes.push({type:'neu', ico:'#',
@@ -199,7 +197,7 @@ function analisarAnalytics(){
   }
 
   // sem data (transparência)
-  const semData = atividades.filter(a=>!a.dtFim && !a.dtInicio).length;
+  const semData = atividades.filter(a=>!a.dataFim && !a.dataInicio).length;
   if(semData>0){
     observacoes.push({type:'neu', ico:'○',
       text:`${semData} de ${total} atividades não têm data registrada, então não entram nos cálculos por período.`});
@@ -209,7 +207,7 @@ function analisarAnalytics(){
 
 /* --- Análise: CHAMADOS RPA --- */
 function analisarRPA(){
-  const {kept: chamados} = filtrarPorPeriodo(App.R);
+  const {kept: chamados} = filtrarPorPeriodo(App.chamadosRPA);
   const total = chamados.length;
   if(!total) return [];
   const observacoes = [];
@@ -219,27 +217,27 @@ function analisarRPA(){
   // 1. Concentração nos top bots
   // limiar de 40%: se 3 processos (de dezenas) concentram >40% dos chamados,
   // estabilizá-los tem um impacto desproporcional no volume total de suporte.
-  const porProcesso = count(chamados.filter(r=>r.processo!=='(sem processo)'), r=>r.processo);
+  const porProcesso = contar(chamados.filter(r=>r.processo!=='(sem processo)'), r=>r.processo);
   const ordenados = Object.entries(porProcesso).sort((a,b)=>b[1]-a[1]);
   const totalProcesso = ordenados.reduce((s,e)=>s+e[1],0);
   if(ordenados.length>=3){
     const top3 = ordenados.slice(0,3);
     const somaTop3 = top3.reduce((s,e)=>s+e[1],0);
     observacoes.push({type: somaTop3/totalProcesso>0.4?'warn':'neu', ico:'≡',
-      text:`Os 3 processos com mais manutenções (<b>${top3.map(e=>e[0]).join(', ')}</b>) concentram <b>${calculatePercentage(somaTop3,totalProcesso)}%</b> dos chamados. Estabilizá-los reduz bastante o volume de suporte.`});
+      text:`Os 3 processos com mais manutenções (<b>${top3.map(e=>e[0]).join(', ')}</b>) concentram <b>${calcularPercentual(somaTop3,totalProcesso)}%</b> dos chamados. Estabilizá-los reduz bastante o volume de suporte.`});
   }
 
   // 2. Taxa de chamados vencidos (SLA)
   // Limiar: >25% = crítico (vermelho), >0% = atenção (laranja), 0% = bom (verde).
-  observacoes.push({type: calculatePercentage(vencidos,total)>25?'neg':(calculatePercentage(vencidos,total)>0?'warn':'pos'), ico: calculatePercentage(vencidos,total)>25?'!':'%',
-    text:`<b>${calculatePercentage(vencidos,total)}% dos ${total} chamados venceram o prazo</b> (${vencidos}). Concluídos: ${calculatePercentage(concluidos,total)}%.`});
+  observacoes.push({type: calcularPercentual(vencidos,total)>25?'neg':(calcularPercentual(vencidos,total)>0?'warn':'pos'), ico: calcularPercentual(vencidos,total)>25?'!':'%',
+    text:`<b>${calcularPercentual(vencidos,total)}% dos ${total} chamados venceram o prazo</b> (${vencidos}). Concluídos: ${calcularPercentual(concluidos,total)}%.`});
 
   // 3. Problema mais comum
-  const porProblema = count(chamados, r=>r.problema);
+  const porProblema = contar(chamados, r=>r.problema);
   const maiorProblema = maiorEntrada(porProblema, ['']);
   if(maiorProblema && maiorProblema[0]){
     observacoes.push({type:'neu', ico:'?',
-      text:`Problema mais frequente: <b>"${maiorProblema[0]}"</b> (${maiorProblema[1]} chamados, ${calculatePercentage(maiorProblema[1],total)}%).`});
+      text:`Problema mais frequente: <b>"${maiorProblema[0]}"</b> (${maiorProblema[1]} chamados, ${calcularPercentual(maiorProblema[1],total)}%).`});
   }
 
   // 4. Tendência mês a mês: compara a média da 1ª metade do período com a 2ª metade.
@@ -260,7 +258,7 @@ function analisarRPA(){
   }
 
   // 5. Área que mais abre chamados (se mapeada)
-  const porArea = count(chamados.filter(r=>r.area && r.area!=='(não mapeada)'), r=>r.area);
+  const porArea = contar(chamados.filter(r=>r.area && r.area!=='(não mapeada)'), r=>r.area);
   const maiorArea = maiorEntrada(porArea);
   if(maiorArea){
     observacoes.push({type:'neu', ico:'#',
@@ -272,7 +270,7 @@ function analisarRPA(){
 /* --- Análise: INVENTÁRIO DE BOTS --- */
 function analisarBots(){
   // bots usam o filtro de AnoPRD; aqui analisamos o conjunto completo carregado
-  const bots = App.B;
+  const bots = App.bots;
   if(!bots.length) return [];
   const observacoes = [];
   const prd     = bots.filter(b=>b.status==='PRD').length;
@@ -280,15 +278,15 @@ function analisarBots(){
   const backlog = bots.filter(b=>b.status==='BACKLOG').length;
 
   observacoes.push({type:'neu', ico:'≡',
-    text:`<b>${bots.length} bots no inventário</b>: ${prd} em produção (${calculatePercentage(prd,bots.length)}%), ${dev} em desenvolvimento, ${backlog} em backlog.`});
+    text:`<b>${bots.length} bots no inventário</b>: ${prd} em produção (${calcularPercentual(prd,bots.length)}%), ${dev} em desenvolvimento, ${backlog} em backlog.`});
 
   // cobertura por área (entre as áreas de negócio principais)
   const botsPrd = bots.filter(b=>b.status==='PRD');
-  const porArea = count(botsPrd, b=>b.area);
+  const porArea = contar(botsPrd, b=>b.area);
   const maiorArea = maiorEntrada(porArea);
   if(maiorArea){
     observacoes.push({type:'neu', ico:'#',
-      text:`A área com mais automações em produção é <b>${maiorArea[0]}</b> (${maiorArea[1]} bots, ${calculatePercentage(maiorArea[1],prd)}%).`});
+      text:`A área com mais automações em produção é <b>${maiorArea[0]}</b> (${maiorArea[1]} bots, ${calcularPercentual(maiorArea[1],prd)}%).`});
   }
 
   // bots críticos
@@ -299,23 +297,13 @@ function analisarBots(){
   }
 
   // cruzamento com chamados, se disponível
-  if(App.R.length){
-    const chamadosPorProcesso = count(App.R, r=>r.processo);
-    let maxChamados = 0, botComMaisChamados = '';
-    botsPrd.forEach(b => {
-      const nomeBotNorm = normalizeBotName(b.nome);
-      let totalChamados = 0;
-      Object.entries(chamadosPorProcesso).forEach(([proc, qtd]) => {
-        const nomeProcNorm = normalizeBotName(proc);
-        if (nomeProcNorm && nomeBotNorm && (nomeBotNorm.includes(nomeProcNorm) || nomeProcNorm.includes(nomeBotNorm))) {
-          totalChamados += qtd;
-        }
-      });
-      if (totalChamados > maxChamados) { maxChamados = totalChamados; botComMaisChamados = b.nome; }
-    });
-    if(maxChamados>0){
+  if(App.chamadosRPA.length){
+    const chamadosPorProcesso = contar(App.chamadosRPA, r=>r.processo);
+    const cruzamento = chamadosPorBot(botsPrd, chamadosPorProcesso).sort((a,b)=>b.total-a.total);
+    const maisChamados = cruzamento[0];
+    if(maisChamados && maisChamados.total>0){
       observacoes.push({type:'warn', ico:'⚙',
-        text:`O bot em produção com mais manutenções é <b>${botComMaisChamados}</b> (${maxChamados} chamados) — forte candidato a refatoração.`});
+        text:`O bot em produção com mais manutenções é <b>${maisChamados.bot.nome}</b> (${maisChamados.total} chamados) — forte candidato a refatoração.`});
     }
   }
   return observacoes;

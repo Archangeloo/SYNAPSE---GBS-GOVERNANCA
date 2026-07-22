@@ -1,84 +1,82 @@
-// ─── MODULE: views/ana.js ──────────────────────────────────────────────────
-// VIEW: ANALYTICS
-// DATE FILTER: uses DataAbertura (start of development)
-// or DataFechamento (end of validation) as a fallback.
-// Many activities have no date filled in — the interface shows how many were excluded.
-// ─────────────────────────────────────────────────────────────────────────────
+// views/ana.js — ABA: ANALYTICS
+// FILTRO DE DATA: usa DataAbertura (início do desenvolvimento)
+// ou DataFechamento (fim da validação) como fallback.
+// Muitas atividades não têm data preenchida — a interface mostra quantas foram excluídas.
 
 import { App } from '../state.js';
 import { STATUS_PT, STATUS_COLOR } from '../constants.js';
-import { statusCounts, count, calculatePercentage, sortedCountEntries, iconeKpi } from '../utils/helpers.js';
+import { contarPorStatus, contar, calcularPercentual, contagemOrdenada, iconeKpi } from '../utils/helpers.js';
 import { filtrarPorPeriodo } from '../utils/date.js';
-import { donut, horizontalBars, flushCharts } from '../charts.js';
+import { graficoRosca, barrasHorizontais, renderizarGraficosPendentes } from '../charts.js';
 import { barraAnalise } from '../analysis.js';
-import { setBadge } from '../nav.js';
+import { definirBadge } from '../nav.js';
 import { construirMapaCalor } from './gov.js';
 
 /*
- * buildAnalytics() — Analytics tab.
+ * construirAnalytics() — aba Analytics.
  *
- * Reads:  App.P.ana
- * Writes: #ana-content
- * Called by: generate() and renderAll()
+ * Lê:      App.dadosGovernanca.analytics
+ * Escreve: #ana-content
+ * Chamada por: gerarDashboard() e renderizarTudo()
  *
- * ATTENTION — low date coverage:
- *   Many activities have no date filled in on the spreadsheet.
- *   With an active filter, only activities WITH a date are included.
- *   The interface shows how many were excluded, for transparency.
+ * ATENÇÃO — baixa cobertura de data:
+ *   Muitas atividades não têm data preenchida na planilha.
+ *   Com filtro ativo, só entram as atividades COM data.
+ *   A interface mostra quantas foram excluídas, por transparência.
  *
- * Produces:
- *  - KPIs: total, completed, in progress, not started
- *  - Status donut, bars by priority, area and owner
- *  - Priority × area heatmap (via construirMapaCalor(), called directly here)
+ * Produz:
+ *  - KPIs: total, concluídas, em andamento, não iniciadas
+ *  - Donut de status, barras por prioridade, área e responsável
+ *  - Heatmap prioridade × área (via construirMapaCalor(), chamado direto aqui)
  */
-export function buildAnalytics(){
-  const {kept:A, noDate} = filtrarPorPeriodo(App.P.ana);
-  document.getElementById('ana-empty').style.display  = App.P.ana.length ? 'none' : 'block';
-  document.getElementById('ana-content').style.display = App.P.ana.length ? 'block' : 'none';
-  if(!App.P.ana.length) return;
-  const sc   = statusCounts(A);
-  const done = sc.done;
-  const doing = sc.doing;
-  const todo  = sc.todo;
-  const comData = A.filter(a => a.dtFim).length;
+export function construirAnalytics(){
+  const {kept:A, noDate} = filtrarPorPeriodo(App.dadosGovernanca.analytics);
+  document.getElementById('ana-empty').style.display  = App.dadosGovernanca.analytics.length ? 'none' : 'block';
+  document.getElementById('ana-content').style.display = App.dadosGovernanca.analytics.length ? 'block' : 'none';
+  if(!App.dadosGovernanca.analytics.length) return;
+  const contagem = contarPorStatus(A);
+  const done = contagem.done;
+  const doing = contagem.doing;
+  const todo  = contagem.todo;
+  const comData = A.filter(a => a.dataFim).length;
 
-  // Informational note: how many activities have a date vs. how many don't
+  // Nota informativa: quantas atividades têm data vs. quantas não têm
   let dateNote = '';
-  if(App.dateRange.mode !== 'all'){
+  if(App.periodoFiltro.modo !== 'all'){
     dateNote = `<div class="note" style="background:var(--neu-bg);color:var(--ink3)"><i class="ti ti-calendar-stats"></i><div>
       Período aplicado: <b>${A.length} atividades</b> no recorte.` +
       (noDate>0 ? ` ${noDate} sem data não entram no filtro.` : '') +
       `<br><span style="font-size:10px;opacity:.6;font-style:italic">Referência de data: data de abertura da atividade (ou fechamento como fallback)</span>
       </div></div>`;
   } else if(comData < A.length){
-    // no active filter: warns how many have a date (relevant to the evolution chart)
+    // sem filtro ativo: avisa quantas têm data (relevante pro gráfico de evolução)
     dateNote = `<div class="note"><i class="ti ti-info-circle"></i><div>${comData} de ${A.length} atividades têm data registrada. As ${A.length-comData} restantes não têm data preenchida na base, então não entram nos cálculos por período.</div></div>`;
   }
 
-  // only priorities 1 to 5 (values outside that range are dropped from the chart)
-  const prioCount = count(A.filter(a => a.prio && a.prio>=1 && a.prio<=5), a => 'Prioridade '+a.prio);
+  // só prioridades de 1 a 5 (valores fora dessa faixa são descartados do gráfico)
+  const prioCount = contar(A.filter(a => a.prioridade && a.prioridade>=1 && a.prioridade<=5), a => 'Prioridade '+a.prioridade);
   let html = dateNote + `<div class="sh">Analytics</div>
   ${barraAnalise('ana')}
   <div class="krow">
     <div class="kpi">${iconeKpi('chartbar')}<div class="knum">${A.length}</div><div class="klbl">Total</div></div>
-    <div class="kpi gl">${iconeKpi('check')}<div class="knum">${done}</div><div class="klbl">Concluídas</div><div class="ksub">${calculatePercentage(done,A.length)}%</div></div>
+    <div class="kpi gl">${iconeKpi('check')}<div class="knum">${done}</div><div class="klbl">Concluídas</div><div class="ksub">${calcularPercentual(done,A.length)}%</div></div>
     <div class="kpi il">${iconeKpi('clock')}<div class="knum">${doing}</div><div class="klbl">Em andamento</div></div>
     <div class="kpi">${iconeKpi('minus')}<div class="knum">${todo}</div><div class="klbl">Não iniciadas</div></div>
   </div>`;
   html += `<div class="g3">
     <div class="card"><div class="card-title"><i class="ti ti-chart-pie"></i> Status</div>
-      ${donut(['done','doing','todo','blocked','cancel'].map(k=>({label:STATUS_PT[k],value:A.filter(a=>a.sc===k).length,color:STATUS_COLOR[k]})).filter(d=>d.value))}</div>
+      ${graficoRosca(['done','doing','todo','blocked','cancel'].map(k=>({label:STATUS_PT[k],value:A.filter(a=>a.codigoStatus===k).length,color:STATUS_COLOR[k]})).filter(d=>d.value))}</div>
     <div class="card"><div class="card-title"><i class="ti ti-flag"></i> Por prioridade</div>
-      ${horizontalBars(Object.entries(prioCount).sort((a,b)=>{const na=+a[0].match(/\d+/),nb=+b[0].match(/\d+/);return na-nb;}),{max:10,lw:90})}</div>
+      ${barrasHorizontais(Object.entries(prioCount).sort((a,b)=>{const na=+a[0].match(/\d+/),nb=+b[0].match(/\d+/);return na-nb;}),{max:10,lw:90})}</div>
     <div class="card"><div class="card-title"><i class="ti ti-building"></i> Por frente</div>
-      ${horizontalBars(sortedCountEntries(A.filter(a=>a.frente), a=>a.frente),{max:8,lw:60,tot:A.length})}</div>
+      ${barrasHorizontais(contagemOrdenada(A.filter(a=>a.frente), a=>a.frente),{max:8,lw:60,tot:A.length})}</div>
   </div>`;
   html += `<div class="two">
     <div class="card"><div class="card-title"><i class="ti ti-user"></i> Por responsável</div>
-      ${horizontalBars(sortedCountEntries(A.filter(a=>a.resp), a=>a.resp),{max:8,lw:140})}</div>
+      ${barrasHorizontais(contagemOrdenada(A.filter(a=>a.responsavel), a=>a.responsavel),{max:8,lw:140})}</div>
     ${construirMapaCalor()}
   </div>`;
   document.getElementById('ana-content').innerHTML = html;
-  flushCharts();
-  setBadge('nb-ana', A.length, '');
+  renderizarGraficosPendentes();
+  definirBadge('nb-ana', A.length, '');
 }

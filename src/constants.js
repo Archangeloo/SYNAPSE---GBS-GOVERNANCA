@@ -1,13 +1,11 @@
-// ─── MODULE: constants.js ──────────────────────────────────────────────────
-// Static lookup tables and fixed values shared across the app. No logic here
-// beyond simple derivations (HOJE) — everything else is plain data.
-// ─────────────────────────────────────────────────────────────────────────────
+// constants.js — tabelas fixas e valores compartilhados pelo app. Nenhuma lógica aqui
+// além de derivações simples (HOJE) — o resto é dado puro.
 
 export const MESES = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
 
-export const HOJE = new Date(); // current date at the moment the page loads
+export const HOJE = new Date(); // data atual no momento em que a página carrega
 
-/* Inline SVG paths — don't depend on font loading, work in dynamic HTML */
+/* Paths de SVG inline — não dependem de fonte carregada, funcionam em HTML dinâmico */
 export const _SVG = {
   list:    '<line x1="9" y1="6" x2="20" y2="6"/><line x1="9" y1="12" x2="20" y2="12"/><line x1="9" y1="18" x2="20" y2="18"/><circle cx="5" cy="6" r="1" fill="currentColor"/><circle cx="5" cy="12" r="1" fill="currentColor"/><circle cx="5" cy="18" r="1" fill="currentColor"/>',
   check:   '<polyline points="20 6 9 17 4 12"/>',
@@ -31,7 +29,7 @@ export const _SVG = {
   code:    '<polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/>',
 };
 
-// Portuguese labels for display in the interface
+// Rótulos em português pra exibir na interface
 export const STATUS_PT = {
   done:    'Concluído',
   doing:   'Em andamento',
@@ -44,7 +42,7 @@ export const STATUS_PT = {
   other:   'Outro'
 };
 
-// CSS badge class for each status (see CSS: .badge.ok, .badge.info, etc.)
+// Classe CSS de badge pra cada status (ver CSS: .badge.ok, .badge.info, etc.)
 export const STATUS_BADGE = {
   done:    'ok',
   doing:   'info',
@@ -57,32 +55,32 @@ export const STATUS_BADGE = {
   other:   'neu'
 };
 
-// Solid color for charts — Saint-Gobain palette
+// Cor sólida pros gráficos — paleta Saint-Gobain
 export const STATUS_COLOR = {
-  done:    '#4DB1B3',  // teal        — done
-  doing:   '#0195D6',  // bright blue — in progress
-  closing: '#E66407',  // orange      — closing
-  monitor: '#0F5299',  // brand blue  — monitoring
-  todo:    '#9CA3AF',  // gray        — not started
-  blocked: '#E83430',  // red         — blocked
-  cancel:  '#C5284C',  // pink-red    — cancelled
-  vendor:  '#8B6FD4',  // purple      — Pipefy support
-  other:   '#9CA3AF'   // gray
+  done:    '#4DB1B3',  // teal        — concluído
+  doing:   '#0195D6',  // azul claro  — em andamento
+  closing: '#E66407',  // laranja     — em encerramento
+  monitor: '#0F5299',  // azul marca  — monitoramento
+  todo:    '#9CA3AF',  // cinza       — não iniciado
+  blocked: '#E83430',  // vermelho    — bloqueado
+  cancel:  '#C5284C',  // vermelho-rosa — cancelado
+  vendor:  '#8B6FD4',  // roxo        — suporte Pipefy
+  other:   '#9CA3AF'   // cinza
 };
 
 /*
- * COE_TEAM — CoE team members, organized by the area they work in.
- * Used ONLY on the Governance tab to filter "Open actions by owner"
- * (shows only the internal team; non-CoE people don't appear on that chart).
+ * COE_TEAM — integrantes do time CoE, organizados pela área em que atuam.
+ * Usado APENAS na aba Governança pra filtrar "Ações abertas por responsável"
+ * (mostra só o time interno; pessoas fora do CoE não aparecem nesse gráfico).
  *
- * Each entry has a 'match' list of distinctive terms to recognize the
- * person in the data, tolerating spelling variations. We deliberately use
- * surnames/unique terms to AVOID confusing first-name homonyms
- * (ex: "Gustavo" would also match "Matheus Gustavo Germano", who is not
- * CoE; that's why we use "archangelo"). 'name' is the label shown on the chart.
+ * Cada entrada tem uma lista 'match' de termos distintivos pra reconhecer a
+ * pessoa nos dados, tolerando variações de grafia. Usamos deliberadamente
+ * sobrenomes/termos únicos pra EVITAR confundir homônimos de primeiro nome
+ * (ex: "Gustavo" também bateria com "Matheus Gustavo Germano", que não é do
+ * CoE — por isso usamos "archangelo"). 'name' é o rótulo mostrado no gráfico.
  */
 export const COE_TEAM = [
-  // --- Projects ---
+  // --- Projetos ---
   { name:'Gabriel Hirata',    match:['gabriel hirata','hirata'] },
   { name:'Maiara',            match:['maiara'] },
   { name:'Vinícius Milagres', match:['milagres','vinícius marchi','vinicius marchi'] },
@@ -104,16 +102,15 @@ export const COE_TEAM = [
   { name:'William Maciel',    match:['william maciel','willian maciel','souza maciel'] }
 ];
 
-// Main GBS business areas — used to filter RPA and bot charts.
-// Secondary inventory areas (PAM, CI, IT, ARG, MEX etc.) are grouped into "Outros"
-// to avoid cluttering the charts with low-volume slices.
+// Principais áreas de negócio do GBS — usadas pra filtrar os gráficos de RPA e bots.
+// Áreas secundárias do inventário (PAM, CI, IT, ARG, MEX etc.) são agrupadas em "Outros"
+// pra não poluir os gráficos com fatias de baixo volume.
 export const MAIN_RPA_AREAS = ['P2P', 'TAX', 'H2R', 'O2C', 'R2R'];
 
-// Team responsible for developing Pipefy improvements (excludes requesters/champions).
-// Used in construirMelhorias() to filter the "Por responsável" chart.
+// Time responsável por desenvolver as melhorias Pipefy (exclui solicitantes/champions).
+// Usado em construirMelhorias() pra filtrar o gráfico "Por responsável".
 export const PIPEFY_TEAM = ['willian', 'vinícius', 'vinicius', 'felipe', 'gustavo', 'caio'];
 
-// Calculates the number of days between two dates.
-// Positive = date1 is more recent than date2 (ex: today - deadline = days overdue).
+// Constantes usadas no cálculo de dias entre datas e na conversão de serial do Excel.
 export const MS_PER_DAY = 86_400_000;
-export const EXCEL_EPOCH_OFFSET = 25569; // days between 1900-01-01 (Excel epoch) and 1970-01-01 (Unix epoch)
+export const EXCEL_EPOCH_OFFSET = 25569; // dias entre 1900-01-01 (época do Excel) e 1970-01-01 (época Unix)

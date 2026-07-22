@@ -1,50 +1,48 @@
-// ─── MODULE: views/proj.js ─────────────────────────────────────────────────
-// VIEW: PROJECTS
-// Presents the area's project portfolio with:
-// - KPIs following the real GBS flow (Diagnóstico→Planejamento→Execução→Encerramento→Monitoramento)
-// - Status donut, bars by area/client area
-// - Filterable list (search, owner, status, area)
-// - Inline expand on click: reveals rich spreadsheet fields (description, teams, etc.)
-// ─────────────────────────────────────────────────────────────────────────────
+// views/proj.js — ABA: PROJETOS
+// Apresenta a carteira de projetos da área com:
+// - KPIs seguindo o fluxo real do GBS (Diagnóstico→Planejamento→Execução→Encerramento→Monitoramento)
+// - Donut de status, barras por área/área cliente
+// - Lista filtrável (busca, responsável, status, área)
+// - Expansão inline ao clicar: revela os campos ricos da planilha (descrição, equipes, etc.)
 
 import { App } from '../state.js';
 import { STATUS_BADGE } from '../constants.js';
-import { count, iconeKpi } from '../utils/helpers.js';
+import { contar, iconeKpi } from '../utils/helpers.js';
 import { projetoAtrasado, riscoProjeto } from '../utils/classify.js';
 import { filtrarPorPeriodo } from '../utils/date.js';
-import { donut, horizontalBars, flushCharts } from '../charts.js';
+import { graficoRosca, barrasHorizontais, renderizarGraficosPendentes } from '../charts.js';
 import { barraAnalise } from '../analysis.js';
-import { setBadge } from '../nav.js';
+import { definirBadge } from '../nav.js';
 
 /*
- * buildProjects() — Projects tab.
+ * construirProjetos() — aba Projetos.
  *
- * Reads:  App.P.proj
- * Writes: #proj-content  (structure + filters)
- *          #proj-list      (item list, via renderProjectList())
- * Called by: generate() and renderAll()
+ * Lê:      App.dadosGovernanca.projetos
+ * Escreve: #proj-content  (estrutura + filtros)
+ *          #proj-list      (lista de itens, via renderizarListaProjetos())
+ * Chamada por: gerarDashboard() e renderizarTudo()
  *
- * Produces:
- *  - KPIs: total, in execution, final phase, overdue, high risk
- *  - Status donut and bars by area/client area
- *  - Filterable list with inline expand (project details)
- *  - Automatic 0-100 risk score per project
+ * Produz:
+ *  - KPIs: total, em execução, fase final, atrasados, risco alto
+ *  - Donut de status e barras por área/área cliente
+ *  - Lista filtrável com expansão inline (detalhes do projeto)
+ *  - Score de risco automático de 0 a 100 por projeto
  */
-export function buildProjects(){
-  const {kept:P, noDate} = filtrarPorPeriodo(App.P.proj);
+export function construirProjetos(){
+  const {kept:P, noDate} = filtrarPorPeriodo(App.dadosGovernanca.projetos);
   document.getElementById('proj-empty').style.display = (P.length||noDate) ? 'none' : 'block';
   document.getElementById('proj-content').style.display = (P.length||noDate) ? 'block' : 'none';
   if(!P.length && !noDate) return;
 
   // Contagens por código de status — respeitam o fluxo real do GBS
-  const done    = P.filter(p => p.sc==='done').length;     // concluído (ainda não existe na base)
-  const doing   = P.filter(p => p.sc==='doing').length;    // em execução
+  const done    = P.filter(p => p.codigoStatus==='done').length;     // concluído (ainda não existe na base)
+  const doing   = P.filter(p => p.codigoStatus==='doing').length;    // em execução
   // Encerramento + Monitoramento agrupados (ambos = projeto entregue / em fase final)
-  const finalizando = P.filter(p => p.sc==='closing' || p.sc==='monitor').length;
+  const finalizando = P.filter(p => p.codigoStatus==='closing' || p.codigoStatus==='monitor').length;
   const atrasados = P.filter(projetoAtrasado);                // prazo vencido e não entregue
-  const criticos = P.filter(p => riscoProjeto(p).level==='high').length; // risco alto
+  const criticos = P.filter(p => riscoProjeto(p).level==='high'); // risco alto
 
-  const dnProj = App.dateRange.mode !== 'all'
+  const dnProj = App.periodoFiltro.modo !== 'all'
     ? `<div class="note" style="background:var(--neu-bg);color:var(--ink3)"><i class="ti ti-calendar-stats"></i><div>
         Período aplicado: <b>${P.length} projetos</b> no recorte.${noDate > 0 ? ` ${noDate} sem prazo definido não entram no filtro.` : ''}
         <br><span style="font-size:10px;opacity:.6;font-style:italic">Referência de data: prazo de conclusão do projeto</span>
@@ -60,28 +58,28 @@ export function buildProjects(){
       <div class="ksub">encerramento / monit.</div></div>
     <div class="kpi dl">${iconeKpi('clock')}<div class="knum">${atrasados.length}</div><div class="klbl">Atrasados</div>
       <div class="ksub">prazo vencido</div></div>
-    <div class="kpi wl">${iconeKpi('flame')}<div class="knum">${criticos}</div><div class="klbl">Risco alto</div>
+    <div class="kpi wl">${iconeKpi('flame')}<div class="knum">${criticos.length}</div><div class="klbl">Risco alto</div>
       <div class="ksub">score de risco</div></div>
   </div>`;
 
   // Frente vem do campo AreaCliente (novo) ou Frente (legado)
-  const frCount = count(P.filter(p => p.frente), p => p.frente);
+  const frCount = contar(P.filter(p => p.frente), p => p.frente);
   // donut: cada status com cor distinta e coerente com o avanço no fluxo
   //   Não iniciado = cinza | Em andamento = azul | Encerr./Monit. = verde (fase final/entregue)
   //   Concluído = verde escuro | Bloqueado = âmbar | Cancelado = vermelho
   const donutProj = [
-    {label:'Concluído',      value:P.filter(p=>p.sc==='done').length,                       color:'#4DB1B3'},
-    {label:'Em andamento',   value:P.filter(p=>p.sc==='doing').length,                      color:'#0195D6'},
-    {label:'Em encerramento',value:P.filter(p=>p.sc==='closing'||p.sc==='monitor').length,  color:'#E66407'},
-    {label:'Não iniciado',   value:P.filter(p=>p.sc==='todo').length,                       color:'#9CA3AF'},
-    {label:'Bloqueado',      value:P.filter(p=>p.sc==='blocked').length,                    color:'#E83430'},
-    {label:'Cancelado',      value:P.filter(p=>p.sc==='cancel').length,                     color:'#C5284C'}
+    {label:'Concluído',      value:P.filter(p=>p.codigoStatus==='done').length,                       color:'#4DB1B3'},
+    {label:'Em andamento',   value:P.filter(p=>p.codigoStatus==='doing').length,                      color:'#0195D6'},
+    {label:'Em encerramento',value:P.filter(p=>p.codigoStatus==='closing'||p.codigoStatus==='monitor').length,  color:'#E66407'},
+    {label:'Não iniciado',   value:P.filter(p=>p.codigoStatus==='todo').length,                       color:'#9CA3AF'},
+    {label:'Bloqueado',      value:P.filter(p=>p.codigoStatus==='blocked').length,                    color:'#E83430'},
+    {label:'Cancelado',      value:P.filter(p=>p.codigoStatus==='cancel').length,                     color:'#C5284C'}
   ].filter(d=>d.value);
   html += `<div class="two">
     <div class="card"><div class="card-title"><i class="ti ti-chart-pie"></i> Por status</div>
-      ${donut(donutProj)}</div>
+      ${graficoRosca(donutProj)}</div>
     <div class="card"><div class="card-title"><i class="ti ti-building"></i> Por frente / área cliente</div>
-      ${Object.keys(frCount).length ? horizontalBars(Object.entries(frCount).sort((a,b)=>b[1]-a[1]),{max:8,lw:80,tot:P.length}) : '<div style="font-size:12px;color:var(--ink4)">Sem dados de área</div>'}</div>
+      ${Object.keys(frCount).length ? barrasHorizontais(Object.entries(frCount).sort((a,b)=>b[1]-a[1]),{max:8,lw:80,tot:P.length}) : '<div style="font-size:12px;color:var(--ink4)">Sem dados de área</div>'}</div>
   </div>`;
 
   html += `<div class="note" style="background:var(--neu-bg);border-color:var(--rule);color:var(--ink3)"><i class="ti ti-info-circle"></i><div>
@@ -92,46 +90,46 @@ export function buildProjects(){
     Nível: <b>alto ≥ 55</b> · <b>médio ≥ 30</b> · <b>baixo &lt; 30</b>. Concluídos e em monitoramento sempre têm risco 0.
   </div></div>`;
   // Monta os selects de filtro dinamicamente a partir dos valores presentes nos dados
-  const pessoas = [...new Set(P.map(p => p.resp).filter(Boolean))].sort();
+  const pessoas = [...new Set(P.map(p => p.responsavel).filter(Boolean))].sort();
   html += `<div class="filters" style="margin-top:4px">
-    <input type="text" id="proj-q" placeholder="Buscar projeto, responsável, frente..." oninput="renderProjectList()" style="flex:1;max-width:280px">
-    <button class="chip" id="proj-chip-atraso" onclick="toggleProjectChip('atraso')">⚠ Só atrasados</button>
-    <button class="chip" id="proj-chip-risco" onclick="toggleProjectChip('risco')">Risco alto</button>
+    <input type="text" id="proj-q" placeholder="Buscar projeto, responsável, frente..." oninput="renderizarListaProjetos()" style="flex:1;max-width:280px">
+    <button class="chip" id="proj-chip-atraso" onclick="alternarChipProjeto('atraso')">⚠ Só atrasados</button>
+    <button class="chip" id="proj-chip-risco" onclick="alternarChipProjeto('risco')">Risco alto</button>
     <label>Responsável</label>
-    <select id="proj-fp" onchange="renderProjectList()"><option value="">Todos</option>
+    <select id="proj-fp" onchange="renderizarListaProjetos()"><option value="">Todos</option>
       ${pessoas.map(p=>`<option>${p}</option>`).join('')}</select>
     <label>Status</label>
-    <select id="proj-fs" onchange="renderProjectList()"><option value="">Todos</option>
+    <select id="proj-fs" onchange="renderizarListaProjetos()"><option value="">Todos</option>
       ${[...new Set(P.map(p=>p.statusRaw).filter(Boolean))].sort().map(s=>`<option>${s}</option>`).join('')}</select>
     <label>Frente</label>
-    <select id="proj-ff" onchange="renderProjectList()"><option value="">Todas</option>
+    <select id="proj-ff" onchange="renderizarListaProjetos()"><option value="">Todas</option>
       ${[...new Set(P.map(p=>p.frente).filter(Boolean))].sort().map(f=>`<option>${f}</option>`).join('')}</select>
     <span style="font-size:11px;color:var(--ink4);margin-left:auto" id="proj-count"></span>
   </div>`;
   html += `<div class="card np"><div class="ilist" id="proj-list" style="border:none;border-radius:0"></div></div>`;
   document.getElementById('proj-content').innerHTML = html;
-  flushCharts();
-  renderProjectList();
-  setBadge('nb-proj', P.length+' proj', '');
+  renderizarGraficosPendentes();
+  renderizarListaProjetos();
+  definirBadge('nb-proj', P.length+' proj', '');
 }
 
 /*
- * renderProjectList() — renders the filtered list of projects.
- * Called by buildProjects() and whenever a filter changes (search, owner, status, area).
- * Applies the global date filter + the tab's local filters.
- * Keeps the expanded-projects state (App.projOpen) across re-renders.
+ * renderizarListaProjetos() — renderiza a lista filtrada de projetos.
+ * Chamada por construirProjetos() e sempre que um filtro muda (busca, responsável, status, área).
+ * Aplica o filtro global de data + os filtros locais da aba.
+ * Mantém o estado dos projetos expandidos (App.projetosAbertos) entre re-renderizações.
  */
-export function renderProjectList(){
-  const {kept: projetos} = filtrarPorPeriodo(App.P.proj);
+export function renderizarListaProjetos(){
+  const {kept: projetos} = filtrarPorPeriodo(App.dadosGovernanca.projetos);
   const textoBusca       = (document.getElementById('proj-q')?.value||'').toLowerCase();
   const filterPessoa     = document.getElementById('proj-fp')?.value||'';
   const filterStatus     = document.getElementById('proj-fs')?.value||'';
   const filterFrente     = document.getElementById('proj-ff')?.value||'';
-  const chips = App.projChips || {atraso:false, risco:false};
+  const chips = App.chipsProjetos;
   // busca em título, responsável, frente, descrição e próximos passos
   let vis = projetos.filter(p =>
-    (!textoBusca || (p.titulo+' '+p.resp+' '+p.frente+' '+(p.descricao||'')+' '+(p.proximos||'')).toLowerCase().includes(textoBusca)) &&
-    (!filterPessoa || p.resp===filterPessoa) &&
+    (!textoBusca || (p.titulo+' '+p.responsavel+' '+p.frente+' '+(p.descricao||'')+' '+(p.proximosPassos||'')).toLowerCase().includes(textoBusca)) &&
+    (!filterPessoa || p.responsavel===filterPessoa) &&
     (!filterStatus || p.statusRaw===filterStatus) &&
     (!filterFrente || p.frente===filterFrente) &&
     (!chips.atraso || projetoAtrasado(p)) &&
@@ -141,29 +139,28 @@ export function renderProjectList(){
   vis.sort((a,b) => {
     const scoreA = riscoProjeto(a).score, scoreB = riscoProjeto(b).score;
     if(scoreB !== scoreA) return scoreB - scoreA;
-    return (b.prog||0) - (a.prog||0);
+    return (b.progresso||0) - (a.progresso||0);
   });
   const cnt = document.getElementById('proj-count');
   if(cnt) cnt.textContent = `${vis.length} de ${projetos.length}`;
-  if(!App.projOpen) App.projOpen = new Set();
   let itensProjeto = vis.map(p => {
-    const badgeClass  = STATUS_BADGE[p.sc];
+    const badgeClass  = STATUS_BADGE[p.codigoStatus];
     const estaAtrasado = projetoAtrasado(p);
     const risco        = riscoProjeto(p); // { score, level, reasons }
-    const key          = String(p.num||p.titulo); // chave única para o estado aberto/fechado
-    const open         = App.projOpen.has(key);
+    const key          = String(p.numero||p.titulo); // chave única pro estado aberto/fechado
+    const open         = App.projetosAbertos.has(key);
     // indicador de status: bolinha colorida em CSS puro (não depende de fonte de ícone)
     const COR_STATUS = {
       done:'#3fa46a', doing:'#4a90d9', closing:'#d49a4a', monitor:'#6fa0e0',
       todo:'#9a9a92', blocked:'#d4a93c', cancel:'#d46a6a', vendor:'#8f6fd0', other:'#9a9a92'
     };
-    const corStatus = COR_STATUS[p.sc] || COR_STATUS.other;
-    // badge de risco (só para nível médio/alto, para não poluir os de baixo risco)
+    const corStatus = COR_STATUS[p.codigoStatus] || COR_STATUS.other;
+    // badge de risco (só pra nível médio/alto, pra não poluir os de baixo risco)
     const riscoBadge = risco.level==='high'
       ? `<span class="badge red" title="${risco.reasons.join(' · ')}">risco alto</span>`
       : (risco.level==='medium' ? `<span class="badge warn" title="${risco.reasons.join(' · ')}">risco médio</span>` : '');
     return `<div class="proj-row ${open?'open':''}" data-k="${key.replace(/"/g,'')}">
-      <div class="icard" onclick="toggleProject('${key.replace(/'/g,"\\'").replace(/"/g,'&quot;')}')" style="cursor:pointer">
+      <div class="icard" onclick="alternarProjeto('${key.replace(/'/g,"\\'").replace(/"/g,'&quot;')}')" style="cursor:pointer">
         <div class="iico" style="background:${estaAtrasado?'var(--err-bg)':'var(--neu-bg)'}">
           <span style="width:11px;height:11px;border-radius:50%;background:${corStatus};display:block"></span>
         </div>
@@ -171,7 +168,7 @@ export function renderProjectList(){
           <div class="isub">
             ${p.frente?`<span class="apill">${p.frente}</span>`:''}
             ${estaAtrasado?`<span style="font-size:10px;color:var(--err);font-weight:500">⚠ atrasado</span>`:''}
-            ${p.prog!=null?`<span style="font-size:10px;color:var(--ink4)">${Math.round(p.prog*100)}% concluído</span>`:''}
+            ${p.progresso!=null?`<span style="font-size:10px;color:var(--ink4)">${Math.round(p.progresso*100)}% concluído</span>`:''}
           </div>
         </div>
         <div class="iright">
@@ -180,7 +177,7 @@ export function renderProjectList(){
           <span style="color:var(--ink4);font-size:11px;margin-left:4px;transition:transform .15s;transform:rotate(${open?'90deg':'0deg'})">▶</span>
         </div>
       </div>
-      ${open ? projectDetails(p) : ''}
+      ${open ? detalhesProjeto(p) : ''}
     </div>`;
   }).join('');
   const el = document.getElementById('proj-list');
@@ -188,48 +185,46 @@ export function renderProjectList(){
 }
 
 /*
- * toggleProjectChip(qual) — toggles a quick filter (overdue / high risk)
- * on the Projects tab and re-renders the list, updating the chip's visual highlight.
+ * alternarChipProjeto(qual) — alterna um filtro rápido (atrasado / risco alto)
+ * na aba Projetos e re-renderiza a lista, atualizando o destaque visual do chip.
  */
-export function toggleProjectChip(qual){
-  if(!App.projChips) App.projChips = {atraso:false, risco:false};
-  App.projChips[qual] = !App.projChips[qual];
+export function alternarChipProjeto(qual){
+  App.chipsProjetos[qual] = !App.chipsProjetos[qual];
   const map = {atraso:'proj-chip-atraso', risco:'proj-chip-risco'};
   const btn = document.getElementById(map[qual]);
-  if(btn) btn.classList.toggle('active', App.projChips[qual]);
-  renderProjectList();
+  if(btn) btn.classList.toggle('active', App.chipsProjetos[qual]);
+  renderizarListaProjetos();
 }
 
 /*
- * toggleProject(key) — opens or closes a project's details panel.
- * Uses a Set (App.projOpen) to track which projects are expanded.
- * If the key is already in the Set → removes it (closes). If not → adds it (opens).
- * Re-renders the list afterward to reflect the change.
+ * alternarProjeto(key) — abre ou fecha o painel de detalhes de um projeto.
+ * Usa um Set (App.projetosAbertos) pra controlar quais projetos estão expandidos.
+ * Se a chave já está no Set → remove (fecha). Se não → adiciona (abre).
+ * Re-renderiza a lista em seguida pra refletir a mudança.
  */
-export function toggleProject(key){
-  if(!App.projOpen) App.projOpen = new Set();
-  if(App.projOpen.has(key)) App.projOpen.delete(key);
-  else App.projOpen.add(key);
-  renderProjectList();
+export function alternarProjeto(key){
+  if(App.projetosAbertos.has(key)) App.projetosAbertos.delete(key);
+  else App.projetosAbertos.add(key);
+  renderizarListaProjetos();
 }
 
 /*
- * projectDetails(project) — generates the HTML for a project's expanded details panel.
- * Only renders the field blocks that are filled in on the spreadsheet.
- * Empty fields don't show up (not even as an empty placeholder).
- * The layout is a 2-column grid (or 1 column on mobile).
+ * detalhesProjeto(project) — gera o HTML do painel de detalhes expandido de um projeto.
+ * Só renderiza os blocos de campo que estão preenchidos na planilha.
+ * Campos vazios não aparecem (nem como placeholder vazio).
+ * O layout é uma grade de 2 colunas (ou 1 coluna no mobile).
  */
-export function projectDetails(project){
+export function detalhesProjeto(project){
   const fmt = txt => String(txt||'').trim().replace(/\n/g,'<br>');
   const blocks = [];
-  if(project.resp)        blocks.push({lbl:'Responsável',             val:project.resp});
-  if(project.dtFim)       blocks.push({lbl:'Prazo de conclusão',      val:`${project.dtFim.toLocaleDateString('pt-BR')}${projetoAtrasado(project)?' &nbsp;<span style="color:var(--err)">⚠ prazo vencido</span>':''}`});
+  if(project.responsavel)  blocks.push({lbl:'Responsável',             val:project.responsavel});
+  if(project.dataFim)      blocks.push({lbl:'Prazo de conclusão',      val:`${project.dataFim.toLocaleDateString('pt-BR')}${projetoAtrasado(project)?' &nbsp;<span style="color:var(--err)">⚠ prazo vencido</span>':''}`});
   if(project.descricao)   blocks.push({lbl:'Descrição',              val:fmt(project.descricao)});
   if(project.equipes)     blocks.push({lbl:'Equipes envolvidas',     val:fmt(project.equipes)});
-  if(project.focal)       blocks.push({lbl:'Ponto focal',            val:project.focal});
-  if(project.atvConcl)    blocks.push({lbl:'Atividades concluídas',  val:fmt(project.atvConcl)});
-  if(project.atvAndam)    blocks.push({lbl:'Atividades em andamento',val:fmt(project.atvAndam)});
-  if(project.proximos)    blocks.push({lbl:'Próximos passos',        val:fmt(project.proximos)});
+  if(project.pontoFocal)  blocks.push({lbl:'Ponto focal',            val:project.pontoFocal});
+  if(project.atividadesConcluidas) blocks.push({lbl:'Atividades concluídas',  val:fmt(project.atividadesConcluidas)});
+  if(project.atividadesAndamento)  blocks.push({lbl:'Atividades em andamento',val:fmt(project.atividadesAndamento)});
+  if(project.proximosPassos)       blocks.push({lbl:'Próximos passos',        val:fmt(project.proximosPassos)});
   if(project.comentarios) blocks.push({lbl:'Comentários',           val:fmt(project.comentarios)});
   if(!blocks.length) return `<div class="proj-detail"><div style="font-size:12px;color:var(--ink4);font-style:italic">Sem detalhes preenchidos na planilha.</div></div>`;
   return `<div class="proj-detail">` + blocks.map(b =>

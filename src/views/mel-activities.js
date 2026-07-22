@@ -1,5 +1,4 @@
-// ─── MODULE: views/mel-activities.js ───────────────────────────────────────
-// MELHORIAS — REGISTRO MANUAL DE ATIVIDADES
+// views/mel-activities.js — MELHORIAS: REGISTRO MANUAL DE ATIVIDADES
 // Card "Atividades" no final da aba Pipefy Melhorias.
 //
 // Diferente do resto da aba (que vem inteiramente da planilha), esses
@@ -8,7 +7,7 @@
 // a gestão é organizado por tema/iniciativa (ex: "Anticipos v1",
 // "Miscelaneas v1"), e esses temas não têm correspondência 1:1 com
 // linhas da planilha Pipefy_Melhorias — então essa tabela não pode ser
-// calculada a partir de App.P.improvements como o resto da aba.
+// calculada a partir de App.dadosGovernanca.melhorias como o resto da aba.
 //
 // PERSISTÊNCIA:
 // Os registros são salvos no localStorage do navegador (chave
@@ -28,7 +27,6 @@
 //   fecharFormularioAtividadeAoClicarFora(event)
 //   salvarFormularioAtividade(event)
 //   confirmarExclusaoAtividade(idAtividade)
-// ─────────────────────────────────────────────────────────────────────────────
 
 const CHAVE_ARMAZENAMENTO_ATIVIDADES_MELHORIAS = 'synapse.melhorias.atividades';
 

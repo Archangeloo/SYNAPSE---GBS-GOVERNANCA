@@ -78,7 +78,7 @@ Dois KPIs mostram a variação em relação ao mês anterior:
 - **Base:** campo `Criado em` (data de abertura do chamado)
 - **Cobertura:** 100% dos chamados têm essa data — comparativo sem ressalvas
 - **Lógica de cor:** menos chamados = verde (melhora), mais chamados = vermelho (piora)
-- **Independente do filtro:** o comparativo usa sempre a base completa (`App.R`), não o subconjunto filtrado por fase ou por data
+- **Independente do filtro:** o comparativo usa sempre a base completa (`App.chamadosRPA`), não o subconjunto filtrado por fase ou por data
 
 ---
 
@@ -126,9 +126,9 @@ SYNAPSE - GBS GOVERNANCA/
 │
 ├── src/                    # Código-fonte real do site — toda alteração é feita aqui
 │   ├── main.js             # Entry point — orquestra parsers, views e navegação
-│   ├── state.js            # Estado global compartilhado (App.P, App.R, App.B…)
+│   ├── state.js            # Estado global compartilhado (App.dadosGovernanca, App.chamadosRPA, App.bots…)
 │   ├── constants.js        # Equipe CoE, status, paleta de cores, HOJE
-│   ├── charts.js           # Componentes SVG: donut, hbars, lineChart, heatmap
+│   ├── charts.js           # Componentes SVG: graficoRosca, barrasHorizontais, graficoLinha, mapaCalor
 │   ├── analysis.js         # Análise automática por aba (insights programáticos)
 │   ├── nav.js              # Navegação entre abas
 │   ├── upload.js           # Upload de arquivos (drag-and-drop + input file)
