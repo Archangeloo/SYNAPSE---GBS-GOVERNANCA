@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "PowerShell(try { $w = New-Object -ComObject Word.Application; Write-Output \"Word OK: $\\($w.Version\\)\"; $w.Quit\\(\\) } catch { Write-Output \"Word COM indisponivel: $\\($_.Exception.Message\\)\" })",
+      "Bash(git log *)",
+      "Bash(git config *)",
+      "Bash(git fetch *)"
+    ]
+  }
+}
